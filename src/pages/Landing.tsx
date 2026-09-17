@@ -1,51 +1,13 @@
-// TODO: REPLACE THIS LANDING PAGE WITH AN ELEGANT, THEMATIC, AND WELL-DESIGNED LANDING PAGE RELEVANT TO THE PROJECT
 import { motion } from "framer-motion";
-import { Loader } from "lucide-react";
-import logo from "@/assets/logo.svg";
+import { ArrowRight, Check, ClipboardCheck, ShieldCheck, Thermometer } from "lucide-react";
+import { useNavigate } from "react-router";
 
 export default function Landing() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="min-h-screen flex flex-col"
-    >
-
-      
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="max-w-5xl mx-auto relative px-4">
-        {/* TODO: landing page goes here; replace with the landing page */}
-        <div className="flex justify-center">
-          <img
-            src={logo}
-            alt="Lock Icon"
-            width={64}
-            height={64}
-            className="rounded-lg mb-8 mt-24"
-          />
-        </div>
-        <div className="flex items-center justify-center text-foreground">
-          <Loader className="h-8 w-8 animate-spin mr-4 shrink-0" />
-          <span className="text-base">
-            <a
-              href="https://freebuff.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline hover:text-primary/80 transition-colors font-medium"
-            >
-              freebuff.com
-            </a>
-            {" "}is generating your project...
-          </span>
-        </div>
-        <p className="text-center text-muted-foreground py-6 text-sm mt-2">
-          Check progress on your project page.
-        </p>
-        
-        </div>
-      </div>
-    </motion.div>
-  );
+  const navigate = useNavigate();
+  return <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8"><div className="flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-xl bg-[#f4c542] text-[#171717]"><Thermometer className="size-5" /></div><div><p className="text-[15px] font-semibold tracking-tight">Le Feast</p><p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#747b76]">Food safety</p></div></div><button className="cursor-pointer text-sm font-semibold text-[#4b544e] hover:text-[#171918]" onClick={() => navigate("/auth")}>Sign in <ArrowRight className="ml-1 inline size-4" /></button></header>
+    <main className="mx-auto max-w-6xl px-5 pb-16 pt-12 sm:px-8 sm:pt-20"><div className="grid items-center gap-14 lg:grid-cols-[1.05fr_.95fr]"><motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#e2d59b] bg-[#fff9df] px-3 py-1.5 text-xs font-semibold text-[#80620e]"><span className="size-1.5 rounded-full bg-[#d39e09]" /> Built for Le Feast teams</div><h1 className="max-w-xl text-5xl font-semibold leading-[1.02] tracking-[-0.065em] sm:text-6xl">Food safety that keeps pace with service.</h1><p className="mt-6 max-w-lg text-lg leading-8 text-[#69716b]">One clear place for today&apos;s temperature checks, food probes and the actions that follow. Simple for the store. Ready for an EHO.</p><div className="mt-8 flex flex-col gap-3 sm:flex-row"><button className="cursor-pointer rounded-xl bg-[#202522] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#353c37]" onClick={() => navigate("/auth")}>Open today&apos;s checks <ArrowRight className="ml-2 inline size-4" /></button><button className="cursor-pointer rounded-xl border border-black/[0.09] bg-white px-5 py-3.5 text-sm font-semibold text-[#4b544e]" onClick={() => navigate("/auth")}>Operations view</button></div><div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-[#68716a]"><span><Check className="mr-1.5 inline size-4 text-[#2d7951]" />Exact readings</span><span><Check className="mr-1.5 inline size-4 text-[#2d7951]" />Immutable history</span><span><Check className="mr-1.5 inline size-4 text-[#2d7951]" />Four locations</span></div></motion.div><motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: .1 }} className="relative"><div className="absolute -inset-5 rounded-[2.5rem] bg-[#f4c542]/10 blur-2xl" /><div className="relative overflow-hidden rounded-[1.75rem] border border-black/[0.08] bg-white p-5 shadow-xl shadow-black/[0.06] sm:p-7"><div className="flex items-center justify-between border-b border-black/[0.07] pb-5"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#89918b]">Today · Blackpool North</p><p className="mt-1 text-xl font-semibold tracking-tight">Thursday 17 September</p></div><div className="flex size-10 items-center justify-center rounded-full bg-[#e4f2e8] text-[#2d7951]"><ShieldCheck className="size-5" /></div></div><div className="mt-5 rounded-2xl bg-[#202522] p-5 text-white"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#f4c542]">Today&apos;s checks</p><p className="mt-2 text-3xl font-semibold">6 <span className="text-lg text-white/40">of 8 complete</span></p></div><ClipboardCheck className="size-7 text-[#f4c542]" /></div><div className="mt-5 h-2 rounded-full bg-white/10"><div className="h-2 w-3/4 rounded-full bg-[#f4c542]" /></div></div><div className="mt-4 space-y-3"><PreviewRow title="AM Fridge Checks" detail="Completed 06:12 by James" done /><PreviewRow title="Opening Food Safety Check" detail="Completed 06:18 by Julie" done /><PreviewRow title="Food Probe" detail="Required when first cooked batch is ready" /></div><div className="mt-5 flex items-start gap-3 rounded-xl border border-[#efc8c3] bg-[#fff5f3] p-4"><div className="mt-0.5 size-2 rounded-full bg-[#c75b4c]" /><div><p className="text-sm font-semibold text-[#8f3a31]">Fridge 3 recorded 8.7°C</p><p className="mt-1 text-xs text-[#9c625b]">Corrective action required · Review issue</p></div></div></div></motion.div></div><div className="mt-24 grid gap-4 border-t border-black/[0.07] pt-8 sm:grid-cols-3"><Feature title="Know what&apos;s due" copy="The day starts with a short, prioritised list — not a filing cabinet of forms." icon={<ClipboardCheck />} /><Feature title="Capture the full story" copy="A failed reading stays linked to the action and recheck that made it safe." icon={<ShieldCheck />} /><Feature title="See every store" copy="Central Operations sees exceptions across Blackpool, Bolton, Poulton and Rochdale." icon={<Thermometer />} /></div></main>
+  </div>;
 }
+function PreviewRow({ title, detail, done }: { title: string; detail: string; done?: boolean }) { return <div className="flex items-center gap-3 rounded-xl border border-black/[0.06] px-4 py-3"><div className={`flex size-8 items-center justify-center rounded-full ${done ? "bg-[#e4f2e8] text-[#2d7951]" : "bg-[#fff7dc] text-[#9a7511]"}`}>{done ? <Check className="size-4" /> : <span className="size-2 rounded-full bg-[#d5ad29]" />}</div><div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs text-[#89918b]">{detail}</p></div></div>; }
+function Feature({ title, copy, icon }: { title: string; copy: string; icon: React.ReactNode }) { return <div className="flex gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#fff7dc] text-[#94700d]">{icon}</div><div><h2 className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: title }} /><p className="mt-1 text-sm leading-6 text-[#727a74]">{copy}</p></div></div>; }

@@ -2,46 +2,103 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 
-// default user roles. can add / remove based on the project as needed
 export const ROLES = {
   ADMIN: "admin",
-  USER: "user",
-  MEMBER: "member",
+  MANAGER: "manager",
+  STAFF: "staff",
 } as const;
 
 export const roleValidator = v.union(
   v.literal(ROLES.ADMIN),
-  v.literal(ROLES.USER),
-  v.literal(ROLES.MEMBER),
+  v.literal(ROLES.MANAGER),
+  v.literal(ROLES.STAFF),
 );
 export type Role = Infer<typeof roleValidator>;
 
-const schema = defineSchema(
-  {
-    // default auth tables using convex auth.
-    ...authTables, // do not remove or modify
-
-    // the users table is the default users table that is brought in by the authTables
-    users: defineTable({
-      name: v.optional(v.string()), // name of the user. do not remove
-      image: v.optional(v.string()), // image of the user. do not remove
-      email: v.optional(v.string()), // email of the user. do not remove
-      emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
-      isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
-
-      role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
-
-    // add other tables here
-
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
-  },
-  {
-    schemaValidation: false,
-  },
-);
+const schema = defineSchema({
+  ...authTables,
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    role: v.optional(roleValidator),
+  }).index("email", ["email"]),
+  organisations: defineTable({ name: v.string(), timezone: v.string() }),
+  locations: defineTable({
+    organisationId: v.id("organisations"),
+    name: v.string(),
+    shortName: v.string(),
+    timezone: v.string(),
+    active: v.boolean(),
+  }).index("by_organisation", ["organisationId"]),
+  memberships: defineTable({
+    userId: v.id("users"),
+    locationId: v.id("locations"),
+    role: roleValidator,
+  }).index("by_user", ["userId"]),
+  equipment: defineTable({
+    locationId: v.id("locations"),
+    name: v.string(),
+    type: v.string(),
+    order: v.number(),
+    active: v.boolean(),
+  }).index("by_location", ["locationId"]),
+  scheduledTasks: defineTable({
+    locationId: v.id("locations"),
+    title: v.string(),
+    kind: v.union(v.literal("temperature"), v.literal("probe")),
+    session: v.optional(v.union(v.literal("AM"), v.literal("PM"))),
+    dueLabel: v.string(),
+    status: v.union(v.literal("complete"), v.literal("due"), v.literal("upcoming"), v.literal("overdue")),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+  }).index("by_location", ["locationId"]),
+  temperatureRounds: defineTable({
+    locationId: v.id("locations"),
+    session: v.union(v.literal("AM"), v.literal("PM")),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    createdBy: v.id("users"),
+  }).index("by_location", ["locationId"]),
+  temperatureReadings: defineTable({
+    roundId: v.id("temperatureRounds"),
+    equipmentId: v.id("equipment"),
+    locationId: v.id("locations"),
+    temperature: v.number(),
+    result: v.union(v.literal("normal"), v.literal("within_limit"), v.literal("fail")),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    voided: v.boolean(),
+  }).index("by_round", ["roundId"]).index("by_location", ["locationId"]),
+  foodChecks: defineTable({
+    locationId: v.id("locations"),
+    product: v.string(),
+    temperature: v.number(),
+    result: v.union(v.literal("pass"), v.literal("fail")),
+    action: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_location", ["locationId"]),
+  issues: defineTable({
+    locationId: v.id("locations"),
+    category: v.string(),
+    title: v.string(),
+    description: v.string(),
+    status: v.union(v.literal("open"), v.literal("monitoring"), v.literal("resolved")),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    action: v.optional(v.string()),
+    resolvedAt: v.optional(v.number()),
+  }).index("by_location", ["locationId"]),
+  auditEvents: defineTable({
+    locationId: v.optional(v.id("locations")),
+    userId: v.id("users"),
+    type: v.string(),
+    detail: v.string(),
+    createdAt: v.number(),
+  }).index("by_location", ["locationId"]),
+});
 
 export default schema;
