@@ -80,6 +80,7 @@ const schema = defineSchema({
     minimumTemperature: v.number(),
     holdMinutes: v.number(),
     locationIds: v.array(v.id("locations")),
+    order: v.optional(v.number()),
     active: v.boolean(),
   }).index("by_organisation", ["organisationId"]),
   checklistQuestions: defineTable({
