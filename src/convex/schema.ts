@@ -137,6 +137,7 @@ const schema = defineSchema({
     itemId: v.optional(v.id("wastageItems")),
     itemName: v.optional(v.string()),
     quantity: v.optional(v.string()),
+    notes: v.optional(v.string()),
     noWaste: v.boolean(),
     createdAt: v.number(),
     createdBy: v.id("users"),
