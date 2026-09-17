@@ -9,12 +9,27 @@ const stores = [
   { name: "Poulton-le-Fylde", shortName: "Poulton" },
   { name: "Rochdale", shortName: "Rochdale" },
 ];
-const equipmentNames = ["Sandwich Fridge", "Milk Fridge", "Front Drinks Fridge", "Chilled Display"];
+const securityDefaults = ["Premises secure?", "Required security checks completed?", "Required security procedures understood and followed?"];
+const equipmentCount = 4;
 
 async function signedIn(ctx: any) {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error("You must be signed in");
   return userId;
+}
+async function requireManager(ctx: any) {
+  const userId = await signedIn(ctx);
+  const user = await ctx.db.get(userId);
+  if (user?.role !== "admin" && user?.role !== "manager") throw new Error("Manager access required");
+  return userId;
+}
+async function seedLocation(ctx: any, locationId: Id<"locations">, userId: Id<"users">) {
+  const existingEquipment = await ctx.db.query("equipment").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
+  if (!existingEquipment.length) for (let number = 1; number <= equipmentCount; number++) await ctx.db.insert("equipment", { locationId, name: `Fridge ${number}`, type: "Food fridge", preferredTemperature: 5, maximumTemperature: 8, order: number - 1, active: true });
+  for (const session of ["AM", "PM"] as const) {
+    const existing = await ctx.db.query("securityQuestions").withIndex("by_location_session", (q: any) => q.eq("locationId", locationId).eq("session", session)).collect();
+    if (!existing.length) for (const [order, question] of securityDefaults.entries()) await ctx.db.insert("securityQuestions", { locationId, session, question, order, active: true });
+  }
 }
 
 export const initializeDemo = mutation({
@@ -23,19 +38,11 @@ export const initializeDemo = mutation({
     const userId = await signedIn(ctx);
     const existing = await ctx.db.query("organisations").first();
     if (existing) {
-      const existingLocations = (await ctx.db.query("locations").collect()).filter(location => location.organisationId === existing._id);
-      const existingProducts = await ctx.db.query("probeProducts").withIndex("by_organisation", q => q.eq("organisationId", existing._id)).collect();
-      if (existingLocations.length && existingProducts.length === 0) {
-        const locationIds = existingLocations.map(location => location._id);
-        for (const product of ["Sausages", "Bacon", "Hash Browns"]) await ctx.db.insert("probeProducts", { organisationId: existing._id, name: product, minimumTemperature: 76, holdMinutes: 2, locationIds, active: true });
-        const openingQuestions = ["Food fridges operating correctly?", "Drinks fridges operating correctly?", "Food-preparation surfaces clean?", "Handwash sink accessible?", "Hot water available?", "Soap available?", "Disposable hand-drying available?", "Food probe available and sanitised?", "Approved chemicals available?", "Allergen information available?", "Food correctly stored and labelled?", "No evidence of pest activity?"];
-        const closingQuestions = ["PM temperature checks completed?", "Expired or damaged food removed?", "Open food covered and labelled?", "Chilled food stored safely?", "Food-preparation areas cleaned?", "Equipment and utensils cleaned?", "Waste removed and bins controlled?", "Floors cleaned?", "Chemicals stored correctly?", "Outstanding issues handed over?"];
-        const firstLocation = existingLocations[0];
-        const existingQuestions = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", firstLocation._id).eq("checklist", "opening")).collect();
-        if (existingQuestions.length === 0) for (const [index, question] of openingQuestions.entries()) await ctx.db.insert("checklistQuestions", { locationId: firstLocation._id, checklist: "opening", question, order: index, active: true });
-        const existingClosing = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", firstLocation._id).eq("checklist", "closing")).collect();
-        if (existingClosing.length === 0) for (const [index, question] of closingQuestions.entries()) await ctx.db.insert("checklistQuestions", { locationId: firstLocation._id, checklist: "closing", question, order: index, active: true });
-      }
+      const locations = (await ctx.db.query("locations").collect()).filter(item => item.organisationId === existing._id);
+      for (const location of locations) await seedLocation(ctx, location._id, userId);
+      const products = await ctx.db.query("probeProducts").withIndex("by_organisation", q => q.eq("organisationId", existing._id)).collect();
+      for (const product of products) if (product.name === "Bacon" || product.name === "Hash Browns" || product.name === "Other") await ctx.db.patch(product._id, { active: false });
+      if (!products.some(product => product.name === "Chicken Brioche")) await ctx.db.insert("probeProducts", { organisationId: existing._id, name: "Chicken Brioche", minimumTemperature: 76, holdMinutes: 2, locationIds: locations.map(item => item._id), active: true });
       return;
     }
     const organisationId = await ctx.db.insert("organisations", { name: "Le Feast", timezone: "Europe/London" });
@@ -44,28 +51,20 @@ export const initializeDemo = mutation({
       const locationId = await ctx.db.insert("locations", { organisationId, ...store, timezone: "Europe/London", active: true });
       locationIds.push(locationId);
       await ctx.db.insert("memberships", { userId, locationId, role: index === 0 ? "manager" : "admin" });
-      for (const [order, name] of equipmentNames.entries()) {
-        await ctx.db.insert("equipment", { locationId, name, type: order === 0 ? "Food fridge" : "Chilled display", order, active: true });
-      }
-      const taskStatus = index === 1 ? "due" : "complete";
-      await ctx.db.insert("scheduledTasks", { locationId, title: "AM Fridge Checks", kind: "temperature", session: "AM", dueLabel: "Due by 10:00", status: taskStatus, completedAt: taskStatus === "complete" ? Date.now() - 7200000 : undefined, completedBy: taskStatus === "complete" ? userId : undefined });
+      await seedLocation(ctx, locationId, userId);
+      await ctx.db.insert("scheduledTasks", { locationId, title: "AM Fridge Checks", kind: "temperature", session: "AM", dueLabel: "Due by 10:00", status: index === 1 ? "due" : "complete", completedAt: index === 1 ? undefined : Date.now() - 7200000, completedBy: index === 1 ? undefined : userId });
       await ctx.db.insert("scheduledTasks", { locationId, title: "PM Fridge Checks", kind: "temperature", session: "PM", dueLabel: "Due at close", status: "upcoming" });
-      await ctx.db.insert("scheduledTasks", { locationId, title: "Cooking temperature", kind: "probe", dueLabel: "When first batch is cooked", status: index === 2 ? "complete" : "upcoming", completedAt: index === 2 ? Date.now() - 3600000 : undefined, completedBy: index === 2 ? userId : undefined });
+      await ctx.db.insert("scheduledTasks", { locationId, title: "Food probe", kind: "probe", dueLabel: "During service", status: "upcoming" });
     }
-    for (const product of ["Sausages", "Bacon", "Hash Browns"]) {
-      await ctx.db.insert("probeProducts", { organisationId, name: product, minimumTemperature: 76, holdMinutes: 2, locationIds, active: true });
-    }
-    const openingQuestions = ["Food fridges operating correctly?", "Drinks fridges operating correctly?", "Food-preparation surfaces clean?", "Handwash sink accessible?", "Hot water available?", "Soap available?", "Disposable hand-drying available?", "Food probe available and sanitised?", "Approved chemicals available?", "Allergen information available?", "Food correctly stored and labelled?", "No evidence of pest activity?"];
-    const closingQuestions = ["PM temperature checks completed?", "Expired or damaged food removed?", "Open food covered and labelled?", "Chilled food stored safely?", "Food-preparation areas cleaned?", "Equipment and utensils cleaned?", "Waste removed and bins controlled?", "Floors cleaned?", "Chemicals stored correctly?", "Outstanding issues handed over?"];
-    for (const [index, question] of openingQuestions.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "opening", question, order: index, active: true });
-    for (const [index, question] of closingQuestions.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "closing", question, order: index, active: true });
-    const blackpoolEquipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", locationIds[0])).collect();
+    for (const name of ["Sausages", "Chicken Brioche"]) await ctx.db.insert("probeProducts", { organisationId, name, minimumTemperature: 76, holdMinutes: 2, locationIds, active: true });
+    const opening = ["Food fridges operating correctly?", "Drinks fridges operating correctly?", "Food-preparation surfaces clean?", "Handwash soap available?", "Hot water available?", "Disposable hand-drying available?", "Food probe available and sanitised?", "Approved chemicals available?", "Allergen information available?", "Food correctly stored and labelled?", "No evidence of pest activity?", "Staff fit for work?"];
+    const closing = ["PM temperature checks completed?", "Expired or damaged food removed?", "Open food covered and labelled?", "Chilled food stored safely?", "Food-preparation areas cleaned?", "Equipment and utensils cleaned?", "Waste removed and bins controlled?", "Floors cleaned?", "Chemicals stored correctly?", "Outstanding issues handed over?"];
+    for (const [order, question] of opening.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "opening", question, order, active: true });
+    for (const [order, question] of closing.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "closing", question, order, active: true });
+    const equipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", locationIds[0])).collect();
     const roundId = await ctx.db.insert("temperatureRounds", { locationId: locationIds[0], session: "AM", startedAt: Date.now() - 8000000, completedAt: Date.now() - 7800000, createdBy: userId });
-    for (const [index, item] of blackpoolEquipment.entries()) {
-      await ctx.db.insert("temperatureReadings", { roundId, equipmentId: item._id, locationId: locationIds[0], temperature: [4.2, 3.8, 8.7, 4.6][index], result: index === 2 ? "fail" : "normal", createdAt: Date.now() - 7800000 + index * 30000, createdBy: userId, voided: false });
-    }
-    await ctx.db.insert("issues", { locationId: locationIds[0], category: "Temperature", title: "Front Drinks Fridge needs attention", description: "Recorded at 8.7°C, above the Le Feast maximum of 8°C.", status: "monitoring", createdAt: Date.now() - 7700000, createdBy: userId, action: "Door checked and drinks moved to the chilled display. Recheck due." });
-    await ctx.db.insert("issues", { locationId: locationIds[2], category: "Temperature", title: "Poulton follow-up required", description: "PM temperature round has an open follow-up.", status: "open", createdAt: Date.now() - 2400000, createdBy: userId });
+    for (const [index, item] of equipment.entries()) await ctx.db.insert("temperatureReadings", { roundId, equipmentId: item._id, locationId: locationIds[0], temperature: [4.2, 3.8, 8.7, 4.6][index], result: index === 2 ? "fail" : "normal", createdAt: Date.now() - 7800000 + index * 30000, createdBy: userId, voided: false });
+    await ctx.db.insert("issues", { locationId: locationIds[0], category: "Temperature", title: "Fridge 3 requires action", description: "Recorded at 8.7°C. Le Feast maximum is 8°C.", status: "monitoring", createdAt: Date.now() - 7700000, createdBy: userId, action: "Food moved to another fridge; manager informed." });
     await ctx.db.insert("foodChecks", { locationId: locationIds[0], product: "Sausages", temperature: 81.2, result: "pass", action: "Held for 2 minutes", createdAt: Date.now() - 3500000, createdBy: userId });
     await ctx.db.patch(userId, { role: "admin", name: "Le Feast Operations" });
   },
@@ -80,145 +79,41 @@ export const dashboard = query({
     if (!locationId) return null;
     const location = await ctx.db.get(locationId);
     if (!location) return null;
-    const equipment = (await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", locationId)).collect()).filter(item => item.active).sort((a, b) => a.order - b.order);
-    const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", locationId)).collect();
-    const rounds = await ctx.db.query("temperatureRounds").withIndex("by_location", q => q.eq("locationId", locationId)).collect();
-    const readings = await ctx.db.query("temperatureReadings").withIndex("by_location", q => q.eq("locationId", locationId)).collect();
-    const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", locationId)).collect();
-    const foodChecks = await ctx.db.query("foodChecks").withIndex("by_location", q => q.eq("locationId", locationId)).collect();
+    const equipment = (await ctx.db.query("equipment").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect()).filter(item => item.active).sort((a, b) => a.order - b.order);
+    const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
+    const rounds = await ctx.db.query("temperatureRounds").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
+    const readings = await ctx.db.query("temperatureReadings").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
+    const issues = await ctx.db.query("issues").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
+    const foodChecks = await ctx.db.query("foodChecks").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect();
     const organisation = await ctx.db.get(location.organisationId);
     const probeProducts = organisation ? (await ctx.db.query("probeProducts").withIndex("by_organisation", q => q.eq("organisationId", organisation._id)).collect()).filter(product => product.active && product.locationIds.includes(locationId)) : [];
     const openingQuestions = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", locationId).eq("checklist", "opening")).collect();
     const closingQuestions = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", locationId).eq("checklist", "closing")).collect();
     const openingResponses = await ctx.db.query("checklistResponses").withIndex("by_location_checklist", q => q.eq("locationId", locationId).eq("checklist", "opening")).collect();
     const closingResponses = await ctx.db.query("checklistResponses").withIndex("by_location_checklist", q => q.eq("locationId", locationId).eq("checklist", "closing")).collect();
-    return { location, equipment, tasks, rounds, readings, issues, foodChecks, probeProducts, checklists: { opening: { questions: openingQuestions.sort((a, b) => a.order - b.order), responses: openingResponses }, closing: { questions: closingQuestions.sort((a, b) => a.order - b.order), responses: closingResponses } }, role: (await ctx.db.get(userId))?.role ?? "staff" };
+    const security = { AM: await ctx.db.query("securityQuestions").withIndex("by_location_session", q => q.eq("locationId", locationId).eq("session", "AM")).collect(), PM: await ctx.db.query("securityQuestions").withIndex("by_location_session", q => q.eq("locationId", locationId).eq("session", "PM")).collect() };
+    const securityResponses = { AM: await ctx.db.query("securityResponses").withIndex("by_location_session", q => q.eq("locationId", locationId).eq("session", "AM")).collect(), PM: await ctx.db.query("securityResponses").withIndex("by_location_session", q => q.eq("locationId", locationId).eq("session", "PM")).collect() };
+    return { location, equipment, tasks, rounds, readings, issues, foodChecks, probeProducts, security, securityResponses, checklists: { opening: { questions: openingQuestions.sort((a, b) => a.order - b.order), responses: openingResponses }, closing: { questions: closingQuestions.sort((a, b) => a.order - b.order), responses: closingResponses } }, role: (await ctx.db.get(userId))?.role ?? "staff" };
   },
 });
 
-export const operations = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await signedIn(ctx);
-    const user = await ctx.db.get(userId);
-    if (user?.role !== "admin") throw new Error("Operations access required");
-    const locations = await ctx.db.query("locations").collect();
-    const result = [];
-    for (const location of locations) {
-      const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", location._id)).collect();
-      const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", location._id)).collect();
-      result.push({ location, total: tasks.length, complete: tasks.filter(t => t.status === "complete").length, outstanding: tasks.filter(t => t.status !== "complete").length, issues: issues.filter(i => i.status !== "resolved").length, latestIssue: issues.filter(i => i.status !== "resolved").sort((a, b) => b.createdAt - a.createdAt)[0] });
-    }
-    return result;
-  },
-});
+export const operations = query({ args: {}, handler: async (ctx) => { const userId = await signedIn(ctx); if ((await ctx.db.get(userId))?.role !== "admin") throw new Error("Operations access required"); const locations = await ctx.db.query("locations").collect(); const result = []; for (const location of locations) { const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); result.push({ location, total: tasks.length + 3, complete: tasks.filter(t => t.status === "complete").length, outstanding: tasks.filter(t => t.status !== "complete").length, issues: issues.filter(i => i.status !== "resolved").length, latestIssue: issues.filter(i => i.status !== "resolved").sort((a, b) => b.createdAt - a.createdAt)[0] }); } return result; } });
 
-export const startRound = mutation({
-  args: { locationId: v.id("locations"), session: v.union(v.literal("AM"), v.literal("PM")) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    return await ctx.db.insert("temperatureRounds", { ...args, startedAt: Date.now(), createdBy: userId });
-  },
-});
+export const calendar = query({ args: { locationId: v.id("locations"), monthStart: v.number(), monthEnd: v.number() }, handler: async (ctx, args) => { await signedIn(ctx); const rounds = await ctx.db.query("temperatureRounds").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const readings = await ctx.db.query("temperatureReadings").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const probes = await ctx.db.query("foodChecks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const days: Record<string, { date: string; status: "green" | "amber" | "red"; readings: number; probes: number; issues: number }> = {}; for (const round of rounds) { const time = round.startedAt; if (time < args.monthStart || time > args.monthEnd) continue; const date = new Date(time).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].readings += readings.filter(item => item.roundId === round._id).length; } for (const probe of probes) { if (probe.createdAt < args.monthStart || probe.createdAt > args.monthEnd) continue; const date = new Date(probe.createdAt).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].probes++; if (probe.result === "fail") days[date].status = "amber"; } for (const issue of issues) { if (issue.createdAt < args.monthStart || issue.createdAt > args.monthEnd) continue; const date = new Date(issue.createdAt).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].issues++; if (issue.status !== "resolved") days[date].status = "red"; else if (days[date].status === "green") days[date].status = "amber"; } return Object.values(days); } });
 
-export const recordTemperature = mutation({
-  args: { roundId: v.id("temperatureRounds"), locationId: v.id("locations"), equipmentId: v.id("equipment"), temperature: v.number() },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const result = args.temperature > 8 ? "fail" : args.temperature > 5 ? "within_limit" : "normal";
-    const readingId = await ctx.db.insert("temperatureReadings", { ...args, result, createdAt: Date.now(), createdBy: userId, voided: false });
-    let issueId = null;
-    if (result === "fail") {
-      const equipment = await ctx.db.get(args.equipmentId);
-      issueId = await ctx.db.insert("issues", { locationId: args.locationId, category: "Temperature", title: `${equipment?.name ?? "Fridge"} requires action`, description: `Recorded at ${args.temperature}°C. Le Feast maximum is 8°C.`, status: "open", createdAt: Date.now(), createdBy: userId });
-    }
-    return { readingId, issueId };
-  },
-});
+export const archive = query({ args: { locationId: v.id("locations"), start: v.number(), end: v.number() }, handler: async (ctx, args) => { await signedIn(ctx); const readings = (await ctx.db.query("temperatureReadings").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.createdAt >= args.start && item.createdAt <= args.end); const rounds = await ctx.db.query("temperatureRounds").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const probes = (await ctx.db.query("foodChecks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.createdAt >= args.start && item.createdAt <= args.end); const issues = (await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.createdAt >= args.start && item.createdAt <= args.end); const questions = { opening: await ctx.db.query("checklistResponses").withIndex("by_location_checklist", q => q.eq("locationId", args.locationId).eq("checklist", "opening")).collect(), closing: await ctx.db.query("checklistResponses").withIndex("by_location_checklist", q => q.eq("locationId", args.locationId).eq("checklist", "closing")).collect() }; return { readings, rounds, probes, issues, questions }; } });
 
-export const completeRound = mutation({
-  args: { roundId: v.id("temperatureRounds"), locationId: v.id("locations"), session: v.optional(v.union(v.literal("AM"), v.literal("PM"))) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    await ctx.db.patch(args.roundId, { completedAt: Date.now() });
-    const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect();
-    const sessionTask = tasks.find(t => t.session === (args.session ?? "AM"));
-    if (sessionTask) await ctx.db.patch(sessionTask._id, { status: "complete", completedAt: Date.now(), completedBy: userId });
-    await ctx.db.insert("auditEvents", { locationId: args.locationId, userId, type: "temperature_round_completed", detail: "Temperature round completed", createdAt: Date.now() });
-  },
-});
-
-export const recordFoodCheck = mutation({
-  args: { locationId: v.id("locations"), product: v.string(), quantity: v.optional(v.string()), temperature: v.number(), action: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const result = args.temperature >= 76 ? "pass" : "fail";
-    return await ctx.db.insert("foodChecks", { ...args, result, createdAt: Date.now(), createdBy: userId });
-  },
-});
-
-export const createManualIssue = mutation({
-  args: { locationId: v.id("locations"), description: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    return await ctx.db.insert("issues", { locationId: args.locationId, category: "Food safety", title: "Manual issue reported", description: args.description, status: "open", createdAt: Date.now(), createdBy: userId });
-  },
-});
-
-export const saveChecklistResponse = mutation({
-  args: { locationId: v.id("locations"), checklist: v.union(v.literal("opening"), v.literal("closing")), questionId: v.id("checklistQuestions"), answer: v.union(v.literal("yes"), v.literal("no"), v.literal("na")), problem: v.optional(v.string()), action: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    return await ctx.db.insert("checklistResponses", { ...args, createdAt: Date.now(), createdBy: userId });
-  },
-});
-
-export const addEquipment = mutation({
-  args: { locationId: v.id("locations"), name: v.string(), type: v.string(), preferredTemperature: v.optional(v.number()), maximumTemperature: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const equipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect();
-    const id = await ctx.db.insert("equipment", { ...args, order: equipment.length, active: true });
-    await ctx.db.insert("auditEvents", { locationId: args.locationId, userId, type: "equipment_added", detail: args.name, createdAt: Date.now() });
-    return id;
-  },
-});
-
-export const addProbeProduct = mutation({
-  args: { organisationId: v.id("organisations"), name: v.string(), minimumTemperature: v.number(), holdMinutes: v.number(), locationIds: v.array(v.id("locations")) },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const id = await ctx.db.insert("probeProducts", { ...args, active: true });
-    await ctx.db.insert("auditEvents", { userId, type: "probe_product_added", detail: args.name, createdAt: Date.now() });
-    return id;
-  },
-});
-
-export const addChecklistQuestion = mutation({
-  args: { locationId: v.id("locations"), checklist: v.union(v.literal("opening"), v.literal("closing")), question: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const questions = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", args.locationId).eq("checklist", args.checklist)).collect();
-    return await ctx.db.insert("checklistQuestions", { ...args, order: questions.length, active: true });
-  },
-});
-
-export const addIssueAction = mutation({
-  args: { issueId: v.id("issues"), action: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    const issue = await ctx.db.get(args.issueId);
-    await ctx.db.patch(args.issueId, { action: args.action, status: "monitoring" });
-    await ctx.db.insert("auditEvents", { locationId: issue?.locationId, userId, type: "corrective_action_added", detail: args.action, createdAt: Date.now() });
-  },
-});
-
-export const resolveIssue = mutation({
-  args: { issueId: v.id("issues"), action: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await signedIn(ctx);
-    await ctx.db.patch(args.issueId, { action: args.action, status: "resolved", resolvedAt: Date.now() });
-    const issue = await ctx.db.get(args.issueId);
-    await ctx.db.insert("auditEvents", { locationId: issue?.locationId, userId, type: "issue_resolved", detail: args.action, createdAt: Date.now() });
-  },
-});
+export const startRound = mutation({ args: { locationId: v.id("locations"), session: v.union(v.literal("AM"), v.literal("PM")) }, handler: async (ctx, args) => { const userId = await signedIn(ctx); return await ctx.db.insert("temperatureRounds", { ...args, startedAt: Date.now(), createdBy: userId }); } });
+export const recordTemperature = mutation({ args: { roundId: v.id("temperatureRounds"), locationId: v.id("locations"), equipmentId: v.id("equipment"), temperature: v.number() }, handler: async (ctx, args) => { const userId = await signedIn(ctx); const result = args.temperature > 8 ? "fail" : args.temperature > 5 ? "within_limit" : "normal"; const readingId = await ctx.db.insert("temperatureReadings", { ...args, result, createdAt: Date.now(), createdBy: userId, voided: false }); let issueId = null; if (result === "fail") { const equipment = await ctx.db.get(args.equipmentId); issueId = await ctx.db.insert("issues", { locationId: args.locationId, category: "Temperature", title: `${equipment?.name ?? "Fridge"} requires action`, description: `Recorded at ${args.temperature}°C. Le Feast maximum is 8°C.`, status: "open", createdAt: Date.now(), createdBy: userId }); } return { readingId, issueId }; } });
+export const completeRound = mutation({ args: { roundId: v.id("temperatureRounds"), locationId: v.id("locations"), session: v.union(v.literal("AM"), v.literal("PM")) }, handler: async (ctx, args) => { const userId = await signedIn(ctx); await ctx.db.patch(args.roundId, { completedAt: Date.now() }); const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const sessionTask = tasks.find(item => item.session === args.session); if (sessionTask) await ctx.db.patch(sessionTask._id, { status: "complete", completedAt: Date.now(), completedBy: userId }); await ctx.db.insert("auditEvents", { locationId: args.locationId, userId, type: "temperature_round_completed", detail: `${args.session} temperature round completed`, createdAt: Date.now() }); } });
+export const recordFoodCheck = mutation({ args: { locationId: v.id("locations"), product: v.string(), quantity: v.optional(v.string()), temperature: v.number(), action: v.optional(v.string()) }, handler: async (ctx, args) => { const userId = await signedIn(ctx); return await ctx.db.insert("foodChecks", { ...args, result: args.temperature >= 76 ? "pass" : "fail", createdAt: Date.now(), createdBy: userId }); } });
+export const createManualIssue = mutation({ args: { locationId: v.id("locations"), description: v.string() }, handler: async (ctx, args) => { const userId = await signedIn(ctx); return await ctx.db.insert("issues", { locationId: args.locationId, category: "Food safety", title: "Manual issue reported", description: args.description, status: "open", createdAt: Date.now(), createdBy: userId }); } });
+export const saveChecklistResponse = mutation({ args: { locationId: v.id("locations"), checklist: v.union(v.literal("opening"), v.literal("closing")), questionId: v.id("checklistQuestions"), answer: v.union(v.literal("yes"), v.literal("no"), v.literal("na")), problem: v.optional(v.string()), action: v.optional(v.string()) }, handler: async (ctx, args) => { const userId = await signedIn(ctx); if (args.answer === "no" && !args.action?.trim()) throw new Error("A corrective action is required"); return await ctx.db.insert("checklistResponses", { ...args, createdAt: Date.now(), createdBy: userId }); } });
+export const saveSecurityResponse = mutation({ args: { locationId: v.id("locations"), session: v.union(v.literal("AM"), v.literal("PM")), questionId: v.id("securityQuestions"), issue: v.optional(v.string()) }, handler: async (ctx, args) => { const userId = await signedIn(ctx); return await ctx.db.insert("securityResponses", { ...args, answer: "yes", createdAt: Date.now(), createdBy: userId }); } });
+export const addEquipment = mutation({ args: { locationId: v.id("locations"), name: v.optional(v.string()), type: v.optional(v.string()), preferredTemperature: v.optional(v.number()), maximumTemperature: v.optional(v.number()) }, handler: async (ctx, args) => { const userId = await requireManager(ctx); const equipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const active = equipment.filter(item => item.active); const id = await ctx.db.insert("equipment", { locationId: args.locationId, name: args.name?.trim() || `Fridge ${active.length + 1}`, type: args.type || "Food fridge", preferredTemperature: args.preferredTemperature ?? 5, maximumTemperature: args.maximumTemperature ?? 8, order: equipment.length, active: true }); await ctx.db.insert("auditEvents", { locationId: args.locationId, userId, type: "equipment_added", detail: `Fridge ${active.length + 1} added`, createdAt: Date.now() }); return id; } });
+export const setFridgeCount = mutation({ args: { locationId: v.id("locations"), count: v.number() }, handler: async (ctx, args) => { const userId = await requireManager(ctx); const items = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const active = items.filter(item => item.active).sort((a, b) => a.order - b.order); for (let index = 0; index < active.length; index++) await ctx.db.patch(active[index]._id, { name: `Fridge ${index + 1}`, active: index < args.count }); for (let index = active.length; index < args.count; index++) await ctx.db.insert("equipment", { locationId: args.locationId, name: `Fridge ${index + 1}`, type: "Food fridge", preferredTemperature: 5, maximumTemperature: 8, order: index, active: true }); await ctx.db.insert("auditEvents", { locationId: args.locationId, userId, type: "fridge_count_changed", detail: `Active fridges set to ${args.count}`, createdAt: Date.now() }); } });
+export const addProbeProduct = mutation({ args: { organisationId: v.id("organisations"), name: v.string(), minimumTemperature: v.number(), holdMinutes: v.number(), locationIds: v.array(v.id("locations")) }, handler: async (ctx, args) => { const userId = await requireManager(ctx); const id = await ctx.db.insert("probeProducts", { ...args, active: true }); await ctx.db.insert("auditEvents", { userId, type: "probe_product_added", detail: args.name, createdAt: Date.now() }); return id; } });
+export const addChecklistQuestion = mutation({ args: { locationId: v.id("locations"), checklist: v.union(v.literal("opening"), v.literal("closing")), question: v.string() }, handler: async (ctx, args) => { await requireManager(ctx); const questions = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", q => q.eq("locationId", args.locationId).eq("checklist", args.checklist)).collect(); return await ctx.db.insert("checklistQuestions", { ...args, order: questions.length, active: true }); } });
+export const addIssueAction = mutation({ args: { issueId: v.id("issues"), action: v.string() }, handler: async (ctx, args) => { const userId = await signedIn(ctx); const issue = await ctx.db.get(args.issueId); await ctx.db.patch(args.issueId, { action: args.action, status: "monitoring" }); await ctx.db.insert("auditEvents", { locationId: issue?.locationId, userId, type: "corrective_action_added", detail: args.action, createdAt: Date.now() }); } });
+export const addRecheck = mutation({ args: { issueId: v.id("issues"), temperature: v.number() }, handler: async (ctx, args) => { const userId = await signedIn(ctx); const issue = await ctx.db.get(args.issueId); const result = args.temperature <= 8 ? "pass" : "fail"; await ctx.db.insert("rechecks", { issueId: args.issueId, locationId: issue!.locationId, temperature: args.temperature, result, createdAt: Date.now(), createdBy: userId }); if (result === "pass") await ctx.db.patch(args.issueId, { status: "resolved", resolvedAt: Date.now() }); } });
+export const resolveIssue = mutation({ args: { issueId: v.id("issues"), action: v.string() }, handler: async (ctx, args) => { const userId = await signedIn(ctx); await ctx.db.patch(args.issueId, { action: args.action, status: "resolved", resolvedAt: Date.now() }); const issue = await ctx.db.get(args.issueId); await ctx.db.insert("auditEvents", { locationId: issue?.locationId, userId, type: "issue_resolved", detail: args.action, createdAt: Date.now() }); } });

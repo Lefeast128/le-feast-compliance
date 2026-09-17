@@ -99,6 +99,22 @@ const schema = defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
   }).index("by_location_checklist", ["locationId", "checklist"]),
+  securityQuestions: defineTable({
+    locationId: v.id("locations"),
+    session: v.union(v.literal("AM"), v.literal("PM")),
+    question: v.string(),
+    order: v.number(),
+    active: v.boolean(),
+  }).index("by_location_session", ["locationId", "session"]),
+  securityResponses: defineTable({
+    locationId: v.id("locations"),
+    session: v.union(v.literal("AM"), v.literal("PM")),
+    questionId: v.id("securityQuestions"),
+    answer: v.literal("yes"),
+    issue: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_location_session", ["locationId", "session"]),
   foodChecks: defineTable({
     locationId: v.id("locations"),
     product: v.string(),
@@ -109,6 +125,15 @@ const schema = defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
   }).index("by_location", ["locationId"]),
+  rechecks: defineTable({
+    locationId: v.id("locations"),
+    issueId: v.id("issues"),
+    readingId: v.optional(v.id("temperatureReadings")),
+    temperature: v.number(),
+    result: v.union(v.literal("pass"), v.literal("fail")),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_issue", ["issueId"]),
   issues: defineTable({
     locationId: v.id("locations"),
     category: v.string(),
