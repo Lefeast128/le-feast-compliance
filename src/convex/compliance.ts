@@ -47,6 +47,8 @@ export const initializeDemo = mutation({
     const existing = await ctx.db.query("organisations").first();
     if (existing) {
       const locations = (await ctx.db.query("locations").collect()).filter(item => item.organisationId === existing._id);
+      const userMemberships = await ctx.db.query("memberships").withIndex("by_user", (q: any) => q.eq("userId", userId)).collect();
+      if (!userMemberships.length && locations[0]) await ctx.db.insert("memberships", { userId, locationId: locations[0]._id, role: "admin" });
       for (const location of locations) await seedLocation(ctx, location._id, userId);
       const products = await ctx.db.query("probeProducts").withIndex("by_organisation", q => q.eq("organisationId", existing._id)).collect();
       for (const product of products) if (product.name === "Bacon" || product.name === "Hash Browns" || product.name === "Other") await ctx.db.patch(product._id, { active: false });
