@@ -38,6 +38,12 @@ const schema = defineSchema({
     locationId: v.id("locations"),
     role: roleValidator,
   }).index("by_user", ["userId"]),
+  teamMembers: defineTable({
+    locationId: v.id("locations"),
+    name: v.string(),
+    active: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_location", ["locationId"]),
   equipment: defineTable({
     locationId: v.id("locations"),
     name: v.string(),
@@ -63,6 +69,7 @@ const schema = defineSchema({
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location", ["locationId"]),
   temperatureReadings: defineTable({
     roundId: v.id("temperatureRounds"),
@@ -72,6 +79,7 @@ const schema = defineSchema({
     result: v.union(v.literal("normal"), v.literal("within_limit"), v.literal("fail")),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
     voided: v.boolean(),
   }).index("by_round", ["roundId"]).index("by_location", ["locationId"]),
   probeProducts: defineTable({
@@ -99,6 +107,7 @@ const schema = defineSchema({
     action: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location_checklist", ["locationId", "checklist"]),
   securityQuestions: defineTable({
     locationId: v.id("locations"),
@@ -115,6 +124,7 @@ const schema = defineSchema({
     issue: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location_session", ["locationId", "session"]),
   foodChecks: defineTable({
     locationId: v.id("locations"),
@@ -125,6 +135,7 @@ const schema = defineSchema({
     action: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location", ["locationId"]),
   wastageItems: defineTable({
     locationId: v.id("locations"),
@@ -141,6 +152,7 @@ const schema = defineSchema({
     noWaste: v.boolean(),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location", ["locationId"]),
   cleaningTasks: defineTable({
     locationId: v.id("locations"),
@@ -156,6 +168,7 @@ const schema = defineSchema({
     dateKey: v.string(),
     completedAt: v.number(),
     completedBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location_date", ["locationId", "dateKey"]).index("by_task", ["taskId"]),
   rechecks: defineTable({
     locationId: v.id("locations"),
@@ -174,6 +187,7 @@ const schema = defineSchema({
     status: v.union(v.literal("open"), v.literal("monitoring"), v.literal("resolved")),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
     action: v.optional(v.string()),
     resolvedAt: v.optional(v.number()),
     resolvedBy: v.optional(v.id("users")),
@@ -188,6 +202,7 @@ const schema = defineSchema({
     status: v.union(v.literal("open"), v.literal("monitoring"), v.literal("resolved")),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_issue", ["issueId"]).index("by_location", ["locationId"]),
   auditEvents: defineTable({
     locationId: v.optional(v.id("locations")),
