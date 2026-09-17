@@ -99,11 +99,12 @@ export const recordTemperature = mutation({
     const userId = await signedIn(ctx);
     const result = args.temperature > 8 ? "fail" : args.temperature > 5 ? "within_limit" : "normal";
     const readingId = await ctx.db.insert("temperatureReadings", { ...args, result, createdAt: Date.now(), createdBy: userId, voided: false });
+    let issueId = null;
     if (result === "fail") {
       const equipment = await ctx.db.get(args.equipmentId);
-      await ctx.db.insert("issues", { locationId: args.locationId, category: "Temperature", title: `${equipment?.name ?? "Fridge"} requires action`, description: `Recorded at ${args.temperature}°C. Le Feast maximum is 8°C.`, status: "open", createdAt: Date.now(), createdBy: userId });
+      issueId = await ctx.db.insert("issues", { locationId: args.locationId, category: "Temperature", title: `${equipment?.name ?? "Fridge"} requires action`, description: `Recorded at ${args.temperature}°C. Le Feast maximum is 8°C.`, status: "open", createdAt: Date.now(), createdBy: userId });
     }
-    return readingId;
+    return { readingId, issueId };
   },
 });
 
@@ -125,6 +126,16 @@ export const recordFoodCheck = mutation({
     const userId = await signedIn(ctx);
     const result = args.temperature >= 76 ? "pass" : "fail";
     return await ctx.db.insert("foodChecks", { ...args, result, createdAt: Date.now(), createdBy: userId });
+  },
+});
+
+export const addIssueAction = mutation({
+  args: { issueId: v.id("issues"), action: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await signedIn(ctx);
+    const issue = await ctx.db.get(args.issueId);
+    await ctx.db.patch(args.issueId, { action: args.action, status: "monitoring" });
+    await ctx.db.insert("auditEvents", { locationId: issue?.locationId, userId, type: "corrective_action_added", detail: args.action, createdAt: Date.now() });
   },
 });
 
