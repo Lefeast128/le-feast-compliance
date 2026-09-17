@@ -141,6 +141,21 @@ const schema = defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
   }).index("by_location", ["locationId"]),
+  cleaningTasks: defineTable({
+    locationId: v.id("locations"),
+    name: v.string(),
+    frequency: v.union(v.literal("after_use"), v.literal("daily"), v.literal("weekly"), v.literal("specific_days")),
+    weekdays: v.array(v.number()),
+    active: v.boolean(),
+    order: v.number(),
+  }).index("by_location", ["locationId"]),
+  cleaningCompletions: defineTable({
+    locationId: v.id("locations"),
+    taskId: v.id("cleaningTasks"),
+    dateKey: v.string(),
+    completedAt: v.number(),
+    completedBy: v.id("users"),
+  }).index("by_location_date", ["locationId", "dateKey"]).index("by_task", ["taskId"]),
   rechecks: defineTable({
     locationId: v.id("locations"),
     issueId: v.id("issues"),
