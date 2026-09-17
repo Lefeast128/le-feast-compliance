@@ -125,6 +125,21 @@ const schema = defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
   }).index("by_location", ["locationId"]),
+  wastageItems: defineTable({
+    locationId: v.id("locations"),
+    name: v.string(),
+    active: v.boolean(),
+    order: v.number(),
+  }).index("by_location", ["locationId"]),
+  wastageRecords: defineTable({
+    locationId: v.id("locations"),
+    itemId: v.optional(v.id("wastageItems")),
+    itemName: v.optional(v.string()),
+    quantity: v.optional(v.string()),
+    noWaste: v.boolean(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_location", ["locationId"]),
   rechecks: defineTable({
     locationId: v.id("locations"),
     issueId: v.id("issues"),
