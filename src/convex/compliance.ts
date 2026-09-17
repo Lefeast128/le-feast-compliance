@@ -10,6 +10,8 @@ const stores = [
   { name: "Rochdale", shortName: "Rochdale" },
 ];
 const securityDefaults = ["Premises secure?", "Required security checks completed?", "Required security procedures understood and followed?"];
+const openingDefaults = ["Food fridges operating correctly?", "Drinks fridges operating correctly?", "Food-preparation surfaces clean?", "Handwash soap available?", "Hot water available?", "Disposable hand-drying available?", "Food probe available and sanitised?", "Approved chemicals available?", "Allergen information available?", "Food correctly stored and labelled?", "No evidence of pest activity?", "Staff fit for work?"];
+const closingDefaults = ["PM temperature checks completed?", "Expired or damaged food removed?", "Open food covered and labelled?", "Chilled food stored safely?", "Food-preparation areas cleaned?", "Equipment and utensils cleaned?", "Waste removed and bins controlled?", "Floors cleaned?", "Chemicals stored correctly?", "Outstanding issues handed over?"];
 const equipmentCount = 4;
 
 async function signedIn(ctx: any) {
@@ -20,7 +22,9 @@ async function signedIn(ctx: any) {
 async function requireManager(ctx: any) {
   const userId = await signedIn(ctx);
   const user = await ctx.db.get(userId);
-  if (user?.role !== "admin" && user?.role !== "manager") throw new Error("Manager access required");
+  const memberships = await ctx.db.query("memberships").withIndex("by_user", (q: any) => q.eq("userId", userId)).collect();
+  const canManage = user?.role === "admin" || user?.role === "manager" || memberships.some((membership: any) => membership.role === "admin" || membership.role === "manager");
+  if (!canManage) throw new Error("Manager access required");
   return userId;
 }
 async function seedLocation(ctx: any, locationId: Id<"locations">, userId: Id<"users">) {
@@ -29,6 +33,10 @@ async function seedLocation(ctx: any, locationId: Id<"locations">, userId: Id<"u
   for (const session of ["AM", "PM"] as const) {
     const existing = await ctx.db.query("securityQuestions").withIndex("by_location_session", (q: any) => q.eq("locationId", locationId).eq("session", session)).collect();
     if (!existing.length) for (const [order, question] of securityDefaults.entries()) await ctx.db.insert("securityQuestions", { locationId, session, question, order, active: true });
+  }
+  for (const [checklist, defaults] of [["opening", openingDefaults], ["closing", closingDefaults]] as const) {
+    const existing = await ctx.db.query("checklistQuestions").withIndex("by_location_checklist", (q: any) => q.eq("locationId", locationId).eq("checklist", checklist)).collect();
+    if (!existing.length) for (const [order, question] of defaults.entries()) await ctx.db.insert("checklistQuestions", { locationId, checklist, question, order, active: true });
   }
 }
 
@@ -57,10 +65,6 @@ export const initializeDemo = mutation({
       await ctx.db.insert("scheduledTasks", { locationId, title: "Food probe", kind: "probe", dueLabel: "During service", status: "upcoming" });
     }
     for (const name of ["Sausages", "Chicken Brioche"]) await ctx.db.insert("probeProducts", { organisationId, name, minimumTemperature: 76, holdMinutes: 2, locationIds, active: true });
-    const opening = ["Food fridges operating correctly?", "Drinks fridges operating correctly?", "Food-preparation surfaces clean?", "Handwash soap available?", "Hot water available?", "Disposable hand-drying available?", "Food probe available and sanitised?", "Approved chemicals available?", "Allergen information available?", "Food correctly stored and labelled?", "No evidence of pest activity?", "Staff fit for work?"];
-    const closing = ["PM temperature checks completed?", "Expired or damaged food removed?", "Open food covered and labelled?", "Chilled food stored safely?", "Food-preparation areas cleaned?", "Equipment and utensils cleaned?", "Waste removed and bins controlled?", "Floors cleaned?", "Chemicals stored correctly?", "Outstanding issues handed over?"];
-    for (const [order, question] of opening.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "opening", question, order, active: true });
-    for (const [order, question] of closing.entries()) await ctx.db.insert("checklistQuestions", { locationId: locationIds[0], checklist: "closing", question, order, active: true });
     const equipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", locationIds[0])).collect();
     const roundId = await ctx.db.insert("temperatureRounds", { locationId: locationIds[0], session: "AM", startedAt: Date.now() - 8000000, completedAt: Date.now() - 7800000, createdBy: userId });
     for (const [index, item] of equipment.entries()) await ctx.db.insert("temperatureReadings", { roundId, equipmentId: item._id, locationId: locationIds[0], temperature: [4.2, 3.8, 8.7, 4.6][index], result: index === 2 ? "fail" : "normal", createdAt: Date.now() - 7800000 + index * 30000, createdBy: userId, voided: false });
@@ -97,7 +101,7 @@ export const dashboard = query({
   },
 });
 
-export const operations = query({ args: {}, handler: async (ctx) => { const userId = await signedIn(ctx); if ((await ctx.db.get(userId))?.role !== "admin") throw new Error("Operations access required"); const locations = await ctx.db.query("locations").collect(); const result = []; for (const location of locations) { const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); result.push({ location, total: tasks.length + 3, complete: tasks.filter(t => t.status === "complete").length, outstanding: tasks.filter(t => t.status !== "complete").length, issues: issues.filter(i => i.status !== "resolved").length, latestIssue: issues.filter(i => i.status !== "resolved").sort((a, b) => b.createdAt - a.createdAt)[0] }); } return result; } });
+export const operations = query({ args: {}, handler: async (ctx) => { const userId = await signedIn(ctx); const user = await ctx.db.get(userId); const memberships = await ctx.db.query("memberships").withIndex("by_user", q => q.eq("userId", userId)).collect(); const canManage = user?.role === "admin" || user?.role === "manager" || memberships.some(membership => membership.role === "admin" || membership.role === "manager"); if (!canManage) throw new Error("Manager access required"); const allLocations = await ctx.db.query("locations").collect(); const locations = user?.role === "admin" || memberships.some(membership => membership.role === "admin") ? allLocations : allLocations.filter(location => memberships.some(membership => membership.locationId === location._id)); const result = []; for (const location of locations) { const tasks = await ctx.db.query("scheduledTasks").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", location._id)).collect(); result.push({ location, total: tasks.length + 3, complete: tasks.filter(t => t.status === "complete").length, outstanding: tasks.filter(t => t.status !== "complete").length, issues: issues.filter(i => i.status !== "resolved").length, latestIssue: issues.filter(i => i.status !== "resolved").sort((a, b) => b.createdAt - a.createdAt)[0] }); } return result; } });
 
 export const calendar = query({ args: { locationId: v.id("locations"), monthStart: v.number(), monthEnd: v.number() }, handler: async (ctx, args) => { await signedIn(ctx); const rounds = await ctx.db.query("temperatureRounds").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const readings = await ctx.db.query("temperatureReadings").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const probes = await ctx.db.query("foodChecks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const issues = await ctx.db.query("issues").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect(); const days: Record<string, { date: string; status: "green" | "amber" | "red"; readings: number; probes: number; issues: number }> = {}; for (const round of rounds) { const time = round.startedAt; if (time < args.monthStart || time > args.monthEnd) continue; const date = new Date(time).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].readings += readings.filter(item => item.roundId === round._id).length; } for (const probe of probes) { if (probe.createdAt < args.monthStart || probe.createdAt > args.monthEnd) continue; const date = new Date(probe.createdAt).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].probes++; if (probe.result === "fail") days[date].status = "amber"; } for (const issue of issues) { if (issue.createdAt < args.monthStart || issue.createdAt > args.monthEnd) continue; const date = new Date(issue.createdAt).toISOString().slice(0, 10); days[date] ??= { date, status: "green", readings: 0, probes: 0, issues: 0 }; days[date].issues++; if (issue.status !== "resolved") days[date].status = "red"; else if (days[date].status === "green") days[date].status = "amber"; } return Object.values(days); } });
 
