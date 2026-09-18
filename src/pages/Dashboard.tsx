@@ -22,6 +22,7 @@ const setNewPreferred = (_value: string) => undefined;
 const newMaximum = "8";
 const setNewMaximum = (_value: string) => undefined;
 
+// Dashboard components
 function Brand() { return <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[#f4c542] text-[#171717]"><Coffee className="size-5" /></div><div><p className="text-[15px] font-semibold tracking-tight">le Feast Daily Checks</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74]">Internal compliance workspace</p></div></div>; }
 
 export default function Dashboard() {
