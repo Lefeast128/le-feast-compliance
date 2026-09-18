@@ -2,10 +2,25 @@ import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command, mode }) => {
+  if (command === "build") {
+    const env = loadEnv(mode, process.cwd(), "VITE_");
+    const convexUrl = process.env.VITE_CONVEX_URL || env.VITE_CONVEX_URL;
+    let url: URL;
+    try {
+      url = new URL(convexUrl);
+    } catch {
+      throw new Error("Set VITE_CONVEX_URL to the hosted Convex deployment URL before building.");
+    }
+    if (url.protocol !== "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+      throw new Error("VITE_CONVEX_URL must use a hosted HTTPS backend for deployment.");
+    }
+  }
+
+  return {
   plugins: [react(), vlyPlugin(), tailwindcss()],
   resolve: {
     alias: {
@@ -97,4 +112,5 @@ export default defineConfig({
       overlay: false,
     },
   },
+  };
 });
