@@ -109,6 +109,22 @@ const schema = defineSchema({
     createdBy: v.id("users"),
     teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location_checklist", ["locationId", "checklist"]),
+  checklistSignOffs: defineTable({
+    locationId: v.id("locations"),
+    checklist: v.union(v.literal("opening"), v.literal("closing")),
+    dateKey: v.string(),
+    completedAt: v.number(),
+    completedBy: v.id("users"),
+    teamMemberId: v.id("teamMembers"),
+  }).index("by_location_checklist_date", ["locationId", "checklist", "dateKey"]),
+  securitySignOffs: defineTable({
+    locationId: v.id("locations"),
+    session: v.union(v.literal("AM"), v.literal("PM")),
+    dateKey: v.string(),
+    completedAt: v.number(),
+    completedBy: v.id("users"),
+    teamMemberId: v.id("teamMembers"),
+  }).index("by_location_session_date", ["locationId", "session", "dateKey"]),
   securityQuestions: defineTable({
     locationId: v.id("locations"),
     session: v.union(v.literal("AM"), v.literal("PM")),
