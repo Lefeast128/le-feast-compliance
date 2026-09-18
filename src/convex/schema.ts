@@ -178,6 +178,7 @@ const schema = defineSchema({
     result: v.union(v.literal("pass"), v.literal("fail")),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_issue", ["issueId"]),
   issues: defineTable({
     locationId: v.id("locations"),
