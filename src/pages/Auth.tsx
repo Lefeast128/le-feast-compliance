@@ -130,7 +130,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       onClick={() => navigate("/")}
                     />
                   </div>
-                <CardTitle className="text-xl">Sign in to le Feast Daily Checks</CardTitle>
+                <CardTitle className="text-xl">Sign in to Your Daily Checks</CardTitle>
                 <CardDescription>
                   Use your Le Feast email to access today&apos;s checks and the admin area.
                 </CardDescription>

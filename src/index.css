@@ -112,6 +112,12 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+@layer utilities {
+  [class~="bg-[#f4c542]"] { background-color: #ffde56 !important; }
+  [class~="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
+  [class~="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
