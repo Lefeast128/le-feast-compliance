@@ -191,6 +191,8 @@ const schema = defineSchema({
     title: v.string(),
     active: v.boolean(),
     order: v.number(),
+    documentStorageId: v.optional(v.id("_storage")),
+    documentName: v.optional(v.string()),
   }).index("by_location", ["locationId"]),
   trainingCompletions: defineTable({
     locationId: v.id("locations"),
