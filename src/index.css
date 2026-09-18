@@ -113,6 +113,15 @@
 }
 
 @layer utilities {
+  /* Keep the store controls in separate rows on the operational header at narrow widths. */
+  @media (max-width: 1023px) {
+    header.sticky > div { display: block !important; }
+    header.sticky > div > div { display: flex !important; width: 100% !important; }
+    header.sticky > div > label { display: flex !important; width: 100% !important; margin-top: 0.75rem; }
+  }
+  /* Keep the empty temperature state concise without the old instructional label. */
+  span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"] { font-size: 0; }
+  span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"]::after { content: "READY"; font-size: 0.75rem; }
   [class~="bg-[#f4c542]"], [class*="bg-[#f4c542]"] { background-color: #ffde56 !important; }
   [class~="hover:bg-[#f7d363]"]:hover, [class*="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
   [class~="ring-[#f4c542]"], [class*="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
