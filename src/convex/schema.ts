@@ -186,6 +186,19 @@ const schema = defineSchema({
     completedBy: v.id("users"),
     teamMemberId: v.optional(v.id("teamMembers")),
   }).index("by_location_date", ["locationId", "dateKey"]).index("by_task", ["taskId"]),
+  trainingRequirements: defineTable({
+    locationId: v.id("locations"),
+    title: v.string(),
+    active: v.boolean(),
+    order: v.number(),
+  }).index("by_location", ["locationId"]),
+  trainingCompletions: defineTable({
+    locationId: v.id("locations"),
+    requirementId: v.id("trainingRequirements"),
+    teamMemberId: v.id("teamMembers"),
+    completedAt: v.number(),
+    completedBy: v.id("users"),
+  }).index("by_location", ["locationId"]).index("by_requirement", ["requirementId"]).index("by_member", ["teamMemberId"]),
   rechecks: defineTable({
     locationId: v.id("locations"),
     issueId: v.id("issues"),
