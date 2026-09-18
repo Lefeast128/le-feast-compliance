@@ -113,9 +113,9 @@
 }
 
 @layer utilities {
-  [class~="bg-[#f4c542]"] { background-color: #ffde56 !important; }
-  [class~="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
-  [class~="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
+  [class~="bg-[#f4c542]"], [class*="bg-[#f4c542]"] { background-color: #ffde56 !important; }
+  [class~="hover:bg-[#f7d363]"]:hover, [class*="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
+  [class~="ring-[#f4c542]"], [class*="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
 }
 
 @layer base {
