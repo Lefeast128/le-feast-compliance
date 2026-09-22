@@ -1,3 +1,4 @@
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
+import { useMutation, useQuery } from "convex/react";
 import logo from "@/assets/logo.svg";
 import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
@@ -36,6 +38,8 @@ function resolveRedirectAfterAuth(
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const temporaryAccessEnabled = useQuery(api.recovery.temporaryAccessEnabled, {});
+  const claimTemporaryAccess = useMutation(api.recovery.claimTemporaryAccess);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
@@ -77,6 +81,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       await signIn("anonymous");
+      await claimTemporaryAccess({});
       navigate(redirect);
     } catch (error) {
       console.error("Temporary access error:", error);
@@ -167,7 +172,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   {error && (
                     <p className="mt-2 text-sm text-red-500">{error}</p>
                   )}
-                  {import.meta.env.ENABLE_TEMP_ADMIN_ACCESS === "true" && (
+                  {temporaryAccessEnabled === true && (
                     <Button
                       type="button"
                       variant="outline"
