@@ -16,7 +16,7 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import logo from "@/assets/logo.svg";
-import { ArrowRight, Loader2, Mail } from "lucide-react";
+import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -67,6 +67,23 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         error instanceof Error
           ? error.message
           : "Failed to send verification code. Please try again.",
+      );
+      setIsLoading(false);
+    }
+  };
+
+  const handleTemporaryAdminAccess = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await signIn("anonymous");
+      navigate(redirect);
+    } catch (error) {
+      console.error("Temporary access error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Temporary access is unavailable. Please try again.",
       );
       setIsLoading(false);
     }
@@ -149,6 +166,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   </div>
                   {error && (
                     <p className="mt-2 text-sm text-red-500">{error}</p>
+                  )}
+                  {import.meta.env.ENABLE_TEMP_ADMIN_ACCESS === "true" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-4 w-full"
+                      onClick={handleTemporaryAdminAccess}
+                      disabled={isLoading}
+                    >
+                      <UserX className="mr-2 h-4 w-4" />
+                      Temporary Admin Access
+                    </Button>
                   )}
                   
                 </CardContent>
