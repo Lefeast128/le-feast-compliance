@@ -14,7 +14,6 @@ import type * as auth_emailOtp from "../auth/emailOtp.js";
 import type * as compliance from "../compliance.js";
 import type * as http from "../http.js";
 import type * as locations from "../locations.js";
-import type * as recovery from "../recovery.js";
 import type * as users from "../users.js";
 
 import type {
@@ -30,7 +29,6 @@ declare const fullApi: ApiFromModules<{
   compliance: typeof compliance;
   http: typeof http;
   locations: typeof locations;
-  recovery: typeof recovery;
   users: typeof users;
 }>;
 
