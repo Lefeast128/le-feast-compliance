@@ -15,9 +15,11 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 
+import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
 import logo from "@/assets/logo.svg";
+import { useQuery } from "convex/react";
 import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -38,6 +40,10 @@ function resolveRedirectAfterAuth(
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const temporaryAdminAccessEnabled = useQuery(
+    api.access.temporaryAdminAccessEnabled,
+    {},
+  );
   const temporaryAccessEnabled = useQuery(api.recovery.temporaryAccessEnabled, {});
   const claimTemporaryAccess = useMutation(api.recovery.claimTemporaryAccess);
   const navigate = useNavigate();
