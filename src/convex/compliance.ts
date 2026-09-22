@@ -54,42 +54,6 @@ async function seedLocation(ctx: any, locationId: Id<"locations">, userId: Id<"u
   if (!existingTraining.length) for (const [order, title] of trainingDefaults.entries()) await ctx.db.insert("trainingRequirements", { locationId, title, order, active: true });
 }
 
-export const initializeDemo = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await signedIn(ctx);
-    const existing = await ctx.db.query("organisations").first();
-    if (existing) {
-      const locations = (await ctx.db.query("locations").collect()).filter(item => item.organisationId === existing._id);
-      const userMemberships = await ctx.db.query("memberships").withIndex("by_user", (q: any) => q.eq("userId", userId)).collect();
-      if (!userMemberships.length && locations[0]) await ctx.db.insert("memberships", { userId, locationId: locations[0]._id, role: "admin" });
-      for (const location of locations) await seedLocation(ctx, location._id, userId);
-      const products = await ctx.db.query("probeProducts").withIndex("by_organisation", q => q.eq("organisationId", existing._id)).collect();
-      for (const product of products) if (product.name === "Bacon" || product.name === "Hash Browns" || product.name === "Other") await ctx.db.patch(product._id, { active: false });
-      if (!products.some(product => product.name === "Chicken Brioche")) await ctx.db.insert("probeProducts", { organisationId: existing._id, name: "Chicken Brioche", minimumTemperature: 76, holdMinutes: 2, locationIds: locations.map(item => item._id), active: true });
-      return;
-    }
-    const organisationId = await ctx.db.insert("organisations", { name: "Le Feast", timezone: "Europe/London" });
-    const locationIds: Id<"locations">[] = [];
-    for (const [index, store] of stores.entries()) {
-      const locationId = await ctx.db.insert("locations", { organisationId, ...store, timezone: "Europe/London", active: true });
-      locationIds.push(locationId);
-      await ctx.db.insert("memberships", { userId, locationId, role: index === 0 ? "manager" : "admin" });
-      await seedLocation(ctx, locationId, userId);
-      await ctx.db.insert("scheduledTasks", { locationId, title: "AM Fridge Checks", kind: "temperature", session: "AM", dueLabel: "Due by 10:00", status: index === 1 ? "due" : "complete", completedAt: index === 1 ? undefined : Date.now() - 7200000, completedBy: index === 1 ? undefined : userId });
-      await ctx.db.insert("scheduledTasks", { locationId, title: "PM Fridge Checks", kind: "temperature", session: "PM", dueLabel: "Due at close", status: "upcoming" });
-      await ctx.db.insert("scheduledTasks", { locationId, title: "Food probe", kind: "probe", dueLabel: "During service", status: "upcoming" });
-    }
-    for (const name of ["Sausages", "Chicken Brioche"]) await ctx.db.insert("probeProducts", { organisationId, name, minimumTemperature: 76, holdMinutes: 2, locationIds, active: true });
-    const equipment = await ctx.db.query("equipment").withIndex("by_location", q => q.eq("locationId", locationIds[0])).collect();
-    const roundId = await ctx.db.insert("temperatureRounds", { locationId: locationIds[0], session: "AM", startedAt: Date.now() - 8000000, completedAt: Date.now() - 7800000, createdBy: userId });
-    for (const [index, item] of equipment.entries()) await ctx.db.insert("temperatureReadings", { roundId, equipmentId: item._id, locationId: locationIds[0], temperature: [4.2, 3.8, 8.7, 4.6][index], result: index === 2 ? "fail" : "normal", createdAt: Date.now() - 7800000 + index * 30000, createdBy: userId, voided: false });
-    await ctx.db.insert("issues", { locationId: locationIds[0], category: "Temperature", title: "Fridge 3 requires action", description: "Recorded at 8.7°C. Le Feast maximum is 8°C.", status: "monitoring", createdAt: Date.now() - 7700000, createdBy: userId, action: "Food moved to another fridge; manager informed." });
-    await ctx.db.insert("foodChecks", { locationId: locationIds[0], product: "Sausages", temperature: 81.2, result: "pass", action: "Held for 2 minutes", createdAt: Date.now() - 3500000, createdBy: userId });
-    await ctx.db.patch(userId, { role: "admin", name: "Le Feast Operations" });
-  },
-});
-
 export const dashboard = query({
   args: { locationId: v.optional(v.id("locations")) },
   handler: async (ctx, args) => {
@@ -97,6 +61,7 @@ export const dashboard = query({
     const memberships = await ctx.db.query("memberships").withIndex("by_user", q => q.eq("userId", userId)).collect();
     const locationId = args.locationId ?? memberships[0]?.locationId;
     if (!locationId) return null;
+    if (!memberships.some(membership => membership.locationId === locationId)) return null;
     const location = await ctx.db.get(locationId);
     if (!location) return null;
     const equipment = (await ctx.db.query("equipment").withIndex("by_location", (q: any) => q.eq("locationId", locationId)).collect()).filter(item => item.active).sort((a, b) => a.order - b.order);
