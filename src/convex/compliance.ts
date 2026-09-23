@@ -133,6 +133,8 @@ export const calendar = query({
       AM: await ctx.db.query("securitySignOffs").withIndex("by_location_session_date", q => q.eq("locationId", args.locationId).eq("session", "AM")).collect(),
       PM: await ctx.db.query("securitySignOffs").withIndex("by_location_session_date", q => q.eq("locationId", args.locationId).eq("session", "PM")).collect(),
     };
+    const additionalRequirements = await ctx.db.query("additionalRequirements").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect();
+    const additionalCompletions = await ctx.db.query("additionalCompletions").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect();
     const wastage = await ctx.db.query("wastageRecords").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect();
     const cleaningTasks = (await ctx.db.query("cleaningTasks").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.active);
     const cleaningCompletions = await ctx.db.query("cleaningCompletions").withIndex("by_location_date", q => q.eq("locationId", args.locationId)).collect();
@@ -161,13 +163,17 @@ export const calendar = query({
       const closingComplete = closingQuestions.every(question => closingResponseIds.has(question._id)) && checklistSignOffs.closing.some(signOff => signOff.dateKey === dateKey);
       const amSecurityComplete = securityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && securitySignOffs.AM.some(signOff => signOff.dateKey === dateKey);
       const pmSecurityComplete = securityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && securitySignOffs.PM.some(signOff => signOff.dateKey === dateKey);
+      const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey).map(completion => completion.requirementId));
+      for (const requirement of additionalRequirements) if (requirement.active && requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
+      const additionalDue = dueAdditionalRequirementIds.size > 0;
+      const additionalComplete = [...dueAdditionalRequirementIds].every(requirementId => additionalCompletions.some(completion => completion.requirementId === requirementId && completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && localDateKey(completion.completedAt, timezone) === dateKey));
       const dayWastage = wastage.filter(item => localDateKey(item.createdAt, timezone) === dateKey);
       const weekday = localWeekday(new Date(`${dateKey}T12:00:00Z`).getTime(), timezone);
       const dueCleaning = cleaningTasks.filter(task => task.frequency === "after_use" || task.frequency === "daily" || (task.frequency === "weekly" && weekday === 1) || (task.frequency === "specific_days" && task.weekdays.includes(weekday)));
       const dayCleaning = cleaningCompletions.filter(item => item.dateKey === dateKey);
       const dayIssues = issues.filter(issue => localDateKey(issue.createdAt, timezone) === dateKey || (issue.createdAt < new Date(`${dateKey}T23:59:59Z`).getTime() && issue.status !== "resolved"));
       const failed = dayReadings.some(item => item.result === "fail") || dayProbes.some(item => item.result === "fail") || dayOpening.some(item => item.answer === "no") || dayClosing.some(item => item.answer === "no") || dayIssues.some(item => item.status !== "resolved");
-      const complete = openingComplete && closingComplete && amSecurityComplete && pmSecurityComplete && ["AM", "PM"].every(session => { const round = dayRounds.find(item => item.session === session && item.completedAt); return !!round && dayReadings.filter(reading => reading.roundId === round._id).length >= equipment.length; }) && (probeProducts.length === 0 || probeProducts.every(product => dayProbes.some(probe => probe.product === product.name))) && dayWastage.length > 0 && dayCleaning.length >= dueCleaning.length;
+      const complete = openingComplete && closingComplete && amSecurityComplete && pmSecurityComplete && (!additionalDue || additionalComplete) && ["AM", "PM"].every(session => { const round = dayRounds.find(item => item.session === session && item.completedAt); return !!round && dayReadings.filter(reading => reading.roundId === round._id).length >= equipment.length; }) && (probeProducts.length === 0 || probeProducts.every(product => dayProbes.some(probe => probe.product === product.name))) && dayWastage.length > 0 && dayCleaning.length >= dueCleaning.length;
       const day = days[dateKey];
       day.readings = dayReadings.length;
       day.probes = dayProbes.length;
