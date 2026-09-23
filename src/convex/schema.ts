@@ -82,6 +82,9 @@ const schema = defineSchema({
     createdBy: v.id("users"),
     teamMemberId: v.optional(v.id("teamMembers")),
     voided: v.boolean(),
+    equipmentName: v.optional(v.string()),
+    preferredTemperature: v.optional(v.number()),
+    maximumTemperature: v.optional(v.number()),
   }).index("by_round", ["roundId"]).index("by_location", ["locationId"]),
   probeProducts: defineTable({
     organisationId: v.id("organisations"),
@@ -159,6 +162,9 @@ const schema = defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
     teamMemberId: v.optional(v.id("teamMembers")),
+    probeProductId: v.optional(v.id("probeProducts")),
+    minimumTemperature: v.optional(v.number()),
+    holdMinutes: v.optional(v.number()),
   }).index("by_location", ["locationId"]),
   wastageItems: defineTable({
     locationId: v.id("locations"),
@@ -261,6 +267,8 @@ const schema = defineSchema({
     resolvedBy: v.optional(v.id("users")),
     resolutionNote: v.optional(v.string()),
     originalReading: v.optional(v.string()),
+    sourceTemperatureReadingId: v.optional(v.id("temperatureReadings")),
+    sourceFoodCheckId: v.optional(v.id("foodChecks")),
   }).index("by_location", ["locationId"]),
   issueUpdates: defineTable({
     issueId: v.id("issues"),
