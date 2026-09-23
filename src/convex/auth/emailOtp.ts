@@ -16,17 +16,24 @@ export const emailOtp = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.AUTH_FROM_EMAIL;
+    if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
+    if (!from) throw new Error("AUTH_FROM_EMAIL is not configured");
+
     try {
       await axios.post(
-        "https://auth.freebuff.app/send_otp",
+        "https://api.resend.com/emails",
         {
-          to: email,
-          otp: token,
-          appName: process.env.VLY_APP_NAME || "a freebuff.com application",
+          from,
+          to: [email],
+          subject: "Your Le Feast login code",
+          text: `Your Le Feast login code is ${token}. It expires in 15 minutes.`,
         },
         {
           headers: {
-            "x-api-key": "fb_email_2crN1hqIArZP2bEfvjp5Qik4",
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
           },
         },
       );
