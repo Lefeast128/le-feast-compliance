@@ -181,6 +181,7 @@ const schema = defineSchema({
     weekdays: v.array(v.number()),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
+    versionRootId: v.optional(v.id("cleaningTasks")),
     order: v.number(),
   }).index("by_location", ["locationId"]),
   cleaningCompletions: defineTable({
@@ -216,6 +217,7 @@ const schema = defineSchema({
     fields: v.array(v.object({ key: v.string(), label: v.string(), type: v.union(v.literal("temperature"), v.literal("number"), v.literal("yes_no"), v.literal("completed"), v.literal("date"), v.literal("text"), v.literal("actions"), v.literal("pdf")), minimum: v.optional(v.number()), maximum: v.optional(v.number()) })),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
+    versionRootId: v.optional(v.id("additionalRequirements")),
     order: v.number(),
   }).index("by_location", ["locationId"]),
   additionalCompletions: defineTable({
