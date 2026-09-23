@@ -174,7 +174,7 @@ export const calendar = query({
       const amSecurityComplete = daySecurityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && securitySignOffs.AM.some(signOff => signOff.dateKey === dateKey);
       const pmSecurityComplete = daySecurityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && securitySignOffs.PM.some(signOff => signOff.dateKey === dateKey);
       const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey).map(completion => completion.requirementId));
-      for (const requirement of additionalRequirements) if (requirement.active && configAppliesOnDate(requirement, dateKey) && requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
+      for (const requirement of additionalRequirements) if (configAppliesOnDate(requirement, dateKey) && requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
       const additionalDue = dueAdditionalRequirementIds.size > 0;
       const additionalComplete = [...dueAdditionalRequirementIds].every(requirementId => additionalCompletions.some(completion => completion.requirementId === requirementId && completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && localDateKey(completion.completedAt, timezone) === dateKey));
       const dayWastage = wastage.filter(item => localDateKey(item.createdAt, timezone) === dateKey);
