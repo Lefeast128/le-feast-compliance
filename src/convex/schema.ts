@@ -92,6 +92,7 @@ const schema = defineSchema({
     order: v.optional(v.number()),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
+    versionRootId: v.optional(v.id("probeProducts")),
   }).index("by_organisation", ["organisationId"]),
   checklistQuestions: defineTable({
     locationId: v.id("locations"),
@@ -100,6 +101,7 @@ const schema = defineSchema({
     order: v.number(),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
+    versionRootId: v.optional(v.id("checklistQuestions")),
   }).index("by_location_checklist", ["locationId", "checklist"]),
   checklistResponses: defineTable({
     locationId: v.id("locations"),
@@ -135,6 +137,7 @@ const schema = defineSchema({
     order: v.number(),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
+    versionRootId: v.optional(v.id("securityQuestions")),
   }).index("by_location_session", ["locationId", "session"]),
   securityResponses: defineTable({
     locationId: v.id("locations"),
