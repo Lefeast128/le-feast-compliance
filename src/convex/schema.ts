@@ -218,6 +218,7 @@ const schema = defineSchema({
     completedAt: v.number(),
     checkedDate: v.optional(v.string()),
     nextDueAt: v.optional(v.number()),
+    scheduledDueAt: v.optional(v.number()),
     answers: v.array(v.object({ key: v.string(), value: v.string() })),
     certificateReference: v.optional(v.string()),
     documentStorageId: v.optional(v.id("_storage")),
