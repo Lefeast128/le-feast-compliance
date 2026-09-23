@@ -52,6 +52,7 @@ const schema = defineSchema({
     maximumTemperature: v.optional(v.number()),
     order: v.number(),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
   }).index("by_location", ["locationId"]),
   scheduledTasks: defineTable({
     locationId: v.id("locations"),
@@ -90,6 +91,7 @@ const schema = defineSchema({
     locationIds: v.array(v.id("locations")),
     order: v.optional(v.number()),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
   }).index("by_organisation", ["organisationId"]),
   checklistQuestions: defineTable({
     locationId: v.id("locations"),
@@ -97,6 +99,7 @@ const schema = defineSchema({
     question: v.string(),
     order: v.number(),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
   }).index("by_location_checklist", ["locationId", "checklist"]),
   checklistResponses: defineTable({
     locationId: v.id("locations"),
@@ -131,6 +134,7 @@ const schema = defineSchema({
     question: v.string(),
     order: v.number(),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
   }).index("by_location_session", ["locationId", "session"]),
   securityResponses: defineTable({
     locationId: v.id("locations"),
@@ -176,6 +180,7 @@ const schema = defineSchema({
     frequency: v.union(v.literal("after_use"), v.literal("daily"), v.literal("weekly"), v.literal("specific_days")),
     weekdays: v.array(v.number()),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
     order: v.number(),
   }).index("by_location", ["locationId"]),
   cleaningCompletions: defineTable({
@@ -210,6 +215,7 @@ const schema = defineSchema({
     nextDueAt: v.number(),
     fields: v.array(v.object({ key: v.string(), label: v.string(), type: v.union(v.literal("temperature"), v.literal("number"), v.literal("yes_no"), v.literal("completed"), v.literal("date"), v.literal("text"), v.literal("actions"), v.literal("pdf")), minimum: v.optional(v.number()), maximum: v.optional(v.number()) })),
     active: v.boolean(),
+    deactivatedAt: v.optional(v.number()),
     order: v.number(),
   }).index("by_location", ["locationId"]),
   additionalCompletions: defineTable({
