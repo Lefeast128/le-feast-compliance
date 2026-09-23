@@ -143,6 +143,16 @@ export const calendar = query({
     const start = new Date(args.monthStart);
     const end = new Date(args.monthEnd);
     const configAppliesOnDate = (item: any, dateKey: string) => localDateKey(item._creationTime, timezone) <= dateKey && (item.deactivatedAt === undefined || localDateKey(item.deactivatedAt, timezone) >= dateKey);
+    const selectVersionForDate = (items: any[], dateKey: string) => {
+      const selected = new Map<string, any>();
+      for (const item of items) {
+        if (localDateKey(item._creationTime, timezone) > dateKey) continue;
+        const rootId = item.versionRootId ?? item._id;
+        const current = selected.get(rootId);
+        if (!current || item._creationTime > current._creationTime) selected.set(rootId, item);
+      }
+      return [...selected.values()].filter(item => configAppliesOnDate(item, dateKey));
+    };
     for (let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate()); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
       const dateKey = localDateKey(cursor.getTime(), timezone);
       days[dateKey] = { date: dateKey, status: dateKey > todayKey ? "grey" : "red", readings: 0, probes: 0, issues: 0 };
@@ -157,7 +167,8 @@ export const calendar = query({
         PM: securityQuestions.PM.filter(item => configAppliesOnDate(item, dateKey)),
       };
       const dayProbeProducts = probeProducts.filter(item => configAppliesOnDate(item, dateKey));
-      const dayCleaningTasks = cleaningTasks.filter(item => configAppliesOnDate(item, dateKey));
+      const dayCleaningTasks = selectVersionForDate(cleaningTasks, dateKey);
+      const dayAdditionalRequirements = selectVersionForDate(additionalRequirements, dateKey);
       const dayRounds = rounds.filter(item => localDateKey(item.startedAt, timezone) === dateKey);
       const dayReadings = readings.filter(item => localDateKey(item.createdAt, timezone) === dateKey && !item.voided);
       const dayProbes = probes.filter(item => localDateKey(item.createdAt, timezone) === dateKey);
@@ -173,8 +184,9 @@ export const calendar = query({
       const closingComplete = dayClosingQuestions.every(question => closingResponseIds.has(question._id)) && checklistSignOffs.closing.some(signOff => signOff.dateKey === dateKey);
       const amSecurityComplete = daySecurityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && securitySignOffs.AM.some(signOff => signOff.dateKey === dateKey);
       const pmSecurityComplete = daySecurityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && securitySignOffs.PM.some(signOff => signOff.dateKey === dateKey);
-      const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey).map(completion => completion.requirementId));
-      for (const requirement of additionalRequirements) if (configAppliesOnDate(requirement, dateKey) && requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
+      const selectedAdditionalRequirementIds = new Set(dayAdditionalRequirements.map(requirement => requirement._id));
+      const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && selectedAdditionalRequirementIds.has(completion.requirementId)).map(completion => completion.requirementId));
+      for (const requirement of dayAdditionalRequirements) if (requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
       const additionalDue = dueAdditionalRequirementIds.size > 0;
       const additionalComplete = [...dueAdditionalRequirementIds].every(requirementId => additionalCompletions.some(completion => completion.requirementId === requirementId && completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && localDateKey(completion.completedAt, timezone) === dateKey));
       const dayWastage = wastage.filter(item => localDateKey(item.createdAt, timezone) === dateKey);
