@@ -209,6 +209,7 @@ const schema = defineSchema({
     documentStorageId: v.optional(v.id("_storage")),
     documentName: v.optional(v.string()),
     currentDocumentVersionId: v.optional(v.id("trainingDocumentVersions")),
+    requiredDocumentVersionId: v.optional(v.id("trainingDocumentVersions")),
   }).index("by_location", ["locationId"]),
   trainingDocumentVersions: defineTable({
     requirementId: v.id("trainingRequirements"),
@@ -217,6 +218,7 @@ const schema = defineSchema({
     documentName: v.string(),
     createdAt: v.number(),
     createdBy: v.id("users"),
+    requiresReacknowledgement: v.optional(v.boolean()),
   }).index("by_requirement", ["requirementId"]),
   trainingCompletions: defineTable({
     locationId: v.id("locations"),
