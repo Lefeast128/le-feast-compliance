@@ -43,6 +43,7 @@ const schema = defineSchema({
     name: v.string(),
     active: v.boolean(),
     createdAt: v.number(),
+    role: v.optional(v.union(v.literal("team"), v.literal("manager"))),
   }).index("by_location", ["locationId"]),
   equipment: defineTable({
     locationId: v.id("locations"),
@@ -210,6 +211,10 @@ const schema = defineSchema({
     documentName: v.optional(v.string()),
     currentDocumentVersionId: v.optional(v.id("trainingDocumentVersions")),
     requiredDocumentVersionId: v.optional(v.id("trainingDocumentVersions")),
+    description: v.optional(v.string()),
+    category: v.optional(v.union(v.literal("northern_rail"), v.literal("food_safety"), v.literal("security"), v.literal("equipment"), v.literal("alcohol"), v.literal("company_procedure"), v.literal("other"))),
+    audience: v.optional(v.union(v.literal("all_team"), v.literal("managers_only"), v.literal("selected_people"))),
+    selectedTeamMemberIds: v.optional(v.array(v.id("teamMembers"))),
   }).index("by_location", ["locationId"]),
   trainingDocumentVersions: defineTable({
     requirementId: v.id("trainingRequirements"),
