@@ -191,8 +191,12 @@ export const calendar = query({
       const weekday = localWeekday(new Date(`${dateKey}T12:00:00Z`).getTime(), timezone);
       const dueCleaning = dayCleaningTasks.filter(task => task.frequency === "after_use" || task.frequency === "daily" || (task.frequency === "weekly" && weekday === 1) || (task.frequency === "specific_days" && task.weekdays.includes(weekday)));
       const dayCleaning = cleaningCompletions.filter(item => item.dateKey === dateKey);
-      const dayIssues = issues.filter(issue => localDateKey(issue.createdAt, timezone) === dateKey || (issue.createdAt < new Date(`${dateKey}T23:59:59Z`).getTime() && issue.status !== "resolved"));
-      const failed = dayReadings.some(item => item.result === "fail") || dayProbes.some(item => item.result === "fail") || dayOpening.some(item => item.answer === "no") || dayClosing.some(item => item.answer === "no") || dayIssues.some(item => item.status !== "resolved");
+      const dayIssues = issues.filter(issue => {
+        const createdKey = localDateKey(issue.createdAt, timezone);
+        const resolvedKey = issue.resolvedAt !== undefined ? localDateKey(issue.resolvedAt, timezone) : issue.status === "resolved" ? createdKey : undefined;
+        return createdKey <= dateKey && (resolvedKey === undefined || resolvedKey >= dateKey);
+      });
+      const failed = dayReadings.some(item => item.result === "fail") || dayProbes.some(item => item.result === "fail") || dayOpening.some(item => item.answer === "no") || dayClosing.some(item => item.answer === "no") || dayIssues.length > 0;
       const complete = openingComplete && closingComplete && amSecurityComplete && pmSecurityComplete && (!additionalDue || additionalComplete) && ["AM", "PM"].every(session => dayRounds.filter(round => round.session === session && round.completedAt).some(round => dayEquipment.every(equipment => dayReadings.some(reading => reading.roundId === round._id && reading.equipmentId === equipment._id)))) && (dayProbeProducts.length === 0 || dayProbeProducts.every(product => dayProbes.some(probe => probe.probeProductId !== undefined ? probe.probeProductId === product._id : probe.product === product.name))) && dayWastage.length > 0 && dueCleaning.every(task => dayCleaning.some(completion => completion.taskId === task._id));
       const day = days[dateKey];
       day.readings = dayReadings.length;
