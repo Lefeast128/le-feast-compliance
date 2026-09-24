@@ -151,6 +151,21 @@ export const calendar = query({
       }
       return [...selected.values()].filter(item => configAppliesOnDate(item, dateKey));
     };
+    const configAppliesAt = (item: any, timestamp: number) =>
+      item._creationTime <= timestamp &&
+      (item.deactivatedAt === undefined || item.deactivatedAt >= timestamp);
+    const selectVersionAt = (items: any[], timestamp: number) => {
+      const selected = new Map<string, any>();
+      for (const item of items) {
+        if (item._creationTime > timestamp) continue;
+        const rootId = item.versionRootId ?? item._id;
+        const current = selected.get(rootId);
+        if (!current || item._creationTime > current._creationTime) {
+          selected.set(rootId, item);
+        }
+      }
+      return [...selected.values()].filter(item => configAppliesAt(item, timestamp));
+    };
     for (let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate()); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
       const dateKey = localDateKey(cursor.getTime(), timezone);
       days[dateKey] = { date: dateKey, status: dateKey > todayKey ? "grey" : "red", readings: 0, probes: 0, issues: 0 };
@@ -158,11 +173,23 @@ export const calendar = query({
     for (const dateKey of Object.keys(days)) {
       if (dateKey > todayKey) continue;
       const dayEquipment = equipment.filter(item => configAppliesOnDate(item, dateKey));
-      const dayOpeningQuestions = selectVersionForDate(openingQuestions, dateKey);
-      const dayClosingQuestions = selectVersionForDate(closingQuestions, dateKey);
+      const openingSignOff = checklistSignOffs.opening.find(signOff => signOff.dateKey === dateKey);
+      const closingSignOff = checklistSignOffs.closing.find(signOff => signOff.dateKey === dateKey);
+      const amSecuritySignOff = securitySignOffs.AM.find(signOff => signOff.dateKey === dateKey);
+      const pmSecuritySignOff = securitySignOffs.PM.find(signOff => signOff.dateKey === dateKey);
+      const dayOpeningQuestions = openingSignOff
+        ? selectVersionAt(openingQuestions, openingSignOff.completedAt)
+        : selectVersionForDate(openingQuestions, dateKey);
+      const dayClosingQuestions = closingSignOff
+        ? selectVersionAt(closingQuestions, closingSignOff.completedAt)
+        : selectVersionForDate(closingQuestions, dateKey);
       const daySecurityQuestions = {
-        AM: selectVersionForDate(securityQuestions.AM, dateKey),
-        PM: selectVersionForDate(securityQuestions.PM, dateKey),
+        AM: amSecuritySignOff
+          ? selectVersionAt(securityQuestions.AM, amSecuritySignOff.completedAt)
+          : selectVersionForDate(securityQuestions.AM, dateKey),
+        PM: pmSecuritySignOff
+          ? selectVersionAt(securityQuestions.PM, pmSecuritySignOff.completedAt)
+          : selectVersionForDate(securityQuestions.PM, dateKey),
       };
       const dayProbeProducts = selectVersionForDate(probeProducts, dateKey);
       const dayCleaningTasks = selectVersionForDate(cleaningTasks, dateKey);
@@ -178,10 +205,10 @@ export const calendar = query({
       const closingResponseIds = new Set(dayClosing.map(item => item.questionId));
       const amSecurityResponseIds = new Set(dayAmSecurity.map(item => item.questionId));
       const pmSecurityResponseIds = new Set(dayPmSecurity.map(item => item.questionId));
-      const openingComplete = dayOpeningQuestions.every(question => openingResponseIds.has(question._id)) && checklistSignOffs.opening.some(signOff => signOff.dateKey === dateKey);
-      const closingComplete = dayClosingQuestions.every(question => closingResponseIds.has(question._id)) && checklistSignOffs.closing.some(signOff => signOff.dateKey === dateKey);
-      const amSecurityComplete = daySecurityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && securitySignOffs.AM.some(signOff => signOff.dateKey === dateKey);
-      const pmSecurityComplete = daySecurityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && securitySignOffs.PM.some(signOff => signOff.dateKey === dateKey);
+      const openingComplete = dayOpeningQuestions.every(question => openingResponseIds.has(question._id)) && !!openingSignOff;
+      const closingComplete = dayClosingQuestions.every(question => closingResponseIds.has(question._id)) && !!closingSignOff;
+      const amSecurityComplete = daySecurityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && !!amSecuritySignOff;
+      const pmSecurityComplete = daySecurityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && !!pmSecuritySignOff;
       const selectedAdditionalRequirementIds = new Set(dayAdditionalRequirements.map(requirement => requirement._id));
       const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && selectedAdditionalRequirementIds.has(completion.requirementId)).map(completion => completion.requirementId));
       for (const requirement of dayAdditionalRequirements) if (requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
