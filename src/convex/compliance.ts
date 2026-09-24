@@ -166,6 +166,10 @@ export const calendar = query({
       }
       return [...selected.values()].filter(item => configAppliesAt(item, timestamp));
     };
+    const versionRootFor = (items: any[], id: any) => {
+      const item = items.find(candidate => candidate._id === id);
+      return item ? (item.versionRootId ?? item._id) : id;
+    };
     for (let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate()); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
       const dateKey = localDateKey(cursor.getTime(), timezone);
       days[dateKey] = { date: dateKey, status: dateKey > todayKey ? "grey" : "red", readings: 0, probes: 0, issues: 0 };
@@ -209,11 +213,11 @@ export const calendar = query({
       const closingComplete = dayClosingQuestions.every(question => closingResponseIds.has(question._id)) && !!closingSignOff;
       const amSecurityComplete = daySecurityQuestions.AM.every(question => amSecurityResponseIds.has(question._id)) && !!amSecuritySignOff;
       const pmSecurityComplete = daySecurityQuestions.PM.every(question => pmSecurityResponseIds.has(question._id)) && !!pmSecuritySignOff;
-      const selectedAdditionalRequirementIds = new Set(dayAdditionalRequirements.map(requirement => requirement._id));
-      const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && selectedAdditionalRequirementIds.has(completion.requirementId)).map(completion => completion.requirementId));
-      for (const requirement of dayAdditionalRequirements) if (requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement._id);
+      const selectedAdditionalRequirementIds = new Set(dayAdditionalRequirements.map(requirement => requirement.versionRootId ?? requirement._id));
+      const dueAdditionalRequirementIds = new Set(additionalCompletions.filter(completion => completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && selectedAdditionalRequirementIds.has(versionRootFor(additionalRequirements, completion.requirementId))).map(completion => versionRootFor(additionalRequirements, completion.requirementId)));
+      for (const requirement of dayAdditionalRequirements) if (requirement.nextDueAt !== undefined && localDateKey(requirement.nextDueAt, timezone) === dateKey) dueAdditionalRequirementIds.add(requirement.versionRootId ?? requirement._id);
       const additionalDue = dueAdditionalRequirementIds.size > 0;
-      const additionalComplete = [...dueAdditionalRequirementIds].every(requirementId => additionalCompletions.some(completion => completion.requirementId === requirementId && completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && localDateKey(completion.completedAt, timezone) === dateKey));
+      const additionalComplete = [...dueAdditionalRequirementIds].every(requirementId => additionalCompletions.some(completion => versionRootFor(additionalRequirements, completion.requirementId) === requirementId && completion.scheduledDueAt !== undefined && localDateKey(completion.scheduledDueAt, timezone) === dateKey && localDateKey(completion.completedAt, timezone) === dateKey));
       const dayWastage = wastage.filter(item => localDateKey(item.createdAt, timezone) === dateKey);
       const weekday = localWeekday(new Date(`${dateKey}T12:00:00Z`).getTime(), timezone);
       const dueCleaning = dayCleaningTasks.filter(task => task.frequency === "after_use" || task.frequency === "daily" || (task.frequency === "weekly" && weekday === 1) || (task.frequency === "specific_days" && task.weekdays.includes(weekday)));
@@ -224,7 +228,7 @@ export const calendar = query({
         return createdKey <= dateKey && (resolvedKey === undefined || resolvedKey >= dateKey);
       });
       const failed = dayReadings.some(item => item.result === "fail") || dayProbes.some(item => item.result === "fail") || dayOpening.some(item => item.answer === "no") || dayClosing.some(item => item.answer === "no") || dayIssues.length > 0;
-      const complete = openingComplete && closingComplete && amSecurityComplete && pmSecurityComplete && (!additionalDue || additionalComplete) && ["AM", "PM"].every(session => dayRounds.filter(round => round.session === session && round.completedAt).some(round => { const roundEquipment = equipment.filter(item => item._creationTime <= round.startedAt && (item.deactivatedAt === undefined || item.deactivatedAt >= round.startedAt)); return roundEquipment.every(fridge => dayReadings.some(reading => reading.roundId === round._id && reading.equipmentId === fridge._id)); })) && (dayProbeProducts.length === 0 || dayProbeProducts.every(product => dayProbes.some(probe => probe.probeProductId !== undefined ? probe.probeProductId === product._id : probe.product === product.name))) && dayWastage.length > 0 && dueCleaning.every(task => dayCleaning.some(completion => completion.taskId === task._id));
+      const complete = openingComplete && closingComplete && amSecurityComplete && pmSecurityComplete && (!additionalDue || additionalComplete) && ["AM", "PM"].every(session => dayRounds.filter(round => round.session === session && round.completedAt).some(round => { const roundEquipment = equipment.filter(item => item._creationTime <= round.startedAt && (item.deactivatedAt === undefined || item.deactivatedAt >= round.startedAt)); return roundEquipment.every(fridge => dayReadings.some(reading => reading.roundId === round._id && reading.equipmentId === fridge._id)); })) && (dayProbeProducts.length === 0 || dayProbeProducts.every(product => dayProbes.some(probe => probe.probeProductId !== undefined ? (product.versionRootId ?? product._id) === versionRootFor(probeProducts, probe.probeProductId) : probe.product === product.name))) && dayWastage.length > 0 && dueCleaning.every(task => dayCleaning.some(completion => versionRootFor(cleaningTasks, completion.taskId) === (task.versionRootId ?? task._id)));
       const day = days[dateKey];
       day.readings = dayReadings.length;
       day.probes = dayProbes.length;
