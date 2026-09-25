@@ -25,6 +25,16 @@ function validateFields(fields: { key: string; label: string; type: string; mini
     if (field.maximum !== undefined && !Number.isFinite(field.maximum)) throw new Error(`${field.label} maximum must be a valid number`);
     if (field.minimum !== undefined && field.maximum !== undefined && field.minimum > field.maximum) throw new Error(`${field.label} minimum cannot be greater than maximum`);
   }
+
+  const canFail = fields.some(
+    field =>
+      field.type === "yes_no" ||
+      ((field.type === "number" || field.type === "temperature") &&
+        (field.minimum !== undefined || field.maximum !== undefined)),
+  );
+  if (canFail && !fields.some(field => field.type === "actions")) {
+    throw new Error("A corrective action field is required for checks that can fail");
+  }
 }
 
 function validateInterval(frequency: string, interval?: number) {
