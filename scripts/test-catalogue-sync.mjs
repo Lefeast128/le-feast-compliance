@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildCatalogueChanges,
+  assertCatalogueSize,
   mapCatalogueToLocations,
   normalizeCataloguePayload,
 } from "../src/convex/catalogueSync.ts";
@@ -65,6 +66,17 @@ const removed = buildCatalogueChanges(
   4000,
 );
 assert.equal(removed.summary.removed, 1);
+
+const lastGoodCatalogue = firstSync.upserts.map((product, index) => ({
+  ...product,
+  _id: `id-${index}`,
+}));
+const lastGoodSnapshot = structuredClone(lastGoodCatalogue);
+assert.throws(
+  () => assertCatalogueSize(lastGoodCatalogue, []),
+  /unexpectedly small/,
+);
+assert.deepEqual(lastGoodCatalogue, lastGoodSnapshot);
 
 assert.throws(
   () => normalizeCataloguePayload({ ok: true, retrievedAt: "now", products: rawProducts.slice(0, 3) }),

@@ -24,6 +24,8 @@ export type ComplianceLocation = {
   shortName: string;
 };
 
+const MIN_CATALOGUE_COMPLETENESS_RATIO = 0.5;
+
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === "object";
 }
@@ -130,6 +132,20 @@ export function mapCatalogueToLocations(
     if (!location) throw new Error(`TouchOffice store ${product.siteId} has no compliance location`);
     return { ...product, locationId: location._id };
   });
+}
+
+export function assertCatalogueSize(
+  existing: Array<{ active: boolean }>,
+  incoming: unknown[],
+) {
+  const activeCount = existing.filter(product => product.active).length;
+  const minimumExpected = Math.ceil(
+    activeCount * MIN_CATALOGUE_COMPLETENESS_RATIO,
+  );
+
+  if (activeCount > 0 && incoming.length < minimumExpected) {
+    throw new Error("TouchOffice catalogue response is unexpectedly small");
+  }
 }
 
 export function buildCatalogueChanges(

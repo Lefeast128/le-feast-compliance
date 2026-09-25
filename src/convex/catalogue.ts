@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { requireLocationManager } from "./permissions";
 import {
   buildCatalogueChanges,
+  assertCatalogueSize,
   mapCatalogueToLocations,
   normalizeCataloguePayload,
   type ComplianceLocation,
@@ -90,6 +91,7 @@ export const applyLocationSync = internalMutation({
       .query("catalogueProducts")
       .withIndex("by_location", (q: any) => q.eq("locationId", args.locationId))
       .collect();
+    assertCatalogueSize(current, args.products);
     const changes = buildCatalogueChanges(current as any, args.products as any, args.syncedAt);
     for (const product of changes.upserts) {
       const existing = current.find((item: any) => item.plu === product.plu);
