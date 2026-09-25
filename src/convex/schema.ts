@@ -286,6 +286,7 @@ const schema = defineSchema({
     originalReading: v.optional(v.string()),
     sourceTemperatureReadingId: v.optional(v.id("temperatureReadings")),
     sourceFoodCheckId: v.optional(v.id("foodChecks")),
+    sourceAdditionalCompletionId: v.optional(v.id("additionalCompletions")),
   }).index("by_location", ["locationId"]),
   issueUpdates: defineTable({
     issueId: v.id("issues"),
