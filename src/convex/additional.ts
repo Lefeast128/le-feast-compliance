@@ -20,6 +20,29 @@ function validateFields(fields: { key: string; label: string; type: string; mini
     if (!field.label.trim()) throw new Error("Field label is required");
     if (keys.has(key)) throw new Error(`Duplicate field key: ${key}`);
     keys.add(key);
+
+    if (field.type !== "actions" && field.options?.length) {
+      throw new Error(`${field.label} cannot have action options`);
+    }
+
+    if (field.type === "actions" && field.options?.length) {
+      const options = new Set<string>();
+
+      for (const option of field.options) {
+        const value = option.trim();
+
+        if (!value) {
+          throw new Error(`${field.label} contains a blank action option`);
+        }
+
+        if (options.has(value)) {
+          throw new Error(`${field.label} contains duplicate action options`);
+        }
+
+        options.add(value);
+      }
+    }
+
     if (field.type !== "number" && field.type !== "temperature") continue;
     if (field.minimum !== undefined && !Number.isFinite(field.minimum)) throw new Error(`${field.label} minimum must be a valid number`);
     if (field.maximum !== undefined && !Number.isFinite(field.maximum)) throw new Error(`${field.label} maximum must be a valid number`);
