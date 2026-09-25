@@ -49,7 +49,58 @@ function localDateKey(timestamp: number, timeZone: string) {
 }
 
 async function signedIn(ctx: any) { const userId = await getAuthUserId(ctx); if (!userId) throw new Error("You must be signed in"); return userId; }
-function nextDue(frequency: string, interval = 1, from: number) { const date = new Date(from); if (frequency === "one_off") return from; if (frequency === "weekly") date.setDate(date.getDate() + 7); if (frequency === "monthly") date.setMonth(date.getMonth() + 1); if (frequency === "every_x_weeks") date.setDate(date.getDate() + 7 * Math.max(1, interval)); if (frequency === "every_x_months") date.setMonth(date.getMonth() + Math.max(1, interval)); if (frequency === "annual") date.setFullYear(date.getFullYear() + 1); return date.getTime(); }
+function addMonthsClamped(from: number, months: number) {
+  const source = new Date(from);
+  const target = new Date(Date.UTC(
+    source.getUTCFullYear(),
+    source.getUTCMonth() + months,
+    1,
+    source.getUTCHours(),
+    source.getUTCMinutes(),
+    source.getUTCSeconds(),
+    source.getUTCMilliseconds(),
+  ));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(source.getUTCDate(), lastDay));
+  return target.getTime();
+}
+
+function addYearsClamped(from: number, years: number) {
+  const source = new Date(from);
+  const target = new Date(Date.UTC(
+    source.getUTCFullYear() + years,
+    source.getUTCMonth(),
+    1,
+    source.getUTCHours(),
+    source.getUTCMinutes(),
+    source.getUTCSeconds(),
+    source.getUTCMilliseconds(),
+  ));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(source.getUTCDate(), lastDay));
+  return target.getTime();
+}
+
+function nextDue(frequency: string, interval = 1, from: number) {
+  const date = new Date(from);
+  if (frequency === "one_off") return from;
+  if (frequency === "weekly") {
+    date.setUTCDate(date.getUTCDate() + 7);
+    return date.getTime();
+  }
+  if (frequency === "monthly") return addMonthsClamped(from, 1);
+  if (frequency === "every_x_weeks") {
+    date.setUTCDate(date.getUTCDate() + 7 * Math.max(1, interval));
+    return date.getTime();
+  }
+  if (frequency === "every_x_months") return addMonthsClamped(from, Math.max(1, interval));
+  if (frequency === "annual") return addYearsClamped(from, 1);
+  return date.getTime();
+}
 
 export const dashboard = query({ args: { locationId: v.id("locations") }, handler: async (ctx, args) => { await requireLocationAccess(ctx, args.locationId); const location = await ctx.db.get(args.locationId); if (!location) throw new Error("Location not found"); const now = Date.now(); const todayKey = localDateKey(now, location.timezone); const all = (await ctx.db.query("additionalRequirements").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.active).sort((a, b) => a.order - b.order); const allCompletions = await Promise.all((await ctx.db.query("additionalCompletions").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).map(async item => { const completionRequirement = await ctx.db.get(item.requirementId); return { ...item, requirementRootId: completionRequirement?.versionRootId ?? completionRequirement?._id, teamMemberName: (await ctx.db.get(item.teamMemberId))?.name, documentUrl: item.documentStorageId ? await ctx.storage.getUrl(item.documentStorageId) : null }; })); const requirements = all.filter(item => { const root = item.versionRootId ?? item._id; return localDateKey(item.nextDueAt, location.timezone) <= todayKey || allCompletions.some(completion => completion.requirementRootId === root && localDateKey(completion.completedAt, location.timezone) === todayKey); }); return { requirements, completions: allCompletions }; } });
 export const history = query({ args: { locationId: v.id("locations"), start: v.number(), end: v.number() }, handler: async (ctx, args) => { await requireLocationAccess(ctx, args.locationId); return await Promise.all((await ctx.db.query("additionalCompletions").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(item => item.completedAt >= args.start && item.completedAt <= args.end).map(async item => ({ ...item, teamMemberName: (await ctx.db.get(item.teamMemberId))?.name, requirementTitle: (await ctx.db.get(item.requirementId))?.title, documentUrl: item.documentStorageId ? await ctx.storage.getUrl(item.documentStorageId) : null }))); } });
