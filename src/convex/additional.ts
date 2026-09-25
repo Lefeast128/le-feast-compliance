@@ -34,7 +34,7 @@ function localDateKey(timestamp: number, timeZone: string) {
   const value = (type: string) =>
     parts.find((part) => part.type === type)?.value ?? "";
 
-  return \`${value("year")}-\`${value("month")}-\`${value("day")}\`;
+  return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
 async function signedIn(ctx: any) { const userId = await getAuthUserId(ctx); if (!userId) throw new Error("You must be signed in"); return userId; }
