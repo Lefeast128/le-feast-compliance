@@ -240,7 +240,7 @@ const schema = defineSchema({
     frequency: v.union(v.literal("weekly"), v.literal("monthly"), v.literal("every_x_weeks"), v.literal("every_x_months"), v.literal("annual"), v.literal("one_off")),
     interval: v.optional(v.number()),
     nextDueAt: v.number(),
-    fields: v.array(v.object({ key: v.string(), label: v.string(), type: v.union(v.literal("temperature"), v.literal("number"), v.literal("yes_no"), v.literal("completed"), v.literal("date"), v.literal("text"), v.literal("actions"), v.literal("pdf")), minimum: v.optional(v.number()), maximum: v.optional(v.number()) })),
+    fields: v.array(v.object({ key: v.string(), label: v.string(), type: v.union(v.literal("temperature"), v.literal("number"), v.literal("yes_no"), v.literal("completed"), v.literal("date"), v.literal("text"), v.literal("actions"), v.literal("pdf")), minimum: v.optional(v.number()), maximum: v.optional(v.number()), options: v.optional(v.array(v.string())) })),
     active: v.boolean(),
     deactivatedAt: v.optional(v.number()),
     versionRootId: v.optional(v.id("additionalRequirements")),
