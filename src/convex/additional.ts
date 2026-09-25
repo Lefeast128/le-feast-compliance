@@ -8,7 +8,18 @@ const fieldValidator = v.object({ key: v.string(), label: v.string(), type: v.un
 const answerValidator = v.object({ key: v.string(), value: v.string() });
 
 function validateFields(fields: { key: string; label: string; type: string; minimum?: number; maximum?: number }[]) {
+  if (!fields.length) {
+    throw new Error("At least one field is required");
+  }
+
+  const keys = new Set<string>();
+
   for (const field of fields) {
+    const key = field.key.trim();
+    if (!key) throw new Error("Field key is required");
+    if (!field.label.trim()) throw new Error("Field label is required");
+    if (keys.has(key)) throw new Error(`Duplicate field key: ${key}`);
+    keys.add(key);
     if (field.type !== "number" && field.type !== "temperature") continue;
     if (field.minimum !== undefined && !Number.isFinite(field.minimum)) throw new Error(`${field.label} minimum must be a valid number`);
     if (field.maximum !== undefined && !Number.isFinite(field.maximum)) throw new Error(`${field.label} maximum must be a valid number`);
