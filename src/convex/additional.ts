@@ -7,7 +7,7 @@ const frequencyValidator = v.union(v.literal("weekly"), v.literal("monthly"), v.
 const fieldValidator = v.object({ key: v.string(), label: v.string(), type: v.union(v.literal("temperature"), v.literal("number"), v.literal("yes_no"), v.literal("completed"), v.literal("date"), v.literal("text"), v.literal("actions"), v.literal("pdf")), minimum: v.optional(v.number()), maximum: v.optional(v.number()), options: v.optional(v.array(v.string())) });
 const answerValidator = v.object({ key: v.string(), value: v.string() });
 
-function validateFields(fields: { key: string; label: string; type: string; minimum?: number; maximum?: number }[]) {
+function validateFields(fields: { key: string; label: string; type: string; minimum?: number; maximum?: number; options?: string[] }[]) {
   if (!fields.length) {
     throw new Error("At least one field is required");
   }
