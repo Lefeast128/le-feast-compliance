@@ -25,6 +25,7 @@ export type ComplianceLocation = {
 };
 
 const MIN_CATALOGUE_COMPLETENESS_RATIO = 0.5;
+export const MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE = 200;
 
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === "object";
@@ -139,11 +140,11 @@ export function assertCatalogueSize(
   incoming: unknown[],
 ) {
   const activeCount = existing.filter(product => product.active).length;
-  const minimumExpected = Math.ceil(
-    activeCount * MIN_CATALOGUE_COMPLETENESS_RATIO,
-  );
+  const minimumExpected = activeCount > 0
+    ? Math.ceil(activeCount * MIN_CATALOGUE_COMPLETENESS_RATIO)
+    : MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE;
 
-  if (activeCount > 0 && incoming.length < minimumExpected) {
+  if (incoming.length < minimumExpected) {
     throw new Error("TouchOffice catalogue response is unexpectedly small");
   }
 }

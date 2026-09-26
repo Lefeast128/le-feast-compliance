@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildCatalogueChanges,
   assertCatalogueSize,
+  MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE,
   mapCatalogueToLocations,
   normalizeCataloguePayload,
 } from "../src/convex/catalogueSync.ts";
@@ -77,6 +78,31 @@ assert.throws(
   /unexpectedly small/,
 );
 assert.deepEqual(lastGoodCatalogue, lastGoodSnapshot);
+
+assert.equal(MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE, 200);
+assert.doesNotThrow(() =>
+  assertCatalogueSize(
+    [],
+    Array.from({ length: MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE }, () => ({})),
+  ),
+);
+assert.throws(
+  () => assertCatalogueSize([], Array.from({ length: 199 }, () => ({}))),
+  /unexpectedly small/,
+);
+assert.doesNotThrow(() =>
+  assertCatalogueSize(
+    Array.from({ length: 239 }, () => ({ active: true })),
+    Array.from({ length: 120 }, () => ({})),
+  ),
+);
+assert.throws(
+  () => assertCatalogueSize(
+    Array.from({ length: 239 }, () => ({ active: true })),
+    Array.from({ length: 119 }, () => ({})),
+  ),
+  /unexpectedly small/,
+);
 
 assert.throws(
   () => normalizeCataloguePayload({ ok: true, retrievedAt: "now", products: rawProducts.slice(0, 3) }),
