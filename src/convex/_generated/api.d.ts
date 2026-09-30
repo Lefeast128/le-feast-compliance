@@ -11,11 +11,13 @@
 import type * as additional from "../additional.js";
 import type * as auth from "../auth.js";
 import type * as auth_emailOtp from "../auth/emailOtp.js";
+import type * as catalogue from "../catalogue.js";
 import type * as compliance from "../compliance.js";
 import type * as http from "../http.js";
 import type * as locations from "../locations.js";
 import type * as recovery from "../recovery.js";
 import type * as users from "../users.js";
+import type * as googleSheets from "../googleSheets.js";
 
 import type {
   ApiFromModules,
@@ -27,11 +29,13 @@ declare const fullApi: ApiFromModules<{
   additional: typeof additional;
   auth: typeof auth;
   "auth/emailOtp": typeof auth_emailOtp;
+  catalogue: typeof catalogue;
   compliance: typeof compliance;
   http: typeof http;
   locations: typeof locations;
   recovery: typeof recovery;
   users: typeof users;
+  googleSheets: typeof googleSheets;
 }>;
 
 /**

@@ -12,4 +12,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "Wastage Google Sheets sync",
+  { hours: 1 },
+  internal.googleSheets.scheduledSync,
+  {},
+);
+
 export default crons;

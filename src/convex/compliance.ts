@@ -1,8 +1,9 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireLocationAccess, requireLocationAdmin, requireLocationManager, requireSignedIn } from "./permissions";
+import { buildWastageExportRows, type WastageExportRow } from "./wastageSync";
 
 const stores = [
   { name: "Blackpool North", shortName: "Blackpool" },
@@ -101,34 +102,29 @@ export const wastageExport = query({
 
     const location = await ctx.db.get(args.locationId);
     if (!location) throw new Error("Location not found");
-
     const records = await ctx.db
       .query("wastageRecords")
       .withIndex("by_location", q => q.eq("locationId", args.locationId))
       .collect();
-    const aggregated = new Map<string, { dateKey: string; date: string; foodType: string; quantity: number }>();
+    return buildWastageExportRows(records, location, args.start, args.end);
+  },
+});
 
-    for (const record of records) {
-      if (record.createdAt < args.start || record.createdAt > args.end || record.noWaste) continue;
-      const foodType = record.itemName?.trim().replace(/^Reduced\s+/i, "").trim();
-      const quantityText = record.quantity?.trim();
-      if (!foodType || !quantityText) continue;
-      const quantity = Number(quantityText);
-      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+export const wastageExportAll = internalQuery({
+  args: {},
+  handler: async ctx => {
+    const locations = await ctx.db.query("locations").collect();
+    const rows: WastageExportRow[] = [];
 
-      const dateKey = localDateKey(record.createdAt, location.timezone);
-      const [year, month, day] = dateKey.split("-");
-      const date = `${day}/${month}/${year}`;
-      const key = `${dateKey}\u0000${foodType}`;
-      const existing = aggregated.get(key);
-      if (existing) existing.quantity += quantity;
-      else aggregated.set(key, { dateKey, date, foodType, quantity });
+    for (const location of locations) {
+      const records = await ctx.db
+        .query("wastageRecords")
+        .withIndex("by_location", q => q.eq("locationId", location._id))
+        .collect();
+      rows.push(...buildWastageExportRows(records, location));
     }
 
-    const store = location.shortName || location.name;
-    return [...aggregated.values()]
-      .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.foodType.localeCompare(b.foodType))
-      .map(row => ({ Store: store, Date: row.date, "Food Type": row.foodType, Quantity: row.quantity }));
+    return rows;
   },
 });
 
