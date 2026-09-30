@@ -91,6 +91,47 @@ export const dashboard = query({
   },
 });
 
+export const wastageExport = query({
+  args: { locationId: v.id("locations"), start: v.number(), end: v.number() },
+  handler: async (ctx, args) => {
+    await requireLocationManager(ctx, args.locationId);
+    if (!Number.isFinite(args.start) || !Number.isFinite(args.end) || args.start > args.end) {
+      throw new Error("Wastage export range is invalid");
+    }
+
+    const location = await ctx.db.get(args.locationId);
+    if (!location) throw new Error("Location not found");
+
+    const records = await ctx.db
+      .query("wastageRecords")
+      .withIndex("by_location", q => q.eq("locationId", args.locationId))
+      .collect();
+    const aggregated = new Map<string, { dateKey: string; date: string; foodType: string; quantity: number }>();
+
+    for (const record of records) {
+      if (record.createdAt < args.start || record.createdAt > args.end || record.noWaste) continue;
+      const foodType = record.itemName?.trim().replace(/^Reduced\s+/i, "").trim();
+      const quantityText = record.quantity?.trim();
+      if (!foodType || !quantityText) continue;
+      const quantity = Number(quantityText);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+      const dateKey = localDateKey(record.createdAt, location.timezone);
+      const [year, month, day] = dateKey.split("-");
+      const date = `${day}/${month}/${year}`;
+      const key = `${dateKey}\u0000${foodType}`;
+      const existing = aggregated.get(key);
+      if (existing) existing.quantity += quantity;
+      else aggregated.set(key, { dateKey, date, foodType, quantity });
+    }
+
+    const store = location.shortName || location.name;
+    return [...aggregated.values()]
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.foodType.localeCompare(b.foodType))
+      .map(row => ({ Store: store, Date: row.date, "Food Type": row.foodType, Quantity: row.quantity }));
+  },
+});
+
 export const team = query({ args: { locationId: v.id("locations") }, handler: async (ctx, args) => { await requireLocationManager(ctx, args.locationId); const members = (await ctx.db.query("teamMembers").withIndex("by_location", q => q.eq("locationId", args.locationId)).collect()).filter(member => member.active); return { members }; } });
 export const addTeamMemberName = mutation({ args: { locationId: v.id("locations"), name: v.string(), role: v.optional(v.union(v.literal("team"), v.literal("manager"))) }, handler: async (ctx, args) => { await requireLocationManager(ctx, args.locationId); return await ctx.db.insert("teamMembers", { locationId: args.locationId, name: args.name.trim(), role: args.role ?? "team", active: true, createdAt: Date.now() }); } });export const updateTeamMemberName = mutation({ args: { memberId: v.id("teamMembers"), name: v.string(), role: v.optional(v.union(v.literal("team"), v.literal("manager"))) }, handler: async (ctx, args) => { const member = await ctx.db.get(args.memberId); if (!member) throw new Error("Team member not found"); await requireLocationManager(ctx, member.locationId); await ctx.db.patch(args.memberId, { name: args.name.trim(), ...(args.role === undefined ? {} : { role: args.role }) }); } });
 export const deactivateTeamMember = mutation({ args: { memberId: v.id("teamMembers") }, handler: async (ctx, args) => { const member = await ctx.db.get(args.memberId); if (!member) throw new Error("Team member not found"); await requireLocationManager(ctx, member.locationId); await ctx.db.patch(args.memberId, { active: false }); } });export const reactivateTeamMember = mutation({ args: { memberId: v.id("teamMembers") }, handler: async (ctx, args) => { const member = await ctx.db.get(args.memberId); if (!member) throw new Error("Team member not found"); await requireLocationManager(ctx, member.locationId); await ctx.db.patch(args.memberId, { active: true }); } });export const addTeamMember = mutation({ args: { locationId: v.id("locations"), email: v.string(), role: v.union(v.literal("staff"), v.literal("manager")) }, handler: async (ctx, args) => { await requireLocationAdmin(ctx, args.locationId); const user = await ctx.db.query("users").withIndex("email", q => q.eq("email", args.email.trim())).first(); if (!user) throw new Error("No account found for that email"); const existing = (await ctx.db.query("memberships").collect()).find(membership => membership.locationId === args.locationId && membership.userId === user._id); if (existing) { await ctx.db.patch(existing._id, { role: args.role }); return existing._id; } return await ctx.db.insert("memberships", { locationId: args.locationId, userId: user._id, role: args.role }); } });
