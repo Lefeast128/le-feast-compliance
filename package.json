@@ -11,11 +11,16 @@
     "format": "prettier --write .",
     "preview": "vite preview",
     "migration:baseline": "node scripts/migration-baseline/export.mjs",
-    "test:migration-baseline": "node scripts/test-migration-baseline.mjs"
+    "test:migration-baseline": "node scripts/test-migration-baseline.mjs",
+    "test:backend-foundation": "node scripts/test-backend-foundation.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate-db.mjs",
+    "db:seed": "node scripts/seed-foundation.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
     "@hookform/resolvers": "^5.2.2",
+    "@neondatabase/serverless": "^1.1.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@oslojs/crypto": "^1.0.1",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -53,6 +58,7 @@
     "cmdk": "^1.1.1",
     "convex": "^1.30.0",
     "date-fns": "^4.1.0",
+    "drizzle-orm": "^0.45.3",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.25",
     "googleapis": "^144.0.0",
@@ -80,6 +86,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.0.1",
