@@ -1,4 +1,4 @@
-import { checkDatabase } from "../src/server/health.ts";
+import { checkDatabase } from "../src/server/health.js";
 
 type Request = { method?: string };
 type Response = { status: (code: number) => Response; json: (body: unknown) => void };
