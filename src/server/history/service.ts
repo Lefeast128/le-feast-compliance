@@ -21,7 +21,7 @@ const iso = (row: any) => row && { ...row, createdAt: row.createdAt?.toISOString
 
 export async function calendar(context: AuthContext, input: { locationId: string; monthStart: string; monthEnd: string }) {
   const location = await locationFor(context, input.locationId); const { from, to, days } = dayBounds(input.monthStart, input.monthEnd); const db = getDb(); const start = new Date(localDayRange(Date.parse(`${from}T12:00:00Z`), location.timezone).start); const end = new Date(localDayRange(Date.parse(`${to}T12:00:00Z`), location.timezone).end - 1);
-  const [rounds, readings, probes, issuesRows, checklist, security, cleaning, wastage] = await Promise.all([
+  const [rounds, readings, issuesRows, probes, checklist, security, cleaning, wastage] = await Promise.all([
     db.select().from(temperatureRounds).where(and(eq(temperatureRounds.locationId, location.id), gte(temperatureRounds.startedAt, start), lte(temperatureRounds.startedAt, end))),
     db.select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, location.id), gte(temperatureReadings.createdAt, start), lte(temperatureReadings.createdAt, end))),
     db.select().from(issues).where(and(eq(issues.locationId, location.id), lte(issues.createdAt, end))),
