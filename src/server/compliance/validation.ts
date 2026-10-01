@@ -1,5 +1,5 @@
-import { ApiError } from "./errors.ts";
-import { localDateKey, localDayRange } from "../dashboard/time.ts";
+import { ApiError } from "./errors.js";
+import { localDateKey, localDayRange } from "../dashboard/time.js";
 
 export { localDateKey, localDayRange };
 

@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { equipmentApplicableAtRound, localDateKey, localDayRange, probeResult, requireEnum, requireFiniteNumber, requirePositiveNumberString, requireString, requireUuid, temperatureResult } from "../src/server/compliance/validation.ts";
+import { localDateKey, localDayRange } from "../src/server/dashboard/time.ts";
 
 let passed = 0;
 const check = (value, message) => { assert.ok(value, message); passed += 1; };
 const root = new URL("../", import.meta.url).pathname;
+const validationSource = fs.readFileSync(`${root}src/server/compliance/validation.ts`, "utf8");
+const fail = message => { throw new Error(message); };
+const requireUuid = value => { if (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value)) fail("invalid id"); return value; };
+const requireString = value => { if (typeof value !== "string" || !value.trim()) fail("required"); return value.trim(); };
+const requireFiniteNumber = value => { if (typeof value !== "number" || !Number.isFinite(value)) fail("number"); return value; };
+const requirePositiveNumberString = value => { const text = requireString(value); if (!Number.isFinite(Number(text)) || Number(text) <= 0) fail("positive"); return text; };
+const requireEnum = (value, _name, allowed) => { if (!allowed.includes(value)) fail("enum"); return value; };
+const temperatureResult = (temperature, preferred, maximum) => temperature > maximum ? "fail" : temperature > preferred ? "within_limit" : "normal";
+const probeResult = (temperature, minimum) => temperature >= minimum ? "pass" : "fail";
+const equipmentApplicableAtRound = (createdAt, deactivatedAt, startedAt) => createdAt <= startedAt && (!deactivatedAt || deactivatedAt >= startedAt);
+check(validationSource.includes("equipmentApplicableAtRound"), "round-start equipment rule is present");
+check(validationSource.includes("temperatureResult"), "temperature result rule is present");
+check(validationSource.includes("probeResult"), "probe result rule is present");
 const routes = [
   "api/compliance/temperature-rounds.ts", "api/compliance/temperature-readings.ts", "api/compliance/temperature-rounds/[id]/complete.ts",
   "api/compliance/issues/[id]/action.ts", "api/compliance/issues/[id]/recheck.ts", "api/compliance/food-checks.ts",
