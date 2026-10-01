@@ -3,7 +3,7 @@ import { getDb } from "../db/client.js";
 import {
   additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs,
   cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates, issues, locations,
-  probeProducts, securityQuestions, securityResponses, securitySignOffs, scheduledTasks, teamMembers,
+  probeProducts, securityQuestions, securityResponses, securitySignOffs, scheduledTasks, teamMembers, documents,
   temperatureReadings, temperatureRounds, trainingCompletions, trainingDocumentVersions, trainingRequirements,
   users, wastageItems, wastageRecords,
 } from "../db/schema.js";
@@ -17,6 +17,7 @@ const serialize = <T>(value: T): T => {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serialize(item)])) as T;
   return value;
 };
+const documentVersion = (value: { id: string; versionNumber: number; documentName: string; createdAt: Date | string; requiresReacknowledgement: boolean | null } | null | undefined) => value ? { id: value.id, versionNumber: value.versionNumber, documentName: value.documentName, createdAt: value.createdAt instanceof Date ? value.createdAt.toISOString() : value.createdAt, requiresReacknowledgement: value.requiresReacknowledgement } : null;
 
 const locationDto = (location: typeof locations.$inferSelect): ApiLocation => ({
   id: location.id,
@@ -126,6 +127,9 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   const versionIds = [...new Set(trainingRequirementRows.flatMap(requirement => [requirement.currentDocumentVersionId, requirement.requiredDocumentVersionId]).concat(trainingCompletionRows.map(completion => completion.documentVersionId)).filter((id): id is string => Boolean(id)))];
   const pointerVersions = versionIds.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.id, versionIds)) : [];
   const versionById = new Map([...currentVersions, ...pointerVersions].map(version => [version.id, version]));
+  const documentIds = [...new Set([...currentVersions, ...pointerVersions].map(version => version.documentId).filter((id): id is string => Boolean(id)).concat(additionalCompletionRows.map(completion => completion.documentId).filter((id): id is string => Boolean(id))) )];
+  const documentRows = documentIds.length ? await db.select().from(documents).where(inArray(documents.id, documentIds)) : [];
+  const documentById = new Map(documentRows.map(document => [document.id, document]));
   const trainingData = trainingRequirementRows.map(requirement => {
     const versions = currentVersions.filter(version => version.requirementId === requirement.id).sort((a, b) => a.versionNumber - b.versionNumber);
     const oldest = versions[0];
@@ -134,14 +138,15 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     const audience = requirement.audience ?? "all_team";
     const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
     const applicableTeamMemberIds = teamMemberRows.filter(member => audience === "managers_only" ? (member.role ?? "team") === "manager" : audience === "selected_people" ? selected.includes(member.id) : true).map(member => member.id);
-    return { ...serialize(requirement), currentDocumentVersion: serialize(current ?? null), requiredDocumentVersion: serialize(required ?? null), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, applicableTeamMemberIds, documentUrl: null };
+    const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
+    return { ...serialize(requirement), currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, applicableTeamMemberIds, documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null };
   });
   const trainingDataRows = trainingCompletionRows.map(completion => {
     const version = completion.documentVersionId ? versionById.get(completion.documentVersionId) : undefined;
     const requirement = trainingRequirementRows.find(item => item.id === completion.requirementId);
-    return { ...serialize(completion), documentVersion: serialize(version ?? null), documentVersionNumber: version?.versionNumber, teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: requirement?.title };
+    return { id: completion.id, locationId: completion.locationId, requirementId: completion.requirementId, teamMemberId: completion.teamMemberId, completedAt: completion.completedAt.toISOString(), completedBy: completion.completedBy, documentVersion: documentVersion(version), documentVersionNumber: version?.versionNumber, teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: requirement?.title };
   });
-  const additionalData = additionalCompletionRows.map(completion => ({ ...serialize(completion), teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: additionalRequirementRows.find(requirement => requirement.id === completion.requirementId)?.title, documentUrl: null }));
+  const additionalData = additionalCompletionRows.map(completion => ({ ...serialize(completion), teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: additionalRequirementRows.find(requirement => requirement.id === completion.requirementId)?.title, documentUrl: completion.documentId && documentById.has(completion.documentId) ? `/api/documents/${completion.documentId}` : null }));
   const role = roleFor(context, location.id);
   return {
     location: locationDto(location),

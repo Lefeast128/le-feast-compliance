@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs, cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates as issueUpdatesTable, issues, locations, probeProducts, rechecks as rechecksTable, securityQuestions, securityResponses, securitySignOffs, temperatureReadings, temperatureRounds, wastageRecords } from "../db/schema.js";
+import { additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs, cleaningCompletions, cleaningTasks, documents, equipment, foodChecks, issueUpdates as issueUpdatesTable, issues, locations, probeProducts, rechecks as rechecksTable, securityQuestions, securityResponses, securitySignOffs, teamMembers, temperatureReadings, temperatureRounds, wastageRecords } from "../db/schema.js";
 import { requireLocationAccess, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { localDateKey, localDayRange } from "../compliance/validation.js";
@@ -69,5 +69,12 @@ export async function archive(context: AuthContext, input: { locationId: string;
     db.select().from(rechecksTable).where(and(eq(rechecksTable.locationId, location.id), gte(rechecksTable.createdAt, start), lte(rechecksTable.createdAt, end))),
   ]);
   const issueIds = new Set(issuesRows.map(i => i.id)); const issueUpdates = updates.filter(u => issueIds.has(u.issueId)); const rechecks = recheckRows.filter(r => issueIds.has(r.issueId));
-  return { location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone }, readings: readings.map(iso), rounds: rounds.map(iso), probes: probes.map(iso), questions: { opening: questions.filter(q => q.checklist === "opening").map(iso), closing: questions.filter(q => q.checklist === "closing").map(iso) }, checklistSignOffs: checklistSignoffs.map(iso), securityResponses: { AM: securityResponsesRows.filter(r => r.session === "AM").map(iso), PM: securityResponsesRows.filter(r => r.session === "PM").map(iso) }, securitySignOffs: securitySignoffs.map(iso), wastageRecords: wastage.map(iso), cleaningCompletions: cleaning.map(iso), issues: issuesRows.map(iso), issueUpdates: issueUpdates.map(iso), rechecks: rechecks.map(iso) };
+  const [additionalRows, requirementRows, memberRows] = await Promise.all([
+    db.select().from(additionalCompletions).where(eq(additionalCompletions.locationId, location.id)),
+    db.select().from(additionalRequirements).where(eq(additionalRequirements.locationId, location.id)),
+    db.select().from(teamMembers).where(eq(teamMembers.locationId, location.id)),
+  ]);
+  const additionalDocuments = additionalRows.map(row => row.documentId).filter((id): id is string => Boolean(id));
+  const documentRows = additionalDocuments.length ? await db.select().from(documents).where(inArray(documents.id, additionalDocuments)) : [];
+  return { location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone }, readings: readings.map(iso), rounds: rounds.map(iso), probes: probes.map(iso), questions: { opening: questions.filter(q => q.checklist === "opening").map(iso), closing: questions.filter(q => q.checklist === "closing").map(iso) }, checklistSignOffs: checklistSignoffs.map(iso), securityResponses: { AM: securityResponsesRows.filter(r => r.session === "AM").map(iso), PM: securityResponsesRows.filter(r => r.session === "PM").map(iso) }, securitySignOffs: securitySignoffs.map(iso), wastageRecords: wastage.map(iso), cleaningCompletions: cleaning.map(iso), issues: issuesRows.map(iso), issueUpdates: issueUpdates.map(iso), rechecks: rechecks.map(iso), additionalCompletions: additionalRows.map(row => { const value = iso(row) as any; delete value.documentStorageId; delete value.documentName; return { ...value, requirementTitle: requirementRows.find(requirement => requirement.id === row.requirementId)?.title, teamMemberName: memberRows.find(member => member.id === row.teamMemberId)?.name, documentUrl: row.documentId && documentRows.some(document => document.id === row.documentId) ? `/api/documents/${row.documentId}` : null, issue: issuesRows.find(issue => issue.sourceAdditionalCompletionId === row.id) ?? null }; }) };
 }
