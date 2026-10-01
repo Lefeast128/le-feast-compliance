@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "cleaning_completions_task_day_idx" ON "cleaning_completions" USING btree ("location_id","task_id","date_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "temperature_readings_round_equipment_voided_idx" ON "temperature_readings" USING btree ("round_id","equipment_id","voided");

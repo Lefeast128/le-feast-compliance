@@ -1,5 +1,7 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { Pool } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+
+let pool: Pool | undefined;
 
 export function getDatabaseUrl() {
   const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
@@ -8,5 +10,6 @@ export function getDatabaseUrl() {
 }
 
 export function getDb() {
-  return drizzle(neon(getDatabaseUrl()));
+  pool ??= new Pool({ connectionString: getDatabaseUrl() });
+  return drizzle(pool);
 }

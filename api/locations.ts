@@ -12,9 +12,13 @@ export default async function handler(req: Request, res: Response) {
     return;
   }
   try {
-    const repository = createDrizzleAuthRepository();
     const token = readSessionCookie(req.headers?.cookie);
-    const user = token ? await authenticateSession(repository, token) : null;
+    if (!token) {
+      res.status(401).json({ ok: false, error: "Authentication required" });
+      return;
+    }
+    const repository = createDrizzleAuthRepository();
+    const user = await authenticateSession(repository, token);
     if (!user) {
       res.status(401).json({ ok: false, error: "Authentication required" });
       return;
