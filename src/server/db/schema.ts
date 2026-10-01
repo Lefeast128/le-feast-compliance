@@ -4,6 +4,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -64,7 +65,7 @@ export const scheduledTasks = pgTable("scheduled_tasks", {
 
 export const equipment = pgTable("equipment", {
   id: id(), locationId: foreignId("location_id"), name: text("name").notNull(), type: text("type").notNull(),
-  preferredTemperature: integer("preferred_temperature"), maximumTemperature: integer("maximum_temperature"), order: integer("sort_order").notNull().default(0),
+  preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"), order: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), createdAt: createdAt(),
 });
 
@@ -76,13 +77,13 @@ export const temperatureRounds = pgTable("temperature_rounds", {
 
 export const temperatureReadings = pgTable("temperature_readings", {
   id: id(), roundId: foreignId("round_id"), equipmentId: foreignId("equipment_id"), locationId: foreignId("location_id"),
-  temperature: integer("temperature").notNull(), result: temperatureResult("result").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"),
+  temperature: real("temperature").notNull(), result: temperatureResult("result").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"),
   teamMemberId: uuid("team_member_id"), voided: boolean("voided").notNull().default(false), equipmentName: text("equipment_name"),
-  preferredTemperature: integer("preferred_temperature"), maximumTemperature: integer("maximum_temperature"),
+  preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"),
 });
 
 export const probeProducts = pgTable("probe_products", {
-  id: id(), organisationId: foreignId("organisation_id"), name: text("name").notNull(), minimumTemperature: integer("minimum_temperature").notNull(),
+  id: id(), organisationId: foreignId("organisation_id"), name: text("name").notNull(), minimumTemperature: real("minimum_temperature").notNull(),
   holdMinutes: integer("hold_minutes").notNull(), locationIds: jsonb("location_ids").$type<string[]>().notNull(), order: integer("sort_order"),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), createdAt: createdAt(),
 });
@@ -112,8 +113,8 @@ export const securitySignOffs = pgTable("security_sign_offs", {
 }, table => ({ day: uniqueIndex("security_sign_offs_day_idx").on(table.locationId, table.session, table.dateKey) }));
 
 export const foodChecks = pgTable("food_checks", {
-  id: id(), locationId: foreignId("location_id"), product: text("product").notNull(), quantity: text("quantity"), temperature: integer("temperature").notNull(), result: text("result").notNull(), action: text("action"),
-  createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id"), probeProductId: uuid("probe_product_id"), minimumTemperature: integer("minimum_temperature"), holdMinutes: integer("hold_minutes"),
+  id: id(), locationId: foreignId("location_id"), product: text("product").notNull(), quantity: text("quantity"), temperature: real("temperature").notNull(), result: text("result").notNull(), action: text("action"),
+  createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id"), probeProductId: uuid("probe_product_id"), minimumTemperature: real("minimum_temperature"), holdMinutes: integer("hold_minutes"),
 });
 export const wastageItems = pgTable("wastage_items", { id: id(), locationId: foreignId("location_id"), name: text("name").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt() });
 export const wastageRecords = pgTable("wastage_records", {
@@ -135,7 +136,7 @@ export const additionalRequirements = pgTable("additional_requirements", { id: i
 export const additionalCompletions = pgTable("additional_completions", { id: id(), locationId: foreignId("location_id"), requirementId: foreignId("requirement_id"), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), checkedDate: text("checked_date"), nextDueAt: timestamp("next_due_at", { withTimezone: true }), scheduledDueAt: timestamp("scheduled_due_at", { withTimezone: true }), answers: jsonb("answers").notNull(), certificateReference: text("certificate_reference"), documentStorageId: text("document_storage_id"), documentName: text("document_name"), teamMemberId: foreignId("team_member_id"), completedBy: foreignId("completed_by") });
 
 export const issues = pgTable("issues", { id: id(), locationId: foreignId("location_id"), category: text("category").notNull(), title: text("title").notNull(), description: text("description").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id"), action: text("action"), resolvedAt: timestamp("resolved_at", { withTimezone: true }), resolvedBy: uuid("resolved_by"), resolutionNote: text("resolution_note"), originalReading: text("original_reading"), sourceTemperatureReadingId: uuid("source_temperature_reading_id"), sourceFoodCheckId: uuid("source_food_check_id"), sourceAdditionalCompletionId: uuid("source_additional_completion_id") });
-export const rechecks = pgTable("rechecks", { id: id(), locationId: foreignId("location_id"), issueId: foreignId("issue_id"), readingId: uuid("reading_id"), temperature: integer("temperature").notNull(), result: text("result").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id") });
+export const rechecks = pgTable("rechecks", { id: id(), locationId: foreignId("location_id"), issueId: foreignId("issue_id"), readingId: uuid("reading_id"), temperature: real("temperature").notNull(), result: text("result").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id") });
 export const issueUpdates = pgTable("issue_updates", { id: id(), issueId: foreignId("issue_id"), locationId: foreignId("location_id"), updateType: text("update_type").notNull(), note: text("note").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), createdBy: foreignId("created_by"), teamMemberId: uuid("team_member_id") });
 export const auditEvents = pgTable("audit_events", { id: id(), locationId: uuid("location_id"), userId: foreignId("user_id"), type: text("type").notNull(), detail: text("detail").notNull(), createdAt: createdAt() });
 

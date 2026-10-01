@@ -136,8 +136,8 @@ CREATE TABLE "equipment" (
 	"location_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"type" text NOT NULL,
-	"preferred_temperature" integer,
-	"maximum_temperature" integer,
+	"preferred_temperature" real,
+	"maximum_temperature" real,
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
 	"deactivated_at" timestamp with time zone,
@@ -149,14 +149,14 @@ CREATE TABLE "food_checks" (
 	"location_id" uuid NOT NULL,
 	"product" text NOT NULL,
 	"quantity" text,
-	"temperature" integer NOT NULL,
+	"temperature" real NOT NULL,
 	"result" text NOT NULL,
 	"action" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid NOT NULL,
 	"team_member_id" uuid,
 	"probe_product_id" uuid,
-	"minimum_temperature" integer,
+	"minimum_temperature" real,
 	"hold_minutes" integer
 );
 --> statement-breakpoint
@@ -221,7 +221,7 @@ CREATE TABLE "probe_products" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"organisation_id" uuid NOT NULL,
 	"name" text NOT NULL,
-	"minimum_temperature" integer NOT NULL,
+	"minimum_temperature" real NOT NULL,
 	"hold_minutes" integer NOT NULL,
 	"location_ids" jsonb NOT NULL,
 	"sort_order" integer,
@@ -236,7 +236,7 @@ CREATE TABLE "rechecks" (
 	"location_id" uuid NOT NULL,
 	"issue_id" uuid NOT NULL,
 	"reading_id" uuid,
-	"temperature" integer NOT NULL,
+	"temperature" real NOT NULL,
 	"result" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid NOT NULL,
@@ -304,15 +304,15 @@ CREATE TABLE "temperature_readings" (
 	"round_id" uuid NOT NULL,
 	"equipment_id" uuid NOT NULL,
 	"location_id" uuid NOT NULL,
-	"temperature" integer NOT NULL,
+	"temperature" real NOT NULL,
 	"result" "temperature_result" NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid NOT NULL,
 	"team_member_id" uuid,
 	"voided" boolean DEFAULT false NOT NULL,
 	"equipment_name" text,
-	"preferred_temperature" integer,
-	"maximum_temperature" integer
+	"preferred_temperature" real,
+	"maximum_temperature" real
 );
 --> statement-breakpoint
 CREATE TABLE "temperature_rounds" (
