@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-catalogue-sync.mjs && node scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-migration-baseline.mjs && node scripts/test-auth.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs",
+    "test": "node scripts/test-catalogue-sync.mjs && node scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-migration-baseline.mjs && node scripts/test-auth.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -18,6 +18,7 @@
     "test:phase4-api": "node scripts/test-phase4-api.mjs",
     "test:phase5-api": "node scripts/test-phase5-api.mjs",
     "test:phase6": "node scripts/test-phase6.mjs",
+    "test:phase7": "node scripts/test-phase7.mjs",
     "test:auth": "node scripts/test-auth.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-db.mjs",

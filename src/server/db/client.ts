@@ -13,3 +13,8 @@ export function getDb() {
   pool ??= new Pool({ connectionString: getDatabaseUrl() });
   return drizzle(pool);
 }
+
+export function getPool() {
+  pool ??= new Pool({ connectionString: getDatabaseUrl() });
+  return pool;
+}
