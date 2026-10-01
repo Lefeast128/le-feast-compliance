@@ -15,6 +15,13 @@
       "when": 1790843894747,
       "tag": "0001_temperature_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790845195348,
+      "tag": "0002_auth_foundation",
+      "breakpoints": true
     }
   ]
 }

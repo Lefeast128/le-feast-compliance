@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-catalogue-sync.mjs && node scripts/test-google-sheets.mjs",
+    "test": "node scripts/test-catalogue-sync.mjs && node scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-migration-baseline.mjs && node scripts/test-auth.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -13,9 +13,12 @@
     "migration:baseline": "node scripts/migration-baseline/export.mjs",
     "test:migration-baseline": "node scripts/test-migration-baseline.mjs",
     "test:backend-foundation": "node scripts/test-backend-foundation.mjs",
+    "test:drizzle-integrity": "node scripts/test-drizzle-integrity.mjs",
+    "test:auth": "node scripts/test-auth.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-db.mjs",
-    "db:seed": "node scripts/seed-foundation.mjs"
+    "db:seed": "node scripts/seed-foundation.mjs",
+    "auth:bootstrap-admin": "node scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

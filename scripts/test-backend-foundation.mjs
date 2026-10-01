@@ -12,7 +12,7 @@ const result = await checkDatabase({
 });
 assert.deepEqual(result, { ok: true, database: "connected" });
 assert.equal(calls.length, 1);
-assert.equal(Object.keys(foundationTables).length, 32);
+assert.equal(Object.keys(foundationTables).length, 34);
 assert.deepEqual(FOUNDATION_LOCATIONS.map(location => location.shortName), [
   "blackpool", "bolton", "poulton", "rochdale",
 ]);
