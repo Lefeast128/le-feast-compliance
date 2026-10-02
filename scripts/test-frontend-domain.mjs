@@ -16,7 +16,6 @@ const authHook = await read("hooks/use-auth.ts");
 const frontendFiles = [];
 async function collect(directory) {
   for (const entry of await readdir(new URL(directory, root), { withFileTypes: true })) {
-    if (directory === "" && entry.name === "convex") continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) await collect(path);
     else frontendFiles.push(path);

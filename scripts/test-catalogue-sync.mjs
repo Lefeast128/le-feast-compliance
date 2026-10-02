@@ -5,13 +5,13 @@ import {
   MIN_INITIAL_CATALOGUE_PRODUCTS_PER_STORE,
   mapCatalogueToLocations,
   normalizeCataloguePayload,
-} from "../src/convex/catalogueSync.ts";
+} from "../src/server/catalogue/pure.ts";
 
 const locations = [
-  { _id: "blackpool-id", name: "Blackpool", shortName: "Blackpool" },
-  { _id: "poulton-id", name: "Poulton", shortName: "Poulton" },
-  { _id: "rochdale-id", name: "Rochdale", shortName: "Rochdale" },
-  { _id: "bolton-id", name: "Bolton", shortName: "Bolton" },
+  { id: "blackpool-id", name: "Blackpool", shortName: "Blackpool" },
+  { id: "poulton-id", name: "Poulton", shortName: "Poulton" },
+  { id: "rochdale-id", name: "Rochdale", shortName: "Rochdale" },
+  { id: "bolton-id", name: "Bolton", shortName: "Bolton" },
 ];
 
 const rawProducts = ["1", "2", "3", "4"].map(storeId => ({

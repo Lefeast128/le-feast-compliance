@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import {
   buildWastageExportRows,
-  syncWastageRows,
   validateWastageRows,
-} from "../src/convex/wastageSync.ts";
+} from "../src/server/wastage/pure.ts";
+import { syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
 
 const location = {
   name: "Blackpool North",
@@ -66,17 +66,17 @@ const sheets = {
   },
 };
 
-const first = await syncWastageRows(sheets, "sheet-id", "Wastage", rows);
+const first = await syncWastageRowsWithClient(sheets, "sheet-id", "Wastage", rows);
 assert.deepEqual(first, { updated: 1, appended: 0, unchanged: 0 });
 assert.equal(values[2][3], 5);
 assert.deepEqual(values[1], ["Other store", "31/08/2026", "Historic item", 7]);
 
-const second = await syncWastageRows(sheets, "sheet-id", "Wastage", rows);
+const second = await syncWastageRowsWithClient(sheets, "sheet-id", "Wastage", rows);
 assert.deepEqual(second, { updated: 0, appended: 0, unchanged: 1 });
 assert.equal(batchUpdateCalls, 1);
 
 values = [["Store", "Date", "Food Type", "Quantity"]];
-const appended = await syncWastageRows(sheets, "sheet-id", "Wastage", rows);
+const appended = await syncWastageRowsWithClient(sheets, "sheet-id", "Wastage", rows);
 assert.deepEqual(appended, { updated: 0, appended: 1, unchanged: 0 });
 assert.deepEqual(values[1], ["Blackpool", "01/09/2026", "Chicken", 5]);
 
