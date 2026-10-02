@@ -4,6 +4,24 @@ import {
   validateWastageRows,
 } from "../src/server/wastage/pure.ts";
 import { syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
+import { getGoogleSheetsAuth } from "../src/server/wastage/google-auth.ts";
+
+process.env.GOOGLE_SHEETS_SPREADSHEET_ID = "sheet-id";
+process.env.GOOGLE_SHEETS_TAB_NAME = "Wastage";
+process.env.GOOGLE_SHEETS_CONNECTOR_ID = "google/test-connector";
+delete process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL;
+delete process.env.GOOGLE_SHEETS_PRIVATE_KEY;
+
+let tokenRequest;
+let credentials;
+const fakeAuth = { setCredentials(value) { credentials = value; } };
+const auth = await getGoogleSheetsAuth({
+  tokenGetter: async (connector, params) => { tokenRequest = { connector, params }; return "short-lived-test-token"; },
+  authFactory: () => fakeAuth,
+});
+assert.equal(auth, fakeAuth);
+assert.deepEqual(tokenRequest, { connector: "google/test-connector", params: { subject: { type: "app" } } });
+assert.deepEqual(credentials, { access_token: "short-lived-test-token" });
 
 const location = {
   name: "Blackpool North",

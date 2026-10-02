@@ -14,6 +14,11 @@ export function safeWastageError(error: unknown) {
 export function wastageErrorCategory(error: unknown) {
   const message = safeWastageError(error).toLowerCase();
   if (message.includes("configuration is missing")) return "configuration";
+  if (message.includes("connector is not configured")) return "connector_missing";
+  if (message.includes("connector is not attached")) return "connector_not_attached";
+  if (message.includes("authorization is required")) return "authorization_required";
+  if (message.includes("token exchange failed")) return "token_exchange_failed";
+  if (message.includes("permission denied")) return "google_permission_denied";
   if (message.includes("unexpected wastage headers")) return "sheet_headers";
   if (message.includes("duplicate wastage")) return "sheet_duplicates";
   if (message.includes("timed out") || message.includes("timeout")) return "timeout";
