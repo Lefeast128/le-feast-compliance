@@ -24,7 +24,8 @@
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:seed": "node scripts/seed-foundation.mjs",
     "auth:bootstrap-admin": "node scripts/bootstrap-admin.mjs",
-    "test:auth-delivery": "node scripts/test-auth-delivery.mjs"
+    "test:auth-delivery": "node scripts/test-auth-delivery.mjs",
+    "test:frontend-auth": "node scripts/test-frontend-auth.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

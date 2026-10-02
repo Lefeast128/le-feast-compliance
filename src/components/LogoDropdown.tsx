@@ -14,15 +14,15 @@ import { Home, LogOut } from "lucide-react";
 import { useNavigate } from "react-router";
 
 export function LogoDropdown() {
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleSignOut = async () => {
+  const handleLogout = async () => {
     try {
-      await signOut();
+      await logout();
       navigate("/");
     } catch (error) {
-      console.error("Sign out error:", error);
+      console.error("Logout error:", error);
     }
   };
 
@@ -52,7 +52,7 @@ export function LogoDropdown() {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={handleSignOut}
+              onClick={handleLogout}
               className="cursor-pointer text-destructive focus:text-destructive"
             >
               <LogOut className="mr-2 h-4 w-4" />

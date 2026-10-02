@@ -98,7 +98,6 @@ export default defineConfig(({ command, mode }) => {
       'react-dom',
       'react-dom/client',
       'react-router',
-      '@convex-dev/auth/react',
       'framer-motion',
     ],
   },

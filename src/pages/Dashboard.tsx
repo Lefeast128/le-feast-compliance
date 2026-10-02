@@ -16,7 +16,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
 import { AlertTriangle, ArrowLeft, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Coffee, LogOut, Moon, Plus, RotateCcw, ShieldCheck, Sun, Thermometer, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const dateLabel = (value = new Date()) => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(value);
@@ -31,7 +30,7 @@ const setNewMaximum = (_value: string) => undefined;
 function Brand() { return <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#ffde56] text-[#171717]"><Coffee className="size-5" /></div><div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-tight sm:text-[15px]">Your Daily Checks</p><p className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74] sm:block">Internal compliance workspace</p></div></div>; }
 
 export default function Dashboard() {
-  const { signOut } = useAuth(); const navigate = useNavigate();
+  const { logout } = useAuth();
   const [locationId, setLocationId] = useState<any>(null);
   const [view, setView] = useState<"today" | "calendar" | "day" | "admin" | "training" | "additional">("today"); const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [round, setRound] = useState<"AM" | "PM" | null>(null); const [roundId, setRoundId] = useState<any>(null); const [roundCompleterId, setRoundCompleterId] = useState<any>(null); const [temperatures, setTemperatures] = useState<Record<string, string>>({}); const [roundIssues, setRoundIssues] = useState<any[]>([]); const [actionChoices, setActionChoices] = useState<string[]>([]); const [issueProgress, setIssueProgress] = useState<Record<string, any>>({});
@@ -69,7 +68,6 @@ export default function Dashboard() {
   function editListItem(kind: "wastage" | "product" | "question", item: any) { setEditItemId(item._id); setNewName(item.name ?? item.question); if (kind === "product") { setNewMinimum(String(item.minimumTemperature)); setNewHold(String(item.holdMinutes)); } if (kind === "question") setAdminChecklist(item.checklist); setAdminModal(kind === "wastage" ? "wastageEdit" : kind === "product" ? "productEdit" : "questionEdit"); }
   async function reorderListItem(kind: "wastage" | "question", id: any, direction: "up" | "down") { if (kind === "wastage") await reorderWastageItem({ itemId: id, direction }); else await reorderChecklistQuestion({ questionId: id, direction }); }
   async function saveAdmin() { if (!selectedDashboard) return; if (adminModal === "fridges") await setFridgeCount({ locationId: selectedDashboard.location._id, count: Math.max(1, Number(newCount) || 1) }); if (adminModal === "product") await addProbeProduct({ organisationId: selectedDashboard.location.organisationId, name: newName, minimumTemperature: Number(newMinimum) || 76, holdMinutes: Number(newHold) || 2, locationIds: [selectedDashboard.location._id] }); if (adminModal === "question") await addChecklistQuestion({ locationId: selectedDashboard.location._id, checklist: adminChecklist, question: newQuestion }); if (adminModal === "limits" && limitEquipment) await updateEquipmentLimits({ equipmentId: limitEquipment._id, preferredTemperature: Number(newPreferred), maximumTemperature: Number(newMaximum) }); if (adminModal === "wastage") await addWastageItem({ locationId: selectedDashboard.location._id, name: newName }); if (adminModal === "wastageEdit" && editItemId) await updateWastageItem({ itemId: editItemId, name: newName }); if (adminModal === "productEdit" && editItemId) await updateProbeProduct({ productId: editItemId, name: newName, minimumTemperature: Number(newMinimum), holdMinutes: Number(newHold) }); if (adminModal === "questionEdit" && editItemId) await updateChecklistQuestion({ questionId: editItemId, question: newName }); setAdminModal(null); setEditItemId(null); setNewName(""); setNewQuestion(""); toast.success("Store setup updated"); }
-  async function logout() { await signOut(); navigate("/"); }
   function viewTodayRecords() { const today = new Date(); today.setHours(0, 0, 0, 0); setSelectedDay(today.getTime()); setView("day"); }
 
   if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
