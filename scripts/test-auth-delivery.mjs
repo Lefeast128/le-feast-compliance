@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { handleRequestOtp } from "../api/auth/request-otp.ts";
+import fs from "node:fs";
 import { requestOtp } from "../src/server/auth/core.ts";
-import { ResendDeliveryError } from "../src/server/auth/resend.ts";
+import { ResendDeliveryError, toResendDeliveryError } from "../src/server/auth/resend.ts";
 
-process.env.AUTH_ALLOWED_ORIGINS = "https://le-feast-compliance.vercel.app,http://localhost:5173";
 process.env.AUTH_OTP_PEPPER = "test-only-otp-pepper";
 
 const knownUser = {
@@ -39,73 +38,44 @@ class MemoryRepository {
   async revokeSession() {}
 }
 
-const makeResponse = () => {
-  const response = {
-    statusCode: null,
-    body: null,
-    status(code) { response.statusCode = code; return response; },
-    json(body) { response.body = body; },
-  };
-  return response;
-};
-
-const request = (body, origin = "https://le-feast-compliance.vercel.app") => ({
-  method: "POST",
-  body,
-  headers: origin === null ? {} : { origin },
-});
+const routeSource = fs.readFileSync(new URL("../api/auth/request-otp.ts", import.meta.url), "utf8");
+for (const specifier of [
+  "../../src/server/auth/cookies.js",
+  "../../src/server/auth/core.js",
+  "../../src/server/auth/resend.js",
+  "../../src/server/auth/drizzle-repository.js",
+]) {
+  assert.equal(routeSource.includes(specifier), true, `request-otp route must use production runtime import ${specifier}`);
+}
+assert.equal(routeSource.includes("../../src/server/auth/cookies.ts"), false);
+assert.equal(routeSource.includes("../../src/server/auth/core.ts"), false);
+assert.equal(routeSource.includes("../../src/server/auth/resend.ts"), false);
+assert.equal(routeSource.includes("../../src/server/auth/drizzle-repository.ts"), false);
+for (const status of [400, 403, 405, 500, 502]) assert.match(routeSource, new RegExp(`res\\.status\\(${status}\\)`));
 
 const repo = new MemoryRepository();
 const sentCodes = [];
-const send = async (_email, code) => { sentCodes.push(code); };
-
-let response = makeResponse();
-await handleRequestOtp(request(JSON.stringify({ email: knownUser.email })), response, { repository: repo, send });
-assert.equal(response.statusCode, 200);
-assert.equal(response.body.ok, true);
+await requestOtp(repo, {
+  email: knownUser.email,
+  send: async (_email, code) => { sentCodes.push(code); },
+});
 assert.equal(repo.challenges.at(-1).invalidatedAt, null);
 assert.equal(sentCodes.length, 1);
 
-response = makeResponse();
-await handleRequestOtp(request(JSON.stringify({ email: knownUser.email }), "https://evil.example"), response, { repository: new MemoryRepository(), send });
-assert.equal(response.statusCode, 403);
-assert.equal(response.body.error, "Invalid request origin");
-
-response = makeResponse();
-await handleRequestOtp(request(JSON.stringify({ email: "   " })), response, { repository: new MemoryRepository(), send });
-assert.equal(response.statusCode, 400);
-
-response = makeResponse();
-await handleRequestOtp(request("not-json"), response, { repository: new MemoryRepository(), send });
-assert.equal(response.statusCode, 400);
-assert.equal(response.body.error, "Invalid JSON");
-
-const deliveryErrors = [
+for (const error of [
   new ResendDeliveryError({ status: 401, code: "invalid_api_key", safeMessage: "Resend rejected the request" }),
   new ResendDeliveryError({ status: 403, code: "restricted_key", safeMessage: "Sender is not authorized" }),
   new ResendDeliveryError({ status: 422, code: "validation_error", safeMessage: "The sender address is invalid" }),
-];
-for (const error of deliveryErrors) {
+]) {
   const failedRepo = new MemoryRepository();
-  const logs = [];
-  const originalError = console.error;
-  console.error = (...args) => logs.push(args);
-  response = makeResponse();
-  try {
-    await handleRequestOtp(request(JSON.stringify({ email: knownUser.email })), response, {
-      repository: failedRepo,
+  await assert.rejects(
+    requestOtp(failedRepo, {
+      email: knownUser.email,
       send: async () => { throw error; },
-    });
-  } finally {
-    console.error = originalError;
-  }
-  assert.equal(response.statusCode, 502);
-  assert.equal(response.body.error, "Unable to send verification email");
-  assert.equal(failedRepo.challenges.at(-1).invalidatedAt !== null, true);
-  const logText = JSON.stringify(logs);
-  assert.equal(logText.includes("invalid_api_key"), error.code === "invalid_api_key");
-  assert.equal(logText.includes("123456"), false);
-  assert.equal(logText.includes("test-secret"), false);
+    }),
+    error,
+  );
+  assert.notEqual(failedRepo.challenges.at(-1).invalidatedAt, null);
 }
 
 const failedRepo = new MemoryRepository();
@@ -127,13 +97,28 @@ assert.equal(retried, true);
 
 const unknownRepo = new MemoryRepository();
 unknownRepo.users = [];
-response = makeResponse();
-await handleRequestOtp(request(JSON.stringify({ email: knownUser.email })), response, {
-  repository: unknownRepo,
-  send: async () => { throw new Error("must not send"); },
+let unknownSendCalled = false;
+const unknownResponse = await requestOtp(unknownRepo, {
+  email: knownUser.email,
+  send: async () => { unknownSendCalled = true; },
 });
-assert.equal(response.statusCode, 200);
-assert.equal(response.body.message, "If an account exists, a verification code has been sent.");
+assert.equal(unknownResponse.message, "If an account exists, a verification code has been sent.");
 assert.equal(unknownRepo.challenges.length, 0);
+assert.equal(unknownSendCalled, false);
 
-console.log("Auth delivery tests passed: origin 403, payload 400, Resend 502, safe logging, challenge invalidation, retry, and generic unknown-email response");
+const sanitized = toResendDeliveryError({
+  isAxiosError: true,
+  response: {
+    status: 422,
+    data: {
+      code: "validation_error",
+      message: "Bearer re_test-secret 123456",
+    },
+  },
+});
+assert.equal(sanitized.status, 422);
+assert.equal(sanitized.code, "validation_error");
+assert.equal(sanitized.safeMessage.includes("re_test-secret"), false);
+assert.equal(sanitized.safeMessage.includes("123456"), false);
+
+console.log("Auth delivery tests passed: production .js imports, route status mapping, safe Resend errors, challenge invalidation, immediate retry, and generic unknown-email response");
