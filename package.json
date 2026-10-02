@@ -27,7 +27,8 @@
     "test:auth-delivery": "node scripts/test-auth-delivery.mjs",
     "test:frontend-auth": "node scripts/test-frontend-auth.mjs",
     "test:frontend-domain": "node scripts/test-frontend-domain.mjs",
-    "test:google-sheets": "node --import=tsx/esm scripts/test-google-sheets.mjs"
+    "test:google-sheets": "node --import=tsx/esm scripts/test-google-sheets.mjs",
+    "test:wastage-cron": "node --import=tsx/esm scripts/test-wastage-cron.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
