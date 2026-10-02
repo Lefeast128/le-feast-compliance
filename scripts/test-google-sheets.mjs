@@ -1,27 +1,61 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   buildWastageExportRows,
   validateWastageRows,
 } from "../src/server/wastage/pure.ts";
 import { syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
-import { getGoogleSheetsAuth } from "../src/server/wastage/google-auth.ts";
+import {
+  buildGoogleExternalAccountOptions,
+  buildGoogleWorkloadIdentityAudience,
+  getGoogleSheetsAuth,
+} from "../src/server/wastage/google-auth.ts";
 
 process.env.GOOGLE_SHEETS_SPREADSHEET_ID = "sheet-id";
 process.env.GOOGLE_SHEETS_TAB_NAME = "Wastage";
-process.env.GOOGLE_SHEETS_CONNECTOR_ID = "google/test-connector";
+process.env.GCP_PROJECT_ID = "le-feast-test";
+process.env.GCP_PROJECT_NUMBER = "123456789";
+process.env.GCP_SERVICE_ACCOUNT_EMAIL = "le-feast-compliance-sheets@le-feast-test.iam.gserviceaccount.com";
+process.env.GCP_WORKLOAD_IDENTITY_POOL_ID = "vercel-le-feast";
+process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID = "le-feast-compliance";
+delete process.env.GOOGLE_SHEETS_CONNECTOR_ID;
 delete process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL;
 delete process.env.GOOGLE_SHEETS_PRIVATE_KEY;
 
+const config = {
+  projectId: "le-feast-test",
+  projectNumber: "123456789",
+  serviceAccountEmail: "le-feast-compliance-sheets@le-feast-test.iam.gserviceaccount.com",
+  poolId: "vercel-le-feast",
+  providerId: "le-feast-compliance",
+};
+const audience = buildGoogleWorkloadIdentityAudience(config);
+assert.equal(audience, "https://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/vercel-le-feast/providers/le-feast-compliance");
 let tokenRequest;
-let credentials;
-const fakeAuth = { setCredentials(value) { credentials = value; } };
+let authOptions;
+const fakeAuth = {};
 const auth = await getGoogleSheetsAuth({
-  tokenGetter: async (connector, params) => { tokenRequest = { connector, params }; return "short-lived-test-token"; },
-  authFactory: () => fakeAuth,
+  tokenGetter: async (options) => { tokenRequest = options; return "vercel-oidc-test-token"; },
+  authFactory: (options) => { authOptions = options; return fakeAuth; },
 });
 assert.equal(auth, fakeAuth);
-assert.deepEqual(tokenRequest, { connector: "google/test-connector", params: { subject: { type: "app" } } });
-assert.deepEqual(credentials, { access_token: "short-lived-test-token" });
+assert.equal(authOptions.type, "external_account");
+assert.equal(authOptions.audience, audience);
+assert.equal(authOptions.subject_token_type, "urn:ietf:params:oauth:token-type:jwt");
+assert.equal(authOptions.token_url, "https://sts.googleapis.com/v1/token");
+assert.equal(authOptions.service_account_impersonation_url, "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/le-feast-compliance-sheets@le-feast-test.iam.gserviceaccount.com:generateAccessToken");
+assert.deepEqual(authOptions.scopes, ["https://www.googleapis.com/auth/spreadsheets"]);
+assert.equal(await authOptions.subject_token_supplier.getSubjectToken({ audience }), "vercel-oidc-test-token");
+assert.deepEqual(tokenRequest, { audience });
+assert.deepEqual(buildGoogleExternalAccountOptions(config).type, "external_account");
+await assert.rejects(
+  () => buildGoogleExternalAccountOptions(config, async () => { throw new Error("opaque-token-value"); }).subject_token_supplier.getSubjectToken({ audience }),
+  /Vercel OIDC token exchange failed/,
+);
+const authSource = await readFile(new URL("../src/server/wastage/google-auth.ts", import.meta.url), "utf8");
+assert.ok(!authSource.includes("@vercel/connect"));
+assert.ok(!authSource.includes("GoogleAuth({"));
+assert.ok(!authSource.includes("console.log"));
 
 const location = {
   name: "Blackpool North",

@@ -8,12 +8,12 @@ const safe = safeWastageError(error);
 assert.ok(!safe.includes("secret-material"));
 assert.ok(!safe.includes("otp-secret"));
 assert.ok(!safe.includes("BEGIN PRIVATE KEY"));
-assert.equal(wastageErrorCategory(new Error("Google Sheets configuration is missing: GOOGLE_SHEETS_PRIVATE_KEY")), "configuration");
+assert.equal(wastageErrorCategory(new Error("Google Workload Identity configuration is missing: GCP_PROJECT_ID")), "configuration");
 assert.equal(wastageErrorCategory(new Error("Google Sheet has unexpected wastage headers")), "sheet_headers");
 assert.equal(wastageErrorCategory(new Error("Google Sheet contains duplicate wastage row")), "sheet_duplicates");
 assert.equal(wastageErrorCategory(new Error("request timed out")), "timeout");
-assert.equal(wastageErrorCategory(new Error("Google authorization is required")), "authorization_required");
-assert.equal(wastageErrorCategory(new Error("Google connector token exchange failed")), "token_exchange_failed");
+assert.equal(wastageErrorCategory(new Error("Vercel OIDC token exchange failed")), "oidc_token_exchange_failed");
+assert.equal(wastageErrorCategory(new Error("Google Workload Identity authentication could not be initialized")), "google_auth");
 assert.equal(wastageErrorCategory(new Error("Google Sheets permission denied")), "google_permission_denied");
 
 console.log("Wastage cron safe logging tests passed");
