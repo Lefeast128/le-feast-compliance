@@ -55,7 +55,7 @@ export function readGoogleWorkloadIdentityConfig(): GoogleWorkloadIdentityConfig
 }
 
 export function buildGoogleWorkloadIdentityAudience(config: GoogleWorkloadIdentityConfig) {
-  return `https://iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.poolId}/providers/${config.providerId}`;
+  return `//iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.poolId}/providers/${config.providerId}`;
 }
 
 export function buildGoogleExternalAccountOptions(

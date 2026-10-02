@@ -30,7 +30,7 @@ const config = {
   providerId: "le-feast-compliance",
 };
 const audience = buildGoogleWorkloadIdentityAudience(config);
-assert.equal(audience, "https://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/vercel-le-feast/providers/le-feast-compliance");
+assert.equal(audience, "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/vercel-le-feast/providers/le-feast-compliance");
 let tokenRequest;
 let authOptions;
 const fakeAuth = {};
