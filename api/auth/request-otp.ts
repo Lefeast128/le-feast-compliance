@@ -1,6 +1,6 @@
-import { assertMutationOrigin } from "../../src/server/auth/cookies.ts";
-import { requestOtp, type AuthRepository } from "../../src/server/auth/core.ts";
-import { ResendDeliveryError, sendOtpEmail } from "../../src/server/auth/resend.ts";
+import { assertMutationOrigin } from "../../src/server/auth/cookies.js";
+import { requestOtp, type AuthRepository } from "../../src/server/auth/core.js";
+import { ResendDeliveryError, sendOtpEmail } from "../../src/server/auth/resend.js";
 
 type Request = { method?: string; body?: unknown; headers?: Record<string, string | string[] | undefined> };
 type Response = { status: (code: number) => Response; json: (body: unknown) => void };
@@ -26,7 +26,7 @@ export async function handleRequestOtp(req: Request, res: Response, dependencies
     }
     const forwardedFor = req.headers?.["x-forwarded-for"];
     const rateLimitKey = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(",")[0]?.trim();
-    const repository = dependencies?.repository ?? (await import("../../src/server/auth/drizzle-repository.ts")).createDrizzleAuthRepository();
+    const repository = dependencies?.repository ?? (await import("../../src/server/auth/drizzle-repository.js")).createDrizzleAuthRepository();
     const result = await requestOtp(repository, {
       email: body.email,
       rateLimitKey,
