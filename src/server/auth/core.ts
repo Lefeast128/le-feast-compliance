@@ -101,11 +101,16 @@ export async function requestOtp(
   if (!user) return genericOtpResponse();
 
   const latest = await repository.getLatestChallenge(normalizedEmail);
-  if (latest && latest.createdAt + OTP_RESEND_COOLDOWN_MS > now) return genericOtpResponse();
+  if (
+    latest &&
+    latest.consumedAt === null &&
+    latest.invalidatedAt === null &&
+    latest.createdAt + OTP_RESEND_COOLDOWN_MS > now
+  ) return genericOtpResponse();
 
   const code = generateOtp();
   await repository.invalidateActiveChallenges(normalizedEmail, now);
-  await repository.insertChallenge({
+  const challenge: OtpChallenge = {
     id: randomUUID(),
     normalizedEmail,
     otpDigest: hashOtp(normalizedEmail, code, input.otpPepper),
@@ -116,8 +121,18 @@ export async function requestOtp(
     maxAttempts: OTP_MAX_ATTEMPTS,
     rateLimitKey: input.rateLimitKey ?? normalizedEmail,
     createdAt: now,
-  });
-  await input.send(user.email, code);
+  };
+  await repository.insertChallenge(challenge);
+  try {
+    await input.send(user.email, code);
+  } catch (error) {
+    try {
+      await repository.updateChallenge(challenge.id, { invalidatedAt: now });
+    } catch {
+      // Preserve the delivery error; the database failure is not safe to expose.
+    }
+    throw error;
+  }
   return genericOtpResponse();
 }
 
@@ -144,7 +159,7 @@ export async function verifyOtp(
     const failedAttempts = challenge.failedAttempts + 1;
     await repository.updateChallenge(challenge.id, {
       failedAttempts,
-      invalidatedAt: failedAttempts >= challenge.maxAttempts ? now : null,
+      invalidatedAt: failedAttempts >= OTP_MAX_ATTEMPTS ? now : null,
     });
     return null;
   }
