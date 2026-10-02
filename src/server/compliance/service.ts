@@ -252,11 +252,10 @@ export async function addProbeRecheck(context: AuthContext, input: { issueId: st
   });
 }
 
-export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId?: string }) {
+export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string }) {
   requireEnum(input.checklist, "checklist", ["opening", "closing"] as const); requireEnum(input.answer, "answer", ["yes", "no", "na"] as const);
   const location = await locationFor(context, input.locationId); requireUuid(input.questionId, "questionId");
-  if (input.teamMemberId) await activeMember(location.id, input.teamMemberId);
-  if (input.answer === "no" && !input.teamMemberId) throw new ApiError(422, "Team member is required for a failed checklist item");
+  await activeMember(location.id, input.teamMemberId);
   if (input.answer === "no" && !input.action?.trim()) throw new ApiError(422, "A corrective action is required");
   const db = getDb();
   return db.transaction(async (tx: any) => {
@@ -298,9 +297,9 @@ export async function signOffChecklist(context: AuthContext, input: { locationId
   });
 }
 
-export async function saveSecurityResponse(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; questionId: string; issue?: string; teamMemberId?: string }) {
+export async function saveSecurityResponse(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; questionId: string; issue?: string; teamMemberId: string }) {
   requireEnum(input.session, "session", ["AM", "PM"] as const);
-  const location = await locationFor(context, input.locationId); if (input.teamMemberId) await activeMember(location.id, input.teamMemberId); const db = getDb();
+  const location = await locationFor(context, input.locationId); await activeMember(location.id, input.teamMemberId); const db = getDb();
   const [question] = await db.select().from(securityQuestions).where(and(eq(securityQuestions.id, input.questionId), eq(securityQuestions.locationId, location.id))).limit(1);
   if (!question) throw new ApiError(422, "Security question does not belong to this location"); if (question.session !== input.session) throw new ApiError(422, "Security question does not match this session"); if (!question.active) throw new ApiError(422, "This configuration version is no longer active");
   const range = localDayRange(Date.now(), location.timezone); const existing = await db.select({ id: securityResponses.id }).from(securityResponses).where(and(eq(securityResponses.locationId, location.id), eq(securityResponses.session, input.session), eq(securityResponses.questionId, question.id), gte(securityResponses.createdAt, new Date(range.start)), lt(securityResponses.createdAt, new Date(range.end)))); if (existing.length) throw new ApiError(409, "Security question already answered today");

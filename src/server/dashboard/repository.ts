@@ -88,7 +88,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     db.select().from(wastageRecords).where(and(eq(wastageRecords.locationId, location.id), gte(wastageRecords.createdAt, from), lt(wastageRecords.createdAt, until))),
     db.select().from(cleaningTasks).where(eq(cleaningTasks.locationId, location.id)).orderBy(asc(cleaningTasks.order)),
     db.select().from(cleaningCompletions).where(and(eq(cleaningCompletions.locationId, location.id), eq(cleaningCompletions.dateKey, todayKey))),
-    db.select().from(teamMembers).where(and(eq(teamMembers.locationId, location.id), eq(teamMembers.active, true))),
+    db.select().from(teamMembers).where(eq(teamMembers.locationId, location.id)),
     db.select().from(trainingRequirements).where(and(eq(trainingRequirements.locationId, location.id), eq(trainingRequirements.active, true))).orderBy(asc(trainingRequirements.order)),
     db.select().from(trainingCompletions).where(eq(trainingCompletions.locationId, location.id)),
     db.select().from(additionalRequirements).where(and(eq(additionalRequirements.locationId, location.id), eq(additionalRequirements.active, true), lt(additionalRequirements.nextDueAt, new Date(now + 1)))),
@@ -97,6 +97,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
 
   const issueIds = issueRows.map(issue => issue.id);
   const issueUpdateRows = issueIds.length ? await db.select().from(issueUpdates).where(inArray(issueUpdates.issueId, issueIds)).orderBy(asc(issueUpdates.createdAt)) : [];
+  const activeTeamMemberRows = teamMemberRows.filter(member => member.active);
   const teamNames = new Map(teamMemberRows.map(member => [member.id, member.name]));
   const userIds = [...new Set(issueRows.flatMap(issue => [issue.createdBy, issue.resolvedBy]).filter((id): id is string => Boolean(id)).concat(issueUpdateRows.map(update => update.createdBy)))];
   const userRows = userIds.length ? await db.select().from(users).where(inArray(users.id, userIds)) : [];
@@ -137,7 +138,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     const required = requirement.requiredDocumentVersionId ? versionById.get(requirement.requiredDocumentVersionId) : oldest;
     const audience = requirement.audience ?? "all_team";
     const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
-    const applicableTeamMemberIds = teamMemberRows.filter(member => audience === "managers_only" ? (member.role ?? "team") === "manager" : audience === "selected_people" ? selected.includes(member.id) : true).map(member => member.id);
+    const applicableTeamMemberIds = activeTeamMemberRows.filter(member => audience === "managers_only" ? (member.role ?? "team") === "manager" : audience === "selected_people" ? selected.includes(member.id) : true).map(member => member.id);
     const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
     return { ...serialize(requirement), currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, applicableTeamMemberIds, documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null };
   });
@@ -153,11 +154,11 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     access: { role, memberships: context.memberships },
     equipment: serialize(equipmentRows), tasks: serialize(tasks), rounds: serialize(rounds), readings: serialize(readings), issues: issueData,
     foodChecks: foodRows.map(row => ({ ...serialize(row), teamMemberName: teamNames.get(row.teamMemberId ?? "") })), probeProducts: serialize(probeData),
-    security: serialize(security), securityResponses: serialize(securityData), checklistSignOffs: serialize(checklistSignOffRows.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId) }))), securitySignOffs: serialize(securitySignOffRows.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId) }))),
+    security: serialize(security), securityResponses: serialize({ AM: securityData.AM.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })), PM: securityData.PM.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) }), checklistSignOffs: serialize(checklistSignOffRows.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId) }))), securitySignOffs: serialize(securitySignOffRows.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId) }))),
     wastageItems: serialize(wastageItemRows), wastageRecords: wastageRowRows.map(row => ({ ...serialize(row), teamMemberName: teamNames.get(row.teamMemberId ?? "") })),
     cleaningTasks: serialize(cleaningData), cleaningCompletions: serialize(cleaningCompletionRows.filter(completion => cleaningData.some(task => task.id === completion.taskId)).map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") }))),
-    teamMembers: serialize(teamMemberRows), trainingRequirements: trainingData, trainingCompletions: trainingDataRows,
+    teamMembers: serialize(activeTeamMemberRows), trainingRequirements: trainingData, trainingCompletions: trainingDataRows,
     additionalRequirements: serialize(additionalRequirementRows), additionalCompletions: additionalData,
-    checklists: serialize(checklists),
+    checklists: serialize({ opening: { questions: checklists.opening.questions, responses: checklists.opening.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) }, closing: { questions: checklists.closing.questions, responses: checklists.closing.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) } }),
   };
 };
