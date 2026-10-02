@@ -8,6 +8,7 @@ import { syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
 import {
   buildGoogleExternalAccountOptions,
   buildGoogleWorkloadIdentityAudience,
+  buildGoogleWorkloadIdentityTokenAudience,
   getGoogleSheetsAuth,
 } from "../src/server/wastage/google-auth.ts";
 
@@ -30,7 +31,9 @@ const config = {
   providerId: "le-feast-compliance",
 };
 const audience = buildGoogleWorkloadIdentityAudience(config);
+const tokenAudience = "https://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/vercel-le-feast/providers/le-feast-compliance";
 assert.equal(audience, "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/vercel-le-feast/providers/le-feast-compliance");
+assert.equal(buildGoogleWorkloadIdentityTokenAudience(config), tokenAudience);
 let tokenRequest;
 let authOptions;
 const fakeAuth = {};
@@ -46,7 +49,7 @@ assert.equal(authOptions.token_url, "https://sts.googleapis.com/v1/token");
 assert.equal(authOptions.service_account_impersonation_url, "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/le-feast-compliance-sheets@le-feast-test.iam.gserviceaccount.com:generateAccessToken");
 assert.deepEqual(authOptions.scopes, ["https://www.googleapis.com/auth/spreadsheets"]);
 assert.equal(await authOptions.subject_token_supplier.getSubjectToken({ audience }), "vercel-oidc-test-token");
-assert.deepEqual(tokenRequest, { audience });
+assert.deepEqual(tokenRequest, { audience: tokenAudience });
 assert.deepEqual(buildGoogleExternalAccountOptions(config).type, "external_account");
 await assert.rejects(
   () => buildGoogleExternalAccountOptions(config, async () => { throw new Error("opaque-token-value"); }).subject_token_supplier.getSubjectToken({ audience }),

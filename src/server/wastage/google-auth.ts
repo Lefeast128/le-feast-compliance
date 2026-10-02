@@ -58,11 +58,16 @@ export function buildGoogleWorkloadIdentityAudience(config: GoogleWorkloadIdenti
   return `//iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.poolId}/providers/${config.providerId}`;
 }
 
+export function buildGoogleWorkloadIdentityTokenAudience(config: GoogleWorkloadIdentityConfig) {
+  return `https://iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.poolId}/providers/${config.providerId}`;
+}
+
 export function buildGoogleExternalAccountOptions(
   config: GoogleWorkloadIdentityConfig,
   tokenGetter: OidcTokenGetter = getVercelOidcToken,
 ): ExternalAccountClientOptions {
   const audience = buildGoogleWorkloadIdentityAudience(config);
+  const tokenAudience = buildGoogleWorkloadIdentityTokenAudience(config);
   return {
     type: "external_account",
     audience,
@@ -73,7 +78,7 @@ export function buildGoogleExternalAccountOptions(
     subject_token_supplier: {
       getSubjectToken: async () => {
         try {
-          return await tokenGetter({ audience });
+          return await tokenGetter({ audience: tokenAudience });
         } catch {
           throw new GoogleSheetsAuthError("oidc_token", "Vercel OIDC token exchange failed");
         }
