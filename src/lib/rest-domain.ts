@@ -29,11 +29,14 @@ const dateKey = (value: any) => {
 export const restApi = {
   locations: { myLocations: async () => compat(await query("/api/locations").then((value: any) => value.locations ?? value)) },
   catalogue: {
+    list: async ({ locationId }: AnyRecord) => compat(await query(`/api/catalogue?locationId=${encodeURIComponent(locationId)}`)),
     wastage: async ({ locationId, search }: AnyRecord) => {
       const params = new URLSearchParams({ locationId: String(locationId) });
       if (typeof search === "string" && search.trim()) params.set("search", search.trim());
       return compat(await query(`/api/catalogue/wastage?${params.toString()}`));
     },
+    updateWastage: ({ productId, ...body }: AnyRecord) => patch(`/api/catalogue/${encodeURIComponent(idOf(productId))}`, body),
+    refresh: (body: AnyRecord) => post("/api/catalogue/refresh", body),
   },
   compliance: {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/dashboard?locationId=${encodeURIComponent(locationId)}`)),

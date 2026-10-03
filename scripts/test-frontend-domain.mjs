@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { apiRequest } from "../src/lib/api-client.ts";
+import { buildCatalogueUpdatePayload, clearEditorForStoreChange, createCatalogueEditor, filterCatalogueProducts, getCategorySuggestions, resetCatalogueEditor } from "../src/lib/catalogue-admin.ts";
 import { buildWastagePayload, emptyWastagePickerDraft, filterWastageProducts, isPositiveQuantity, setWastagePickerMode } from "../src/lib/wastage-picker.ts";
 
 const root = new URL("../src/", import.meta.url);
@@ -38,10 +39,16 @@ assert.match(restDomain, /\/api\/compliance\/wastage/);
 assert.match(restDomain, /\/api\/admin\/additional-requirements/);
 assert.match(restDomain, /\/api\/documents\/upload/);
 assert.match(restDomain, /\/api\/catalogue\/wastage/);
+assert.match(restDomain, /\/api\/catalogue\?locationId=/);
+assert.match(restDomain, /\/api\/catalogue\/\$\{encodeURIComponent\(idOf\(productId\)\)\}/);
+assert.match(restDomain, /\/api\/catalogue\/refresh/);
 assert.match(dashboard, /setLocationId/);
 assert.match(dashboard, /selectedDashboard/);
 assert.match(dashboard, /StaffWastageModal/);
 assert.match(dashboard, /restApi\.catalogue\.wastage/);
+assert.match(admin, /WastageCatalogueAdmin/);
+assert.match(admin, /Wastage catalogue/);
+assert.match(admin, /Manage catalogue/);
 assert.match(restDomain, /rest:data-changed/);
 assert.match(restDomain, /result\._id = result\.id/);
 assert.match(frontendSource, /credentials: "include"/);
@@ -101,4 +108,27 @@ assert.equal(isPositiveQuantity("0"), false);
 assert.equal(isPositiveQuantity("-1"), false);
 assert.equal(isPositiveQuantity("0.25"), true);
 
-console.log("Frontend domain tests passed: 37/37");
+const catalogueProducts = [
+  { id: "p1", plu: 1001, name: "Chicken Sandwich", department: "Food", group: "Lunch", wastageCategory: "Prepared", needsCategoryReview: true, excludedFromWastage: false },
+  { id: "p2", plu: 1002, name: "Orange Juice", department: "Drinks", group: "Cold", wastageCategory: null, needsCategoryReview: false, excludedFromWastage: true },
+];
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "sandwich", "all", "all"), [catalogueProducts[0]]);
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "1002", "all", "all"), [catalogueProducts[1]]);
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "", "pending", "all"), [catalogueProducts[0]]);
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "", "reviewed", "all"), [catalogueProducts[1]]);
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "", "all", "included"), [catalogueProducts[0]]);
+assert.deepEqual(filterCatalogueProducts(catalogueProducts, "", "all", "excluded"), [catalogueProducts[1]]);
+assert.deepEqual(getCategorySuggestions(catalogueProducts), ["Prepared"]);
+const catalogueEditor = createCatalogueEditor(catalogueProducts[0], "store-1");
+assert.deepEqual(buildCatalogueUpdatePayload({ ...catalogueEditor, category: "  Prepared Food  ", included: true, completeReview: true }), { locationId: "store-1", category: "Prepared Food", excluded: false, completeReview: true });
+assert.deepEqual(buildCatalogueUpdatePayload({ ...catalogueEditor, category: "  ", included: false, completeReview: false }), { locationId: "store-1", category: null, excluded: true, completeReview: false });
+assert.equal("name" in buildCatalogueUpdatePayload(catalogueEditor), false);
+assert.equal("plu" in buildCatalogueUpdatePayload(catalogueEditor), false);
+assert.equal("siteId" in buildCatalogueUpdatePayload(catalogueEditor), false);
+assert.equal("department" in buildCatalogueUpdatePayload(catalogueEditor), false);
+assert.equal("group" in buildCatalogueUpdatePayload(catalogueEditor), false);
+assert.equal(clearEditorForStoreChange(catalogueEditor, "store-2"), null);
+assert.equal(clearEditorForStoreChange(catalogueEditor, "store-1"), catalogueEditor);
+assert.equal(resetCatalogueEditor(), null);
+
+console.log("Frontend domain tests passed: 55/55");
