@@ -69,6 +69,9 @@ export const restApi = {
     addIssueUpdate: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body),
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },
+  reports: {
+    compliance: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
+  },
   additional: {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/additional?locationId=${encodeURIComponent(locationId)}`)),
     history: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/additional/history?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
