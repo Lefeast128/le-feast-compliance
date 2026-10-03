@@ -53,6 +53,7 @@ export default async (req: ApiRequest, res: ApiResponse) => {
       durationMs: Date.now() - startedAt,
       ok: false,
       errorCategory: wastageErrorCategory(error),
+      serviceAccountEmail: process.env.GCP_SERVICE_ACCOUNT_EMAIL?.trim() || "unknown",
       message: safeWastageError(error),
     });
     res.status(502).json({ ok: false, error: "Wastage sync failed" });

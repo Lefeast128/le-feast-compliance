@@ -4,7 +4,7 @@ import {
   buildWastageExportRows,
   validateWastageRows,
 } from "../src/server/wastage/pure.ts";
-import { syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
+import { safeGoogleSheetsErrorDetails, syncWastageRowsWithClient } from "../src/server/wastage/google.ts";
 import {
   buildGoogleExternalAccountOptions,
   buildGoogleWorkloadIdentityAudience,
@@ -51,6 +51,8 @@ assert.deepEqual(authOptions.scopes, ["https://www.googleapis.com/auth/spreadshe
 assert.equal(await authOptions.subject_token_supplier.getSubjectToken({ audience }), "vercel-oidc-test-token");
 assert.deepEqual(tokenRequest, { audience: tokenAudience });
 assert.deepEqual(buildGoogleExternalAccountOptions(config).type, "external_account");
+const permissionDetails = safeGoogleSheetsErrorDetails({ response: { status: 403, data: { error: { message: "The caller does not have permission; token=do-not-leak" } } } });
+assert.deepEqual(permissionDetails, { status: 403, message: "The caller does not have permission; token=[redacted]" });
 await assert.rejects(
   () => buildGoogleExternalAccountOptions(config, async () => { throw new Error("opaque-token-value"); }).subject_token_supplier.getSubjectToken({ audience }),
   /Vercel OIDC token exchange failed/,
