@@ -31,7 +31,8 @@
     "test:google-sheets": "node --import=tsx/esm scripts/test-google-sheets.mjs",
     "test:wastage-cron": "node --import=tsx/esm scripts/test-wastage-cron.mjs",
     "test:inspection-chronology": "node --import=tsx/esm scripts/test-inspection-chronology.mjs",
-    "test:compliance-reports": "node --import=tsx/esm scripts/test-compliance-reports.mjs"
+    "test:compliance-reports": "node --import=tsx/esm scripts/test-compliance-reports.mjs",
+    "test:report-exports": "node --import=tsx/esm scripts/test-report-exports.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -73,6 +74,7 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.3",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.23.25",
     "google-auth-library": "^9.15.1",
     "googleapis": "^144.0.0",

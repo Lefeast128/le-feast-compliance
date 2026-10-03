@@ -60,7 +60,6 @@ assert.match(reportUi, /type="date"/);
 assert.match(reportUi, /Daily breakdown/);
 assert.match(reportUi, /onOpenDay/);
 assert.match(dashboard, /setSelectedDay\(date\)/);
-assert.doesNotMatch(reportUi, /CSV|XLSX|xlsx/);
 assert.doesNotMatch(reportUi, /documentStorageId|pathname/);
 assert.match(reportUi, /No recorded failures in this period/);
 assert.match(reportService, /evaluatedDaysMissingEvidence/);
@@ -68,4 +67,3 @@ assert.match(reportService, /No Waste|noWaste/);
 assert.match(reportService, /rechecksRecorded/);
 
 console.log("Compliance report tests passed: 44/44");
-
