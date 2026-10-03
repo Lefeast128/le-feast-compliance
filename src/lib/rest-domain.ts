@@ -28,6 +28,13 @@ const dateKey = (value: any) => {
 
 export const restApi = {
   locations: { myLocations: async () => compat(await query("/api/locations").then((value: any) => value.locations ?? value)) },
+  catalogue: {
+    wastage: async ({ locationId, search }: AnyRecord) => {
+      const params = new URLSearchParams({ locationId: String(locationId) });
+      if (typeof search === "string" && search.trim()) params.set("search", search.trim());
+      return compat(await query(`/api/catalogue/wastage?${params.toString()}`));
+    },
+  },
   compliance: {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/dashboard?locationId=${encodeURIComponent(locationId)}`)),
     operations: async () => compat(await query("/api/operations")),
