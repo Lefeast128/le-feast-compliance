@@ -72,10 +72,10 @@ const answerText = (answers: unknown) => {
 export function buildInspectionChronology(input: ChronologyInput): InspectionChronologyEvent[] {
   const events: Array<InspectionChronologyEvent & { priority: number; ordinal: number }> = [];
   let ordinal = 0;
-  const push = (event: Omit<InspectionChronologyEvent, "occurredAt"> & { occurredAt: unknown }) => {
+  const push = (event: Omit<InspectionChronologyEvent, "occurredAt"> & { occurredAt: unknown; sortPriority?: number }) => {
     const occurredAt = asDate(event.occurredAt);
     if (!occurredAt || occurredAt < input.dayStart || occurredAt > input.dayEnd) return;
-    events.push({ ...event, occurredAt: occurredAt.toISOString(), priority: priority[event.eventType] ?? 999, ordinal: ordinal++ });
+    events.push({ ...event, occurredAt: occurredAt.toISOString(), priority: event.sortPriority ?? priority[event.eventType] ?? 999, ordinal: ordinal++ });
   };
 
   const rounds = input.rounds ?? [];
@@ -260,6 +260,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       result: update.status,
       sourceRecordId: update.id,
       relatedIssueId: update.issueId,
+      sortPriority: update.updateType === "resolution" ? 135 : undefined,
       ...member(update),
     });
   }
@@ -289,6 +290,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
     })
     .map(event => {
       const result = { ...event } as Partial<InspectionChronologyEvent> & { priority?: number; ordinal?: number };
+      delete (result as { sortPriority?: number }).sortPriority;
       delete result.priority;
       delete result.ordinal;
       return result as InspectionChronologyEvent;
