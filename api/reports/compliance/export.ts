@@ -28,7 +28,8 @@ export default async (req: ApiRequest, res: ApiResponse) => {
     output.setHeader("Content-Type", format === "csv" ? "text/csv; charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     output.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     output.setHeader("Cache-Control", "private, no-store");
-    output.status(200).end(format === "csv" ? renderComplianceCsv(report) : await renderComplianceWorkbook(report));
+    output.status(200);
+    output.end(format === "csv" ? renderComplianceCsv(report) : await renderComplianceWorkbook(report));
   } catch (error) {
     respondError(res, error);
   }
