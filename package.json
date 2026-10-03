@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs",
+    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs && node --import=tsx/esm scripts/test-inspection-chronology.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -29,7 +29,8 @@
     "test:frontend-auth": "node scripts/test-frontend-auth.mjs",
     "test:frontend-domain": "node scripts/test-frontend-domain.mjs",
     "test:google-sheets": "node --import=tsx/esm scripts/test-google-sheets.mjs",
-    "test:wastage-cron": "node --import=tsx/esm scripts/test-wastage-cron.mjs"
+    "test:wastage-cron": "node --import=tsx/esm scripts/test-wastage-cron.mjs",
+    "test:inspection-chronology": "node --import=tsx/esm scripts/test-inspection-chronology.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

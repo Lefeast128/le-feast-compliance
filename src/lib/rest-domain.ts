@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
+import { dateKeyFrom } from "@/lib/date-key";
 
 type AnyRecord = Record<string, any>;
 
@@ -22,8 +23,7 @@ const patch = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(p
 const remove = (path: string): Promise<any> => apiRequest<any>(path, { method: "DELETE" }).then((value) => unwrap<any>(value));
 
 const dateKey = (value: any) => {
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  return new Date(value).toISOString().slice(0, 10);
+  return dateKeyFrom(value);
 };
 
 export const restApi = {

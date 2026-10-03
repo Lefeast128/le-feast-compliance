@@ -6,6 +6,7 @@ import { requireLocationAccess, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { localDateKey, localDayRange } from "../compliance/validation.js";
 import { localWeekday } from "../dashboard/time.js";
+import { buildInspectionChronology, carriedOpenIssues } from "./chronology.js";
 
 function dateValue(value: unknown, label: string) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, `${label} must be YYYY-MM-DD`);
@@ -54,7 +55,7 @@ export async function calendar(context: AuthContext, input: { locationId: string
 
 export async function archive(context: AuthContext, input: { locationId: string; start: string; end: string }) {
   const location = await locationFor(context, input.locationId); const { from, to } = dayBounds(input.start, input.end); const start = new Date(localDayRange(Date.parse(`${from}T12:00:00Z`), location.timezone).start); const end = new Date(localDayRange(Date.parse(`${to}T12:00:00Z`), location.timezone).end - 1); const db = getDb();
-  const [readings, rounds, probes, questions, checklistSignoffs, securityResponsesRows, securitySignoffs, wastage, cleaning, issuesRows, updates, recheckRows] = await Promise.all([
+  const [readings, rounds, probes, checklistResponseRows, checklistSignoffs, securityResponsesRows, securitySignoffs, wastage, cleaning, issuesRows, updates, recheckRows, equipmentRows, checklistQuestionsRows, securityQuestionsRows, cleaningTaskRows] = await Promise.all([
     db.select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, location.id), gte(temperatureReadings.createdAt, start), lte(temperatureReadings.createdAt, end))),
     db.select().from(temperatureRounds).where(and(eq(temperatureRounds.locationId, location.id), gte(temperatureRounds.startedAt, start), lte(temperatureRounds.startedAt, end))),
     db.select().from(foodChecks).where(and(eq(foodChecks.locationId, location.id), gte(foodChecks.createdAt, start), lte(foodChecks.createdAt, end))),
@@ -67,17 +68,85 @@ export async function archive(context: AuthContext, input: { locationId: string;
     db.select().from(issues).where(and(eq(issues.locationId, location.id), lte(issues.createdAt, end))),
     db.select().from(issueUpdatesTable).where(and(eq(issueUpdatesTable.locationId, location.id), gte(issueUpdatesTable.createdAt, start), lte(issueUpdatesTable.createdAt, end))),
     db.select().from(rechecksTable).where(and(eq(rechecksTable.locationId, location.id), gte(rechecksTable.createdAt, start), lte(rechecksTable.createdAt, end))),
+    db.select().from(equipment).where(eq(equipment.locationId, location.id)),
+    db.select().from(checklistQuestions).where(eq(checklistQuestions.locationId, location.id)),
+    db.select().from(securityQuestions).where(eq(securityQuestions.locationId, location.id)),
+    db.select().from(cleaningTasks).where(eq(cleaningTasks.locationId, location.id)),
   ]);
   const issueIds = new Set(issuesRows.map(i => i.id)); const issueUpdates = updates.filter(u => issueIds.has(u.issueId)); const rechecks = recheckRows.filter(r => issueIds.has(r.issueId));
   const [additionalRows, requirementRows, memberRows] = await Promise.all([
-    db.select().from(additionalCompletions).where(eq(additionalCompletions.locationId, location.id)),
+    db.select().from(additionalCompletions).where(and(eq(additionalCompletions.locationId, location.id), gte(additionalCompletions.completedAt, start), lte(additionalCompletions.completedAt, end))),
     db.select().from(additionalRequirements).where(eq(additionalRequirements.locationId, location.id)),
     db.select().from(teamMembers).where(eq(teamMembers.locationId, location.id)),
   ]);
   const memberNames = new Map(memberRows.map(member => [member.id, member.name]));
+  const equipmentNames = new Map(equipmentRows.map(item => [item.id, item.name]));
+  const checklistLabels = new Map(checklistQuestionsRows.map(question => [question.id, question.question]));
+  const securityLabels = new Map(securityQuestionsRows.map(question => [question.id, question.question]));
+  const cleaningLabels = new Map(cleaningTaskRows.map(task => [task.id, task.name]));
+  const named = (teamMemberId: string | null | undefined) => teamMemberId ? memberNames.get(teamMemberId) ?? null : null;
   const additionalDocuments = additionalRows.map(row => row.documentId).filter((id): id is string => Boolean(id));
   const documentRows = additionalDocuments.length ? await db.select().from(documents).where(inArray(documents.id, additionalDocuments)) : [];
-  const checklistResponse = (row: any) => ({ ...iso(row), teamMemberName: row.teamMemberId ? memberNames.get(row.teamMemberId) : undefined });
-  const securityResponse = (row: any) => ({ ...iso(row), teamMemberName: row.teamMemberId ? memberNames.get(row.teamMemberId) : undefined });
-  return { location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone }, readings: readings.map(iso), rounds: rounds.map(iso), probes: probes.map(iso), questions: { opening: questions.filter(q => q.checklist === "opening").map(checklistResponse), closing: questions.filter(q => q.checklist === "closing").map(checklistResponse) }, checklistSignOffs: checklistSignoffs.map(iso), securityResponses: { AM: securityResponsesRows.filter(r => r.session === "AM").map(securityResponse), PM: securityResponsesRows.filter(r => r.session === "PM").map(securityResponse) }, securitySignOffs: securitySignoffs.map(iso), wastageRecords: wastage.map(iso), cleaningCompletions: cleaning.map(iso), issues: issuesRows.map(iso), issueUpdates: issueUpdates.map(iso), rechecks: rechecks.map(iso), additionalCompletions: additionalRows.map(row => { const value = iso(row) as any; delete value.documentStorageId; delete value.documentName; return { ...value, requirementTitle: requirementRows.find(requirement => requirement.id === row.requirementId)?.title, teamMemberName: memberRows.find(member => member.id === row.teamMemberId)?.name, documentUrl: row.documentId && documentRows.some(document => document.id === row.documentId) ? `/api/documents/${row.documentId}` : null, issue: issuesRows.find(issue => issue.sourceAdditionalCompletionId === row.id) ?? null }; }) };
+  const enrichedReadings = readings.map(row => ({ ...iso(row), session: rounds.find(round => round.id === row.roundId)?.session ?? null, equipmentName: row.equipmentName ?? equipmentNames.get(row.equipmentId) ?? null, teamMemberName: named(row.teamMemberId) }));
+  const enrichedRounds = rounds.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedProbes = probes.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const checklistResponse = (row: any) => ({ ...iso(row), question: checklistLabels.get(row.questionId) ?? null, teamMemberName: named(row.teamMemberId) });
+  const securityResponse = (row: any) => ({ ...iso(row), question: securityLabels.get(row.questionId) ?? null, teamMemberName: named(row.teamMemberId) });
+  const enrichedChecklistResponses = checklistResponseRows.map(checklistResponse);
+  const enrichedChecklistSignoffs = checklistSignoffs.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedSecurityResponses = securityResponsesRows.map(securityResponse);
+  const enrichedSecuritySignoffs = securitySignoffs.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedCleaning = cleaning.map(row => ({ ...iso(row), taskName: cleaningLabels.get(row.taskId) ?? null, teamMemberName: named(row.teamMemberId) }));
+  const enrichedWastage = wastage.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedIssues = issuesRows.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedUpdates = issueUpdates.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedRechecks = rechecks.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
+  const enrichedAdditional = additionalRows.map(row => {
+    const value = iso(row) as any;
+    delete value.documentStorageId;
+    delete value.documentName;
+    delete value.documentId;
+    return { ...value, requirementTitle: requirementRows.find(requirement => requirement.id === row.requirementId)?.title ?? null, teamMemberName: named(row.teamMemberId), documentUrl: row.documentId && documentRows.some(document => document.id === row.documentId) ? `/api/documents/${row.documentId}` : null, issue: issuesRows.find(issue => issue.sourceAdditionalCompletionId === row.id) ?? null };
+  });
+  const chronology = buildInspectionChronology({ dayStart: start, dayEnd: end, readings: enrichedReadings, rounds: enrichedRounds, probes: enrichedProbes, checklistResponses: enrichedChecklistResponses, checklistSignoffs: enrichedChecklistSignoffs, securityResponses: enrichedSecurityResponses, securitySignoffs: enrichedSecuritySignoffs, cleaning: enrichedCleaning, wastage: enrichedWastage, additional: enrichedAdditional, issues: enrichedIssues, issueUpdates: enrichedUpdates, rechecks: enrichedRechecks });
+  const carry = carriedOpenIssues(enrichedIssues, start);
+  const calendarDay = (await calendar(context, { locationId: location.id, monthStart: from, monthEnd: to })).days[0];
+  const summary = {
+    status: calendarDay?.status === "green" ? "complete" : calendarDay?.status === "amber" ? "corrective_action" : calendarDay?.status === "grey" ? "future" : "incomplete",
+    complete: Boolean(calendarDay?.complete),
+    correctiveActionRecorded: chronology.some(event => event.eventType.startsWith("issue_") || event.result === "fail" || event.result === "no"),
+    carriedOpenIssueCount: carry.length,
+    counts: {
+      temperatureReadings: enrichedReadings.length,
+      temperatureRounds: enrichedRounds.length,
+      foodProbes: enrichedProbes.length,
+      checklistResponses: enrichedChecklistResponses.length,
+      checklistSignoffs: enrichedChecklistSignoffs.length,
+      securityResponses: enrichedSecurityResponses.length,
+      securitySignoffs: enrichedSecuritySignoffs.length,
+      cleaningCompletions: enrichedCleaning.length,
+      wastageRecords: enrichedWastage.length,
+      additionalChecks: enrichedAdditional.length,
+      issueEvents: chronology.filter(event => event.eventType.startsWith("issue_")).length,
+    },
+  };
+  return {
+    location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone },
+    readings: enrichedReadings,
+    rounds: enrichedRounds,
+    probes: enrichedProbes,
+    questions: { opening: enrichedChecklistResponses.filter(q => q.checklist === "opening"), closing: enrichedChecklistResponses.filter(q => q.checklist === "closing") },
+    checklistSignOffs: enrichedChecklistSignoffs,
+    securityResponses: { AM: enrichedSecurityResponses.filter(r => r.session === "AM"), PM: enrichedSecurityResponses.filter(r => r.session === "PM") },
+    securitySignOffs: enrichedSecuritySignoffs,
+    wastageRecords: enrichedWastage,
+    cleaningCompletions: enrichedCleaning,
+    issues: enrichedIssues,
+    issueUpdates: enrichedUpdates,
+    rechecks: enrichedRechecks,
+    additionalCompletions: enrichedAdditional,
+    chronology,
+    summary,
+    carriedOpenIssues: carry,
+  };
 }
