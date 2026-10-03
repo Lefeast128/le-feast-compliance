@@ -18,6 +18,11 @@ export const requireFiniteNumber = (value: unknown, name: string) => {
   return value;
 };
 
+export const requireBoolean = (value: unknown, name: string) => {
+  if (typeof value !== "boolean") throw new ApiError(400, `${name} must be boolean`);
+  return value;
+};
+
 export const requireEnum = <T extends string>(value: unknown, name: string, allowed: readonly T[]): T => {
   if (typeof value !== "string" || !allowed.includes(value as T)) throw new ApiError(400, `${name} is invalid`);
   return value as T;

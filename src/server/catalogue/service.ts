@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { catalogueProducts, catalogueSyncStatus, locations } from "../db/schema.js";
-import { requireLocationManager, type AuthContext } from "../auth/core.js";
+import { auditEvents, catalogueProducts, catalogueSyncStatus, locations } from "../db/schema.js";
+import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
-import { requireUuid } from "../compliance/validation.js";
+import { requireBoolean, requireString, requireUuid } from "../compliance/validation.js";
 import { withJobLock } from "../jobs/lock.js";
 import { assertCatalogueSize, buildCatalogueChanges, mapCatalogueToLocations, normalizeCataloguePayload, type CatalogueProduct } from "./pure.js";
 
@@ -119,4 +119,59 @@ export async function listCatalogue(context: AuthContext, locationId: string) {
   requireLocationManager(context, location.id, location.organisationId);
   const [products, status] = await Promise.all([getDb().select().from(catalogueProducts).where(and(eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.plu)), getDb().select().from(catalogueSyncStatus).where(eq(catalogueSyncStatus.locationId, location.id)).limit(1)]);
   return { products, syncStatus: status[0] ?? null };
+}
+
+export async function listWastageCatalogue(context: AuthContext, locationId: string, search?: string) {
+  requireUuid(locationId, "locationId");
+  const [location] = await getDb().select().from(locations).where(and(eq(locations.id, locationId), eq(locations.active, true))).limit(1);
+  if (!location) throw new ApiError(404, "Location not found");
+  requireLocationAccess(context, location.id, location.organisationId);
+  const term = typeof search === "string" ? search.trim().slice(0, 100) : "";
+  const filters = [eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true), eq(catalogueProducts.excludedFromWastage, false)];
+  if (term) {
+    const pattern = `%${term}%`;
+    filters.push(or(ilike(catalogueProducts.name, pattern), sql`${catalogueProducts.plu}::text ILIKE ${pattern}`) as typeof filters[number]);
+  }
+  const products = await getDb().select({ id: catalogueProducts.id, plu: catalogueProducts.plu, name: catalogueProducts.name, department: catalogueProducts.department, group: catalogueProducts.group, category: catalogueProducts.wastageCategory, needsCategoryReview: catalogueProducts.needsCategoryReview }).from(catalogueProducts).where(and(...filters)).orderBy(asc(catalogueProducts.plu));
+  return { locationId: location.id, products };
+}
+
+export async function updateCatalogueWastageConfig(context: AuthContext, productId: string, input: Record<string, unknown>) {
+  requireUuid(productId, "catalogueProductId");
+  const db = getDb();
+  const [product] = await db.select().from(catalogueProducts).where(eq(catalogueProducts.id, productId)).limit(1);
+  if (!product) throw new ApiError(404, "Catalogue product not found");
+  if (input.locationId !== undefined) {
+    const locationId = requireUuid(input.locationId, "locationId");
+    if (locationId !== product.locationId) throw new ApiError(422, "Catalogue product does not belong to this location");
+  }
+  const [location] = await db.select().from(locations).where(eq(locations.id, product.locationId)).limit(1);
+  if (!location || !location.active) throw new ApiError(404, "Location not found");
+  requireLocationManager(context, location.id, location.organisationId);
+
+  const values: Partial<typeof catalogueProducts.$inferInsert> = {};
+  if (Object.prototype.hasOwnProperty.call(input, "category")) {
+    if (input.category === null) values.wastageCategory = null;
+    else {
+      const category = requireString(input.category, "category");
+      if (category.length > 100) throw new ApiError(422, "category is too long");
+      values.wastageCategory = category;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "excluded")) values.excludedFromWastage = requireBoolean(input.excluded, "excluded");
+  if (Object.prototype.hasOwnProperty.call(input, "completeReview")) {
+    const completeReview = requireBoolean(input.completeReview, "completeReview");
+    values.needsCategoryReview = !completeReview;
+    if (completeReview) {
+      values.wastageReviewedAt = new Date();
+      values.wastageReviewedBy = context.user.id;
+    }
+  }
+  if (!Object.keys(values).length) throw new ApiError(400, "No catalogue wastage configuration changes supplied");
+
+  return db.transaction(async tx => {
+    const [updated] = await tx.update(catalogueProducts).set(values).where(eq(catalogueProducts.id, product.id)).returning();
+    await tx.insert(auditEvents).values({ locationId: location.id, userId: context.user.id, type: "catalogue_wastage_config_updated", detail: "Catalogue wastage configuration updated", createdAt: new Date() });
+    return updated;
+  });
 }
