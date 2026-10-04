@@ -5,6 +5,8 @@ const root = new URL("../", import.meta.url);
 const read = path => readFile(new URL(path, root), "utf8");
 const service = await read("src/server/compliance/service.ts");
 const dashboard = await read("src/pages/Dashboard.tsx");
+const dashboardToday = await read("src/components/dashboard/DashboardToday.tsx");
+const dashboardSource = `${dashboard}\n${dashboardToday}`;
 const checklist = await read("src/components/InlineChecklist.tsx");
 const history = await read("src/server/history/service.ts");
 const dashboardRepository = await read("src/server/dashboard/repository.ts");
@@ -23,10 +25,10 @@ assert.match(service, /if \(input\.answer === "no" && !input\.action\?\.trim\(\)
 assert.match(checklist, /workflowTeamMemberId/);
 assert.match(checklist, /onComplete\(question\._id, taskMember\)/);
 assert.match(checklist, /disabled=\{!taskMember\}/);
-assert.match(dashboard, /questionId, answer: "yes", teamMemberId \}/);
-assert.match(dashboard, /questionId: currentQuestion\._id, answer,.*teamMemberId: checklistTeamMemberId/);
-assert.match(dashboard, /questionId: currentSecurityQuestion\._id,.*teamMemberId: securityTeamMemberId/);
-assert.match(dashboard, /setSecurityTeamMemberId\(""\)/);
+assert.match(dashboardSource, /questionId, answer: "yes", teamMemberId/);
+assert.match(dashboardSource, /questionId: dashboard\.location\._id|questionId: currentSecurityQuestion\._id/);
+assert.match(dashboardSource, /teamMemberId: securityTeamMemberId/);
+assert.match(dashboardSource, /setSecurityTeamMemberId\(""\)/);
 
 assert.match(dashboardRepository, /teamMemberName: teamNames\.get\(row\.teamMemberId\)/);
 assert.match(history, /const checklistResponse = .*teamMemberName/);
