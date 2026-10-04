@@ -1,93 +1,82 @@
-// The existing dashboard is a compatibility UI over the REST response shape during the domain cutover.
 import AdminSetup from "@/components/AdminSetup";
+import AdditionalChecksView from "@/components/AdditionalChecksView";
 import InlineChecklist from "@/components/InlineChecklist";
 import InlineCleaning from "@/components/InlineCleaning";
 import MobileDayView from "@/components/MobileDayView";
 import TrainingView from "@/components/TrainingView";
-import AdditionalChecksView from "@/components/AdditionalChecksView";
 import TemperatureActionScreen from "@/components/TemperatureActionScreen";
 import TemperatureRoundEntry from "@/components/TemperatureRoundEntry";
 import CalendarView from "@/components/dashboard/CalendarView";
-import DashboardToday from "@/components/dashboard/DashboardToday";
+import DashboardToday, { type DashboardTodayProps } from "@/components/dashboard/DashboardToday";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
-import type { CalendarDay, DashboardData, DashboardIssue, DashboardLocation, Equipment, IssueProgress, TeamMember } from "@/components/dashboard/dashboard-types";
+import { useDashboardWorkflows } from "@/components/dashboard/useDashboardWorkflows";
+import type { CalendarDay, DashboardData, DashboardLocation, DashboardView } from "@/components/dashboard/dashboard-types";
 import { useAuth } from "@/hooks/use-auth";
-import { documentsApi, restApi, useRestMutation, useRestQuery } from "@/lib/rest-domain";
+import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { formatDateKey } from "@/lib/date-key";
-import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
 const dateLabel = (value = new Date()) => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(value);
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
-
-// Dashboard components
 
 export default function Dashboard() {
   const { logout } = useAuth();
   const [renderTimestamp] = useState(() => Date.now());
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [view, setView] = useState<"today" | "calendar" | "day" | "admin" | "training" | "additional">("today"); const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [round, setRound] = useState<"AM" | "PM" | null>(null); const [roundId, setRoundId] = useState<string | null>(null); const [roundCompleterId, setRoundCompleterId] = useState<string | null>(null); const [temperatures, setTemperatures] = useState<Record<string, string>>({}); const [roundIssues, setRoundIssues] = useState<Array<Equipment & { issueId: string; temperature: number }>>([]); const [issueProgress, setIssueProgress] = useState<Record<string, IssueProgress>>({});
-  const [roundEquipment, setRoundEquipment] = useState<Equipment[]>([]);
-  const [probeOpen, setProbeOpen] = useState(false); const [probeProduct, setProbeProduct] = useState(""); const [probeTemperature, setProbeTemperature] = useState(""); const [probeFailed, setProbeFailed] = useState(false); const [probeIssueId, setProbeIssueId] = useState<string | null>(null); const [probeQuantity, setProbeQuantity] = useState("");
-  const [wastageOpen, setWastageOpen] = useState(false); const [wastageCatalogue, setWastageCatalogue] = useState<WastagePickerProduct[]>([]); const [wastageCatalogueLoading, setWastageCatalogueLoading] = useState(false); const [wastageCatalogueError, setWastageCatalogueError] = useState<string | null>(null);
-  const [cleaningList, setCleaningList] = useState(false); const [checklistList, setChecklistList] = useState<"opening" | "closing" | null>(null);
-  const [security, setSecurity] = useState<"AM" | "PM" | null>(null); const [securityIndex, setSecurityIndex] = useState(0); const [securityTeamMemberId, setSecurityTeamMemberId] = useState(""); const [securityIssue, setSecurityIssue] = useState("");
-  const [issueOpen, setIssueOpen] = useState(false); const [issueSelected, setIssueSelected] = useState<DashboardIssue | null>(null); const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const completeAdditional = useRestMutation(restApi.additional.complete); const completeTrainingRequirement = useRestMutation(restApi.compliance.completeTrainingRequirement); const signOffChecklist = useRestMutation(restApi.compliance.signOffChecklist); const signOffSecurity = useRestMutation(restApi.compliance.signOffSecurity); const addIssueUpdate = useRestMutation(restApi.compliance.addIssueUpdate); const completeCleaningTask = useRestMutation(restApi.compliance.completeCleaningTask); const recordWastage = useRestMutation(restApi.compliance.recordWastage); const startRound = useRestMutation(restApi.compliance.startRound); const recordTemperature = useRestMutation(restApi.compliance.recordTemperature); const completeRound = useRestMutation(restApi.compliance.completeRound); const recordFoodCheck = useRestMutation(restApi.compliance.recordFoodCheck); const recordProbeRecheck = useRestMutation(restApi.compliance.recordProbeRecheck); const saveChecklistResponse = useRestMutation(restApi.compliance.saveChecklistResponse); const saveSecurityResponse = useRestMutation(restApi.compliance.saveSecurityResponse); const createManualIssue = useRestMutation(restApi.compliance.createManualIssue); const addIssueAction = useRestMutation(restApi.compliance.addIssueAction); const addRecheck = useRestMutation(restApi.compliance.addRecheck);
-  const bounds = monthBounds(calendarMonth); const locations = useRestQuery<DashboardLocation[]>("locations", restApi.locations.myLocations, true); const currentLocationId = locationId ?? locations?.[0]?._id ?? null; const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId)); const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard)); const calendar = useRestQuery<CalendarDay[]>(view === "calendar" && dashboard ? `calendar:${dashboard.location._id}:${bounds.start}:${bounds.end}` : null, () => restApi.compliance.calendar({ locationId: dashboard!.location._id, monthStart: bounds.start, monthEnd: bounds.end }), Boolean(view === "calendar" && dashboard)); const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
-  useEffect(() => {
-    const catalogueLocationId = dashboard?.location?._id ?? currentLocationId;
-    if (!wastageOpen || !catalogueLocationId) return;
-    let cancelled = false;
-    restApi.catalogue.wastage({ locationId: catalogueLocationId })
-      .then((result: { products?: WastagePickerProduct[] }) => {
-        if (cancelled) return;
-        setWastageCatalogue(result?.products ?? []);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setWastageCatalogue([]);
-        setWastageCatalogueError(error instanceof Error ? error.message : "Unable to load wastage catalogue");
-      })
-      .finally(() => {
-        if (!cancelled) setWastageCatalogueLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [wastageOpen, dashboard?.location?._id, currentLocationId]);
-  function switchLocation(nextLocationId: string) { if (!nextLocationId || nextLocationId === currentLocationId) return; setLocationId(nextLocationId); setView("today"); setRound(null); setRoundEquipment([]); setRoundIssues([]); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null); }
-  function openWastage() { setWastageCatalogueLoading(true); setWastageCatalogueError(null); setWastageOpen(true); }
-  const active = dashboard; const memberName = (id: string | undefined) => active?.teamMembers.find((member: TeamMember) => member._id === id)?.name ?? "Team member"; const equipment = active?.equipment ?? []; const openIssues = dashboard?.issues.filter(item => item.status !== "resolved") ?? []; const currentSecurity = security && active ? active.security[security] : null; const currentSecurityQuestion = currentSecurity?.[securityIndex];
-  const amRound = active?.rounds.find(item => item.session === "AM" && item.completedAt); const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt); const amComplete = !!amRound; const pmComplete = !!pmRound; const openingComplete = (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening"); const closingComplete = (active?.checklists.closing.responses.length ?? 0) >= (active?.checklists.closing.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing"); const amSecurityComplete = (active?.securityResponses.AM.length ?? 0) >= (active?.security.AM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "AM"); const pmSecurityComplete = (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM");
+  const [view, setView] = useState<DashboardView>("today");
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const bounds = monthBounds(calendarMonth);
+  const locations = useRestQuery<DashboardLocation[]>("locations", restApi.locations.myLocations, true);
+  const currentLocationId = locationId ?? locations?.[0]?._id ?? null;
+  const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
+  const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
+  const calendar = useRestQuery<CalendarDay[]>(view === "calendar" && dashboard ? `calendar:${dashboard.location._id}:${bounds.start}:${bounds.end}` : null, () => restApi.compliance.calendar({ locationId: dashboard!.location._id, monthStart: bounds.start, monthEnd: bounds.end }), Boolean(view === "calendar" && dashboard));
+  const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
+  const workflows = useDashboardWorkflows({ dashboard, currentLocationId });
 
-  async function beginRound(session: "AM" | "PM") { if (!dashboard) return; const id = await startRound({ locationId: dashboard.location._id, session }); setRoundId(id); setRoundEquipment([...equipment]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({}); }
-  async function completeTemperatureRound(teamMemberId: string) { if (!dashboard || !round || !teamMemberId || roundEquipment.some(item => !temperatures[item._id])) return; setRoundCompleterId(teamMemberId); const issues: Array<Equipment & { issueId: string; temperature: number }> = []; for (const item of roundEquipment) { const value = Number(temperatures[item._id]); const result = await recordTemperature({ roundId: roundId ?? await startRound({ locationId: dashboard.location._id, session: round }), locationId: dashboard.location._id, equipmentId: item._id, temperature: value, teamMemberId }); if (result.issueId) issues.push({ ...item, issueId: result.issueId, temperature: value }); } if (issues.length) { setRoundIssues(issues); setIssueProgress(Object.fromEntries(issues.map(issue => [issue.issueId, { actions: [], actionMemberId: "", actionsSaved: false, recheckTemperature: "", recheckMemberId: "", recheckSaved: false }]))); return; } await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId }); toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` }); setRound(null); setRoundEquipment([]); }
-  async function saveTemperatureActions(issueId: string, actions: string[], teamMemberId: string) { if (!issueId || !actions.length || !teamMemberId) return; await addIssueAction({ issueId, action: actions.join("; "), teamMemberId }); setIssueProgress(current => ({ ...current, [issueId]: { ...current[issueId], actions: [...actions], actionMemberId: teamMemberId, actionsSaved: true } })); toast.success("Action recorded — recheck required"); }
-  async function saveTemperatureRecheck(issueId: string, recheckTemperature: string, teamMemberId: string) { if (!roundIssues.length || !issueId || !recheckTemperature || !dashboard || !teamMemberId || !roundCompleterId) return; const value = Number(recheckTemperature); if (Number.isNaN(value) || !issueProgress[issueId]?.actionsSaved) return; const recheck = await addRecheck({ issueId, temperature: value, teamMemberId }); const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], recheckTemperature, recheckMemberId: teamMemberId, recheckResult: recheck.result, recheckSaved: true } }; setIssueProgress(nextProgress); const allSubmitted = roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved && nextProgress[issue.issueId]?.recheckSaved); if (!allSubmitted) { toast.success("Recheck recorded — remaining failed fridges still require rechecks"); return; } await completeRound({ roundId, locationId: dashboard.location._id, session: round!, teamMemberId: roundCompleterId }); toast.success(roundIssues.some(issue => nextProgress[issue.issueId]?.recheckResult === "fail") ? "Rechecks recorded — further action required" : "All rechecks passed — round complete"); setRound(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({}); }
-  async function saveProbe(teamMemberId: string) { if (!dashboard || !teamMemberId || !probeProduct || !probeTemperature || !probeQuantity.trim()) return; const value = Number(probeTemperature); if (Number.isNaN(value)) return; if (probeFailed) { if (!probeIssueId) return; const result = await recordProbeRecheck({ issueId: probeIssueId, temperature: value, teamMemberId }); if (result.result === "fail") { setProbeTemperature(""); toast("Recheck remains below the configured minimum; further action is required"); return; } toast.success("Probe recheck passed — issue resolved"); setProbeOpen(false); setProbeFailed(false); setProbeIssueId(null); setProbeTemperature(""); setProbeQuantity(""); return; } const configuredProduct = active?.probeProducts.find(item => item.name === probeProduct); const minimum = configuredProduct?.minimumTemperature ?? 76; const holdMinutes = configuredProduct?.holdMinutes ?? 2; const result = await recordFoodCheck({ locationId: dashboard.location._id, product: probeProduct, quantity: probeQuantity, temperature: value, teamMemberId, action: value < minimum ? "Continue cooking; recheck before serving" : `Held for at least ${holdMinutes} minutes` }); if (result.issueId) { setProbeFailed(true); setProbeIssueId(result.issueId); setProbeTemperature(""); toast("Continue cooking, then record the recheck"); } else { toast.success("Food probe recorded"); setProbeOpen(false); setProbeFailed(false); setProbeIssueId(null); setProbeTemperature(""); setProbeQuantity(""); } }
-  async function saveWastage(payload: ReturnType<typeof buildWastagePayload>) { if (!dashboard) return; await recordWastage({ locationId: dashboard.location._id, ...payload }); toast.success(payload.noWaste ? "No waste recorded" : "Wastage recorded"); setWastageOpen(false); }
-  async function completeChecklistQuestion(questionId: string, teamMemberId: string) { if (!dashboard || !checklistList || !teamMemberId) return; await saveChecklistResponse({ locationId: dashboard.location._id, checklist: checklistList, questionId, answer: "yes", teamMemberId }); toast.success("Job completed"); }
-  async function saveChecklistIssue(questionId: string, problem: string, action: string, teamMemberId: string) { if (!dashboard || !checklistList || !teamMemberId) return; await saveChecklistResponse({ locationId: dashboard.location._id, checklist: checklistList, questionId, answer: "no", problem, action, teamMemberId }); toast.success("Issue and action recorded"); }
-  async function signOffChecklistTask(teamMemberId: string) { if (!dashboard || !checklistList || !teamMemberId) return; await signOffChecklist({ locationId: dashboard.location._id, checklist: checklistList, teamMemberId }); toast.success(`${checklistList === "opening" ? "Opening" : "Closing"} Food Safety complete`); setChecklistList(null); }
-  function beginSecurity(session: "AM" | "PM", index = 0) { setSecurity(session); setSecurityIndex(index); setSecurityTeamMemberId(""); setSecurityIssue(""); }
-  async function saveSecurity() { if (!dashboard || !security || !currentSecurityQuestion || !securityTeamMemberId) return; const last = securityIndex + 1 >= (currentSecurity?.length ?? 0); await saveSecurityResponse({ locationId: dashboard.location._id, session: security, questionId: currentSecurityQuestion._id, issue: last ? securityIssue || undefined : undefined, teamMemberId: securityTeamMemberId }); if (last) { await signOffSecurity({ locationId: dashboard.location._id, session: security, teamMemberId: securityTeamMemberId }); toast.success(`${security} security check complete`); setSecurity(null); setSecurityTeamMemberId(""); } else setSecurityIndex(value => value + 1); }
-  async function saveIssue(description: string, teamMemberId: string) { if (!dashboard || !teamMemberId) return; await createManualIssue({ locationId: dashboard.location._id, description, teamMemberId }); setIssueOpen(false); toast.success("Issue reported"); }
-  function viewTodayRecords() { setSelectedDay(formatDateKey(new Date())); setView("day"); }
+  function switchLocation(nextLocationId: string) {
+    if (!nextLocationId || nextLocationId === currentLocationId) return;
+    setLocationId(nextLocationId);
+    setView("today");
+    workflows.resetForLocation();
+  }
+
+  function viewTodayRecords() {
+    setSelectedDay(formatDateKey(new Date()));
+    setView("day");
+  }
 
   if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
   if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
-  if (round && roundIssues.length) return <TemperatureActionScreen session={round} issues={roundIssues} teamMembers={dashboard?.teamMembers ?? []} issueProgress={issueProgress} setIssueProgress={setIssueProgress} onSaveActions={saveTemperatureActions} onRecheck={saveTemperatureRecheck} onBack={() => { setRound(null); setRoundEquipment([]); }} />;
-  if (round) return <TemperatureRoundEntry session={round} equipment={roundEquipment} teamMembers={dashboard?.teamMembers ?? []} temperatures={temperatures} setTemperatures={setTemperatures} onComplete={completeTemperatureRound} onBack={() => { setRound(null); setRoundEquipment([]); }} />;
-  if (cleaningList) return <InlineCleaning locationName={dashboard.location.name} tasks={active?.cleaningTasks ?? []} completions={active?.cleaningCompletions ?? []} teamMembers={dashboard?.teamMembers ?? []} onComplete={async (taskId, teamMemberId) => { await completeCleaningTask({ locationId: dashboard.location._id, taskId, teamMemberId }); toast.success("Cleaning job completed"); }} onBack={() => setCleaningList(false)} />;
-  if (checklistList) return <InlineChecklist title={checklistList === "opening" ? "Opening checklist" : "Closing checklist"} questions={active?.checklists[checklistList].questions ?? []} responses={active?.checklists[checklistList].responses ?? []} teamMembers={dashboard?.teamMembers ?? []} onComplete={completeChecklistQuestion} onIssue={saveChecklistIssue} onSignOff={signOffChecklistTask} onBack={() => setChecklistList(null)} />;
-  if (security && currentSecurityQuestion) return <SecurityScreen session={security} question={currentSecurityQuestion.question} index={securityIndex} total={currentSecurity?.length ?? 0} teamMembers={dashboard?.teamMembers ?? []} teamMemberId={securityTeamMemberId} setTeamMemberId={setSecurityTeamMemberId} issue={securityIssue} setIssue={setSecurityIssue} onSave={saveSecurity} onBack={() => { setSecurity(null); setSecurityTeamMemberId(""); }} />;
+
+  if (workflows.round && workflows.roundIssues.length) return <TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} onSaveActions={workflows.saveTemperatureActions} onRecheck={workflows.saveTemperatureRecheck} onBack={() => { workflows.resetForLocation(); }} />;
+  if (workflows.round) return <TemperatureRoundEntry session={workflows.round} equipment={workflows.roundEquipment} teamMembers={dashboard.teamMembers} temperatures={workflows.temperatures} setTemperatures={workflows.setTemperatures} onComplete={workflows.completeTemperatureRound} onBack={() => workflows.resetForLocation()} />;
+  if (workflows.cleaningList) return <InlineCleaning locationName={dashboard.location.name} tasks={workflows.active?.cleaningTasks ?? []} completions={workflows.active?.cleaningCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeCleaning} onBack={() => workflows.setCleaningList(false)} />;
+  if (workflows.checklistList) return <InlineChecklist title={workflows.checklistList === "opening" ? "Opening checklist" : "Closing checklist"} questions={workflows.active?.checklists[workflows.checklistList].questions ?? []} responses={workflows.active?.checklists[workflows.checklistList].responses ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeChecklistQuestion} onIssue={workflows.saveChecklistIssue} onSignOff={workflows.signOffChecklistTask} onBack={() => workflows.setChecklistList(null)} />;
+  if (workflows.security && workflows.currentSecurityQuestion) return <SecurityScreen session={workflows.security} question={workflows.currentSecurityQuestion.question} index={workflows.securityIndex} total={workflows.active?.security[workflows.security].length ?? 0} teamMembers={dashboard.teamMembers} teamMemberId={workflows.securityTeamMemberId} setTeamMemberId={workflows.setSecurityTeamMemberId} issue={workflows.securityIssue} setIssue={workflows.setSecurityIssue} onSave={workflows.saveSecurity} onBack={() => { workflows.setSecurity(null); workflows.setSecurityTeamMemberId(""); }} />;
   if (view === "calendar") return <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />;
-  if (view === "day") return <MobileDayView location={dashboard?.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={equipment} onBack={() => setView("calendar")} />;
-  if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={active?.trainingRequirements ?? []} completions={active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers ?? []} onComplete={async (requirementId, teamMemberId) => { await completeTrainingRequirement({ locationId: dashboard.location._id, requirementId, teamMemberId }); toast.success("Training completion recorded"); }} onBack={() => setView("today")} />;
-  if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers ?? []} onComplete={async (data) => { let documentId: string | undefined; if (data.certificate) { const uploaded = await documentsApi.upload({ locationId: dashboard.location._id, file: data.certificate, purpose: "additional_check_certificate" }); documentId = uploaded.id ?? uploaded._id; } await completeAdditional({ locationId: dashboard.location._id, requirementId: data.requirementId, teamMemberId: data.teamMemberId, answers: data.answers, certificateReference: data.certificateReference || undefined, documentId }); toast.success("Additional check completed"); }} onBack={() => setView("today")} />;
+  if (view === "day") return <MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => setView("calendar")} />;
+  if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />;
+  if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
   if (view === "admin") return <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />;
 
-  const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
-  return <DashboardToday dashboard={dashboard!} active={active!} locations={locations} locationId={locationId} onLocationChange={switchLocation} onAdmin={() => setView("admin")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLogout={logout} todayLabel={dateLabel()} renderTimestamp={renderTimestamp} requiredComplete={requiredComplete} equipment={equipment} memberName={memberName} amRound={amRound} pmRound={pmRound} amComplete={amComplete} pmComplete={pmComplete} openingComplete={openingComplete} closingComplete={closingComplete} amSecurityComplete={amSecurityComplete} pmSecurityComplete={pmSecurityComplete} openIssues={openIssues} beginRound={beginRound} viewTodayRecords={viewTodayRecords} setView={setView} additional={additional} setCleaningList={setCleaningList} setChecklistList={setChecklistList} beginSecurity={beginSecurity} setProbeProduct={setProbeProduct} setProbeFailed={setProbeFailed} setProbeIssueId={setProbeIssueId} setProbeQuantity={setProbeQuantity} setProbeOpen={setProbeOpen} probeOpen={probeOpen} probeProduct={probeProduct} probeQuantity={probeQuantity} probeTemperature={probeTemperature} setProbeTemperature={setProbeTemperature} probeFailed={probeFailed} saveProbe={saveProbe} issueOpen={issueOpen} setIssueOpen={setIssueOpen} saveIssue={saveIssue} wastageOpen={wastageOpen} openWastage={openWastage} setWastageOpen={setWastageOpen} wastageCatalogue={wastageCatalogue} wastageCatalogueLoading={wastageCatalogueLoading} wastageCatalogueError={wastageCatalogueError} saveWastage={saveWastage} issueSelected={issueSelected} setIssueSelected={setIssueSelected} addIssueUpdate={addIssueUpdate} />;
+  const todayProps: DashboardTodayProps = {
+    ...workflows,
+    dashboard,
+    active: workflows.active!,
+    locations,
+    locationId,
+    onLocationChange: switchLocation,
+    onAdmin: () => setView("admin"),
+    onCalendar: () => setView("calendar"),
+    onTraining: () => setView("training"),
+    onLogout: logout,
+    todayLabel: dateLabel(),
+    renderTimestamp,
+    viewTodayRecords,
+    setView,
+    additional,
+  };
+  return <DashboardToday {...todayProps} />;
 }
