@@ -11,6 +11,7 @@ export type TeamMember = {
 
 export type Equipment = {
   _id: string;
+  type?: string;
   preferredTemperature?: number;
   maximumTemperature?: number;
 };

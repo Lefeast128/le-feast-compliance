@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
 import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember } from "@/components/dashboard/dashboard-types";
+import { submitTemperatureRound } from "@/components/dashboard/temperature-round";
 
 type WorkflowArgs = {
   dashboard: DashboardData | null | undefined;
@@ -15,6 +16,8 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [roundCompleterId, setRoundCompleterId] = useState<string | null>(null);
   const [temperatures, setTemperatures] = useState<Record<string, string>>({});
   const [roundIssues, setRoundIssues] = useState<Array<Equipment & { issueId: string; temperature: number }>>([]);
+  const [roundSubmitting, setRoundSubmitting] = useState(false);
+  const roundSubmittingRef = useRef(false);
   const [issueProgress, setIssueProgress] = useState<Record<string, IssueProgress>>({});
   const [roundEquipment, setRoundEquipment] = useState<Equipment[]>([]);
   const [probeOpen, setProbeOpen] = useState(false);
@@ -90,29 +93,40 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmSecurityComplete = (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM");
   const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
 
-  async function beginRound(session: "AM" | "PM") {
+  function beginRound(session: "AM" | "PM") {
     if (!dashboard) return;
-    const id = await startRound({ locationId: dashboard.location._id, session });
-    setRoundId(id); setRoundEquipment([...equipment]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
+    setRoundId(null); setRoundEquipment([...equipment]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
   }
 
   async function completeTemperatureRound(teamMemberId: string) {
-    if (!dashboard || !round || !teamMemberId || roundEquipment.some(item => !temperatures[item._id])) return;
+    if (!dashboard || !round || !teamMemberId || roundSubmittingRef.current || roundEquipment.some(item => !temperatures[item._id])) return;
+    roundSubmittingRef.current = true;
     setRoundCompleterId(teamMemberId);
-    const issues: Array<Equipment & { issueId: string; temperature: number }> = [];
-    for (const item of roundEquipment) {
-      const value = Number(temperatures[item._id]);
-      const result = await recordTemperature({ roundId: roundId ?? await startRound({ locationId: dashboard.location._id, session: round }), locationId: dashboard.location._id, equipmentId: item._id, temperature: value, teamMemberId });
-      if (result.issueId) issues.push({ ...item, issueId: result.issueId, temperature: value });
+    setRoundSubmitting(true);
+    try {
+      const result = await submitTemperatureRound({
+        roundId,
+        locationId: dashboard.location._id,
+        session: round,
+        teamMemberId,
+        equipment: roundEquipment,
+        temperatures,
+        startRound,
+        recordTemperature,
+        completeRound,
+      });
+      setRoundId(result.roundId);
+      if (result.issues.length) {
+        setRoundIssues(result.issues);
+        setIssueProgress(Object.fromEntries(result.issues.map(issue => [issue.issueId, { actions: [], actionMemberId: "", actionsSaved: false, recheckTemperature: "", recheckMemberId: "", recheckSaved: false }])));
+        return;
+      }
+      toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` });
+      setRound(null); setRoundId(null); setRoundEquipment([]);
+    } finally {
+      roundSubmittingRef.current = false;
+      setRoundSubmitting(false);
     }
-    if (issues.length) {
-      setRoundIssues(issues);
-      setIssueProgress(Object.fromEntries(issues.map(issue => [issue.issueId, { actions: [], actionMemberId: "", actionsSaved: false, recheckTemperature: "", recheckMemberId: "", recheckSaved: false }])));
-      return;
-    }
-    await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId });
-    toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` });
-    setRound(null); setRoundEquipment([]);
   }
 
   async function saveTemperatureActions(issueId: string, actions: string[], teamMemberId: string) {
@@ -131,9 +145,10 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     setIssueProgress(nextProgress);
     const allSubmitted = roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved && nextProgress[issue.issueId]?.recheckSaved);
     if (!allSubmitted) { toast.success("Recheck recorded — remaining failed fridges still require rechecks"); return; }
+    if (!roundId) return;
     await completeRound({ roundId, locationId: dashboard.location._id, session: round!, teamMemberId: roundCompleterId });
     toast.success(roundIssues.some(issue => nextProgress[issue.issueId]?.recheckResult === "fail") ? "Rechecks recorded — further action required" : "All rechecks passed — round complete");
-    setRound(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
+    setRound(null); setRoundId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
   }
 
   async function saveProbe(teamMemberId: string) {
@@ -222,7 +237,8 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   }
 
   function resetForLocation() {
-    setRound(null); setRoundEquipment([]); setRoundIssues([]); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
+    roundSubmittingRef.current = false;
+    setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
   }
 
   function openWastage() {
@@ -231,7 +247,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   return {
     active, equipment, openIssues, memberName, amRound, pmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
-    round, roundIssues, issueProgress, setIssueProgress, roundEquipment, temperatures, setTemperatures,
+    round, roundIssues, issueProgress, setIssueProgress, roundEquipment, temperatures, setTemperatures, roundSubmitting,
     probeOpen, setProbeOpen, probeProduct, setProbeProduct, probeTemperature, setProbeTemperature, probeFailed, setProbeFailed, probeIssueId, setProbeIssueId, probeQuantity, setProbeQuantity,
     wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
