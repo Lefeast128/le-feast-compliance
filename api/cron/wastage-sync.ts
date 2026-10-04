@@ -37,15 +37,25 @@ export default async (req: ApiRequest, res: ApiResponse) => {
   const startedAt = Date.now();
   try {
     const result = await scheduledWastageSync();
-    console.info("wastage-sync", {
-      job: "wastage-google-sheets",
-      durationMs: Date.now() - startedAt,
-      ok: true,
-      rowCount: result.rowCount,
-      updated: result.updated,
-      appended: result.appended,
-      unchanged: result.unchanged,
-    });
+    if ("rowCount" in result) {
+      console.info("wastage-sync", {
+        job: "wastage-google-sheets",
+        durationMs: Date.now() - startedAt,
+        ok: true,
+        rowCount: result.rowCount,
+        updated: result.updated,
+        appended: result.appended,
+        unchanged: result.unchanged,
+      });
+    } else {
+      console.info("wastage-sync", {
+        job: "wastage-google-sheets",
+        durationMs: Date.now() - startedAt,
+        ok: true,
+        skipped: result.skipped,
+        reason: result.reason,
+      });
+    }
     res.status(200).json(result);
   } catch (error) {
     console.error("wastage-sync", {
