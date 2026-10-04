@@ -11,7 +11,7 @@ import CalendarView from "@/components/dashboard/CalendarView";
 import DashboardToday, { type DashboardTodayProps } from "@/components/dashboard/DashboardToday";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
 import { useDashboardWorkflows } from "@/components/dashboard/useDashboardWorkflows";
-import type { CalendarDay, DashboardData, DashboardLocation, DashboardView } from "@/components/dashboard/dashboard-types";
+import type { CalendarDay, DashboardData, DashboardLocation, DashboardView, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
 import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { formatDateKey } from "@/lib/date-key";
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const locations = useRestQuery<DashboardLocation[]>("locations", restApi.locations.myLocations, true);
   const currentLocationId = locationId ?? locations?.[0]?._id ?? null;
   const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
+  const managerReviewStatus = useRestQuery<ManagerReviewStatus | null>(dashboard && dashboard.access?.role !== "staff" ? `manager-reviews-status:${dashboard.location._id}` : null, () => restApi.managerReviews.list({ locationId: dashboard!.location._id }), Boolean(dashboard && dashboard.access?.role !== "staff"));
   const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
   const calendar = useRestQuery<CalendarDay[]>(view === "calendar" && dashboard ? `calendar:${dashboard.location._id}:${bounds.start}:${bounds.end}` : null, () => restApi.compliance.calendar({ locationId: dashboard!.location._id, monthStart: bounds.start, monthEnd: bounds.end }), Boolean(view === "calendar" && dashboard));
   const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
@@ -72,6 +73,7 @@ export default function Dashboard() {
     onLocationChange: switchLocation,
     onAdmin: () => setView("admin"),
     onManagerReviews: () => setView("managerReviews"),
+    managerReviewStatus,
     onCalendar: () => setView("calendar"),
     onTraining: () => setView("training"),
     onLogout: logout,

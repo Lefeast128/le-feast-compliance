@@ -22,6 +22,8 @@ export const FSA_REVIEW_QUESTIONS = [
 
 export type ReviewType = "weekly" | "four_weekly";
 export type ReviewPeriod = { reviewType: ReviewType; start: string; end: string };
+export type ReviewStatus = "complete" | "due" | "overdue";
+export type ReviewPeriodState = ReviewPeriod & { status: ReviewStatus; daysUntilDue: number };
 
 type IssueRow = typeof issues.$inferSelect;
 type IssueUpdateRow = typeof issueUpdates.$inferSelect;
@@ -48,6 +50,20 @@ export const completedReviewPeriod = (timeZone: string, reviewType: ReviewType, 
   const end = dateKeyAtOffset(currentWeek, -1);
   const start = reviewType === "weekly" ? dateKeyAtOffset(currentWeek, -7) : dateKeyAtOffset(currentWeek, -28);
   return { reviewType, start, end };
+};
+
+export const nextOutstandingReviewPeriod = (completedRows: Array<Pick<typeof managerReviews.$inferSelect, "periodStart" | "periodEnd">>, timeZone: string, reviewType: ReviewType, timestamp = Date.now()): ReviewPeriod => {
+  if (!completedRows.length) return completedReviewPeriod(timeZone, reviewType, timestamp);
+  const latest = [...completedRows].sort((a, b) => a.periodEnd.localeCompare(b.periodEnd))[completedRows.length - 1];
+  const start = dateKeyAtOffset(latest.periodEnd, 1);
+  return { reviewType, start, end: dateKeyAtOffset(start, reviewType === "weekly" ? 6 : 27) };
+};
+
+export const reviewPeriodState = (period: ReviewPeriod, timeZone: string, completed: boolean, timestamp = Date.now()): ReviewPeriodState => {
+  if (completed) return { ...period, status: "complete", daysUntilDue: 0 };
+  const today = localDateKey(timestamp, timeZone);
+  const daysUntilDue = Math.round((Date.parse(`${period.end}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
+  return { ...period, status: daysUntilDue < 0 ? "overdue" : "due", daysUntilDue };
 };
 
 const periodBounds = (period: ReviewPeriod, timeZone: string) => ({
@@ -173,14 +189,18 @@ const reviewDto = (row: typeof managerReviews.$inferSelect, completedByName: str
 
 export async function getManagerReviews(context: AuthContext, locationId: string) {
   const location = await managedLocation(context, locationId);
-  const weekly = completedReviewPeriod(location.timezone, "weekly");
-  const fourWeekly = completedReviewPeriod(location.timezone, "four_weekly");
-  const [weeklyRows, fourRows, weeklyScope, fourScope, currentIssues] = await Promise.all([
+  const [historyRows, historyUsers, currentIssues] = await Promise.all([
+    db().select().from(managerReviews).where(eq(managerReviews.locationId, location.id)).orderBy(asc(managerReviews.periodStart)),
+    db().select().from(users).where(eq(users.organisationId, location.organisationId)),
+    db().select().from(issues).where(eq(issues.locationId, location.id)),
+  ]);
+  const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly");
+  const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly");
+  const [weeklyRows, fourRows, weeklyScope, fourScope] = await Promise.all([
     existingReview(location.id, weekly),
     existingReview(location.id, fourWeekly),
     rowsForPeriod(location.id, weekly, location.timezone),
     rowsForPeriod(location.id, fourWeekly, location.timezone),
-    db().select().from(issues).where(eq(issues.locationId, location.id)),
   ]);
   const allIssueIds = [...new Set(currentIssues.map(issue => issue.id))];
   const [currentUpdates, currentRechecks, allReadings, allProbes] = await Promise.all([
@@ -191,16 +211,14 @@ export async function getManagerReviews(context: AuthContext, locationId: string
   ]);
   const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
   const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
-  const [historyRows, historyUsers] = await Promise.all([
-    db().select().from(managerReviews).where(eq(managerReviews.locationId, location.id)).orderBy(asc(managerReviews.periodStart)),
-    db().select().from(users).where(eq(users.organisationId, location.organisationId)),
-  ]);
   const historyNames = new Map(historyUsers.map(user => [user.id, user.name ?? user.email]));
+  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows));
+  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows));
   return {
     location: { id: location.id, name: location.name, timezone: location.timezone },
     periods: {
-      weekly: { ...weekly, completed: Boolean(weeklyRows), summary: summaryFor(weeklyScope.issueRows, weeklyScope.updateRows, weeklyScope.readingRows, weeklyScope.probeRows, weeklyScope.start, weeklyScope.end) },
-      four_weekly: { ...fourWeekly, completed: Boolean(fourRows), summary: summaryFor(fourScope.issueRows, fourScope.updateRows, fourScope.readingRows, fourScope.probeRows, fourScope.start, fourScope.end) },
+      weekly: { ...weeklyState, completed: Boolean(weeklyRows), summary: summaryFor(weeklyScope.issueRows, weeklyScope.updateRows, weeklyScope.readingRows, weeklyScope.probeRows, weeklyScope.start, weeklyScope.end) },
+      four_weekly: { ...fourWeeklyState, completed: Boolean(fourRows), summary: summaryFor(fourScope.issueRows, fourScope.updateRows, fourScope.readingRows, fourScope.probeRows, fourScope.start, fourScope.end) },
     },
     currentIssues: currentIssueRows,
     resolvedIssues: resolvedIssueRows,
@@ -221,23 +239,36 @@ async function validateAnswers(value: unknown) {
 export async function completeManagerReview(context: AuthContext, input: Record<string, unknown>) {
   const location = await managedLocation(context, requireUuid(input.locationId, "locationId"));
   const reviewType = requireEnum(input.reviewType, "reviewType", ["weekly", "four_weekly"] as const);
-  const expected = completedReviewPeriod(location.timezone, reviewType);
+  const completedRows = await db().select({ periodStart: managerReviews.periodStart, periodEnd: managerReviews.periodEnd }).from(managerReviews).where(and(eq(managerReviews.locationId, location.id), eq(managerReviews.reviewType, reviewType)));
+  const expected = nextOutstandingReviewPeriod(completedRows, location.timezone, reviewType);
   const periodStart = requireString(input.periodStart, "periodStart");
   const periodEnd = requireString(input.periodEnd, "periodEnd");
   if (periodStart !== expected.start || periodEnd !== expected.end) throw new ApiError(400, "Review period is not the latest completed period");
   if (await existingReview(location.id, expected)) throw new ApiError(409, "This review has already been completed");
   const scope = await rowsForPeriod(location.id, expected, location.timezone);
   const summary = summaryFor(scope.issueRows, scope.updateRows, scope.readingRows, scope.probeRows, scope.start, scope.end);
-  const updatesInput = Array.isArray(input.issueUpdates) ? input.issueUpdates : [];
+  const updatesInput = reviewType === "weekly" && Array.isArray(input.issueUpdates) ? input.issueUpdates : [];
   const updates = updatesInput.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError(400, `Issue update ${index + 1} is invalid`);
     const record = value as Record<string, unknown>;
     return { issueId: requireUuid(record.issueId, "issueId"), note: requireString(record.note, "Current position / next action") };
   });
-  const issueMap = new Map(scope.issueRows.map(issue => [issue.id, issue]));
+  const currentIssueRows = reviewType === "weekly" ? await db().select().from(issues).where(and(eq(issues.locationId, location.id), inArray(issues.status, ["open", "monitoring"]))) : [];
+  const issueMap = new Map((reviewType === "weekly" ? currentIssueRows : scope.issueRows).map(issue => [issue.id, issue]));
+  if (reviewType === "weekly") {
+    const updateIds = new Set<string>();
+    for (const update of updates) {
+      if (updateIds.has(update.issueId)) throw new ApiError(422, "Each issue may have only one manager review update");
+      updateIds.add(update.issueId);
+    }
+    for (const issue of currentIssueRows) {
+      const update = updates.find(item => item.issueId === issue.id);
+      if (!update?.note.trim()) throw new ApiError(422, "Current position / next action is required for every open or monitoring issue");
+    }
+  }
   for (const update of updates) {
     const issue = issueMap.get(update.issueId);
-    if (!issue || statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end) === "resolved") throw new ApiError(422, "Issue update must reference an outstanding issue in the review period");
+    if (!issue || (reviewType !== "weekly" && statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end) === "resolved")) throw new ApiError(422, "Issue update must reference an outstanding issue in the review period");
   }
   let seriousProblems: boolean | null = null;
   let details: string | null = null;

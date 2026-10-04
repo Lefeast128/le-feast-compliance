@@ -30,6 +30,21 @@ export type CalendarDay = {
 
 export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "additional" | "managerReviews";
 
+export type ManagerReviewPeriodStatus = {
+  status: "complete" | "due" | "overdue";
+  daysUntilDue: number;
+  start: string;
+  end: string;
+  completed: boolean;
+};
+
+export type ManagerReviewStatus = {
+  periods: {
+    weekly: ManagerReviewPeriodStatus;
+    four_weekly: ManagerReviewPeriodStatus;
+  };
+};
+
 export type DashboardIssue = {
   _id: string;
   status: string;

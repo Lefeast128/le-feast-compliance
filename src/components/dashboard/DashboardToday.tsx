@@ -14,6 +14,7 @@ import type {
   DashboardLocation,
   DashboardView,
   Equipment,
+  ManagerReviewStatus,
   TemperatureRound,
 } from "@/components/dashboard/dashboard-types";
 import {
@@ -30,6 +31,15 @@ const timeLabel = (value: number) =>
     minute: "2-digit",
   });
 
+const reviewStatusLabel = (period: ManagerReviewStatus["periods"]["weekly"]) =>
+  period.status === "complete"
+    ? "Complete"
+    : period.status === "overdue"
+      ? "Overdue"
+      : period.daysUntilDue > 0
+        ? `Due in ${period.daysUntilDue} days`
+        : "Due";
+
 export type DashboardTodayProps = {
   dashboard: DashboardData;
   active: DashboardData;
@@ -38,6 +48,7 @@ export type DashboardTodayProps = {
   onLocationChange: (locationId: string) => void;
   onAdmin: () => void;
   onManagerReviews: () => void;
+  managerReviewStatus?: ManagerReviewStatus | null;
   onCalendar: () => void;
   onTraining: () => void;
   onLogout: () => void | Promise<void>;
@@ -99,6 +110,7 @@ export default function DashboardToday({
   onLocationChange,
   onAdmin,
   onManagerReviews,
+  managerReviewStatus,
   onCalendar,
   onTraining,
   onLogout,
@@ -189,8 +201,10 @@ export default function DashboardToday({
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Manager Reviews</p>
-                <p className="mt-1 text-lg font-semibold">Weekly and 4-weekly controls</p>
-                <p className="mt-1 text-sm text-[#727a74]">Review current issues and record the store review.</p>
+                <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2 sm:gap-x-6">
+                  <p>Weekly review <span className="ml-2 font-semibold">{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.weekly) : "Loading…"}</span></p>
+                  <p>4-week review <span className="ml-2 font-semibold">{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.four_weekly) : "Loading…"}</span></p>
+                </div>
               </div>
               <Button variant="outline" onClick={onManagerReviews}>Open manager reviews <ChevronRight className="ml-2 size-4" /></Button>
             </div>

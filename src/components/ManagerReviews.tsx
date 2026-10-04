@@ -21,7 +21,7 @@ type Issue = {
   recheckCount?: number;
   journey?: Array<{ eventType: string; occurredAt: string | null; title: string; detail: string; result?: string; teamMemberName?: string | null }>;
 };
-type Period = { reviewType: string; start: string; end: string; completed: boolean; summary: { issuesRaised: number; issuesResolved: number; outstandingIssues: number; failedTemperatureChecks: number; failedProbeChecks: number; otherIssues: number; repeatProblems: Array<{ label: string; count: number }> } };
+type Period = { reviewType: string; start: string; end: string; status: "complete" | "due" | "overdue"; daysUntilDue: number; completed: boolean; summary: { issuesRaised: number; issuesResolved: number; outstandingIssues: number; failedTemperatureChecks: number; failedProbeChecks: number; otherIssues: number; repeatProblems: Array<{ label: string; count: number }> } };
 type Review = { id: string; reviewType: string; periodStart: string; periodEnd: string; completedAt: string; completedBy: string; summary: Period["summary"]; seriousProblems: boolean | null; details: string | null; actionTaken: string | null; answers: Record<string, string> | null };
 type ReviewResponse = { location: { id: string; name: string; timezone: string }; periods: { weekly: Period; four_weekly: Period }; currentIssues: Issue[]; resolvedIssues: Issue[]; reviewHistory: Review[] };
 type Props = { locationId: string; locations: Location[]; onBack: () => void };
@@ -29,6 +29,7 @@ type Props = { locationId: string; locations: Location[]; onBack: () => void };
 const locationIdOf = (location: Location) => location._id ?? location.id ?? "";
 const timeLabel = (value: string | null | undefined, timeZone: string) => value ? new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Time not recorded";
 const reviewTypeLabel = (value: string) => value === "four_weekly" ? "4-Weekly Review" : "Weekly Review";
+const periodStatusLabel = (period: Period) => period.status === "complete" ? "Complete" : period.status === "overdue" ? "Overdue" : period.daysUntilDue > 0 ? `Due in ${period.daysUntilDue} days` : "Due";
 
 const FSA_QUESTIONS = [
   "Have you reviewed your safe methods?",
@@ -79,7 +80,7 @@ export default function ManagerReviews({ locationId, locations, onBack }: Props)
     }
   };
 
-  const periodSummary = (period: Period) => <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5"><div className="rounded-xl bg-[#fafbf9] p-3">Raised <b className="float-right">{period.summary.issuesRaised}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Resolved <b className="float-right">{period.summary.issuesResolved}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Outstanding <b className="float-right">{period.summary.outstandingIssues}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed temperatures <b className="float-right">{period.summary.failedTemperatureChecks}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed probes <b className="float-right">{period.summary.failedProbeChecks}</b></div></div>;
+  const periodSummary = (period: Period) => <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5"><div className={`col-span-2 rounded-xl p-3 font-semibold sm:col-span-5 ${period.status === "overdue" ? "bg-[#fff8f6] text-[#a13d32]" : "bg-[#fafbf9]"}`}>{periodStatusLabel(period)}</div><div className="rounded-xl bg-[#fafbf9] p-3">Raised <b className="float-right">{period.summary.issuesRaised}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Resolved <b className="float-right">{period.summary.issuesResolved}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Outstanding <b className="float-right">{period.summary.outstandingIssues}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed temperatures <b className="float-right">{period.summary.failedTemperatureChecks}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed probes <b className="float-right">{period.summary.failedProbeChecks}</b></div></div>;
 
   return <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
     <header className="border-b border-black/[0.07] bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8"><div><p className="text-[15px] font-semibold">Issues &amp; Reviews</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74]">Manager controls</p></div><Button variant="outline" onClick={onBack}><ArrowLeft className="mr-2 size-4" /> Back to setup</Button></div></header>
