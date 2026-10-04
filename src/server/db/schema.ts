@@ -67,7 +67,7 @@ export const scheduledTasks = pgTable("scheduled_tasks", {
 
 export const equipment = pgTable("equipment", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), type: text("type").notNull(),
-  preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"), order: integer("sort_order").notNull().default(0),
+  minimumTemperature: real("minimum_temperature").notNull().default(0), preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"), order: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), createdAt: createdAt(),
 });
 
@@ -81,7 +81,7 @@ export const temperatureReadings = pgTable("temperature_readings", {
   id: id(), roundId: uuid("round_id").notNull().references(() => temperatureRounds.id, { onDelete: "restrict" }), equipmentId: uuid("equipment_id").notNull().references(() => equipment.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
   temperature: real("temperature").notNull(), result: temperatureResult("result").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), voided: boolean("voided").notNull().default(false), equipmentName: text("equipment_name"),
-  preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"),
+  minimumTemperature: real("minimum_temperature"), preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"),
 }, table => ({ locationCreated: index("temperature_readings_location_created_idx").on(table.locationId, table.createdAt), roundEquipment: uniqueIndex("temperature_readings_round_equipment_voided_idx").on(table.roundId, table.equipmentId, table.voided) }));
 
 export const probeProducts = pgTable("probe_products", {

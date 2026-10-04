@@ -35,8 +35,8 @@ export const requirePositiveNumberString = (value: unknown) => {
   return text;
 };
 
-export const temperatureResult = (temperature: number, preferred: number, maximum: number) =>
-  temperature > maximum ? "fail" : temperature > preferred ? "within_limit" : "normal";
+export const temperatureResult = (temperature: number, minimum: number, preferred: number, maximum: number) =>
+  temperature < minimum || temperature > maximum ? "fail" : temperature > preferred ? "within_limit" : "normal";
 
 export const probeResult = (temperature: number, minimum: number) => temperature >= minimum ? "pass" : "fail";
 

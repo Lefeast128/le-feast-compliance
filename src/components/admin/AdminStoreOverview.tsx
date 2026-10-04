@@ -138,7 +138,7 @@ export default function AdminStoreOverview({ store, team, onOpenCatalogue }: Pro
     const currentEditor = fridgeEditor;
     if (!currentEditor) return;
     if (currentEditor.kind === "count") await setFridgeCount({ locationId: store.location._id, count: Math.max(1, Number(data.count) || 1) });
-    else if (currentEditor.item) await updateEquipmentLimits({ equipmentId: currentEditor.item._id, preferredTemperature: Number(data.preferred), maximumTemperature: Number(data.maximum) });
+    else if (currentEditor.item) await updateEquipmentLimits({ equipmentId: currentEditor.item._id, minimumTemperature: Number(data.minimum), preferredTemperature: Number(data.preferred), maximumTemperature: Number(data.maximum) });
     setFridgeEditor(null);
     toast.success("Fridge setup saved");
   }

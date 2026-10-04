@@ -39,18 +39,19 @@ export async function recordTemperature(context: AuthContext, input: { roundId: 
     if (!equipmentApplicableAtRound(item.createdAt, item.deactivatedAt, round.startedAt)) throw new ApiError(422, "Fridge was not configured for this temperature round");
     const existing = await tx.select({ id: temperatureReadings.id }).from(temperatureReadings).where(and(eq(temperatureReadings.roundId, round.id), eq(temperatureReadings.equipmentId, item.id), eq(temperatureReadings.voided, false))).limit(1);
     if (existing.length) throw new ApiError(409, "This fridge already has a reading in this round");
+    const minimum = item.minimumTemperature ?? 0;
     const preferred = item.preferredTemperature ?? 5;
     const maximum = item.maximumTemperature ?? 8;
-    const result = temperatureResult(input.temperature, preferred, maximum);
+    const result = temperatureResult(input.temperature, minimum, preferred, maximum);
     const createdAt = now();
-    const [reading] = await tx.insert(temperatureReadings).values({ roundId: round.id, equipmentId: item.id, locationId: location.id, temperature: input.temperature, result, createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, voided: false, equipmentName: item.name, preferredTemperature: preferred, maximumTemperature: maximum }).onConflictDoNothing({ target: [temperatureReadings.roundId, temperatureReadings.equipmentId, temperatureReadings.voided] }).returning({ id: temperatureReadings.id });
+    const [reading] = await tx.insert(temperatureReadings).values({ roundId: round.id, equipmentId: item.id, locationId: location.id, temperature: input.temperature, result, createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, voided: false, equipmentName: item.name, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum }).onConflictDoNothing({ target: [temperatureReadings.roundId, temperatureReadings.equipmentId, temperatureReadings.voided] }).returning({ id: temperatureReadings.id });
     if (!reading) throw new ApiError(409, "This fridge already has a reading in this round");
     let issueId: string | null = null;
     if (result === "fail") {
-      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Temperature", title: `${item.name} requires action`, description: `Recorded at ${input.temperature}°C. The configured maximum is ${maximum}°C.`, originalReading: `${input.temperature}°C`, sourceTemperatureReadingId: reading.id, status: "open", createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
+      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Temperature", title: `${item.name} requires action`, description: `Recorded at ${input.temperature}°C. The configured range is ${minimum}°C to ${maximum}°C.`, originalReading: `${input.temperature}°C`, sourceTemperatureReadingId: reading.id, status: "open", createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
       issueId = issue.id;
     }
-    return { readingId: reading.id, issueId, result, preferredTemperature: preferred, maximumTemperature: maximum };
+    return { readingId: reading.id, issueId, result, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum };
   });
 }
 
@@ -94,15 +95,17 @@ export async function addTemperatureRecheck(context: AuthContext, input: { issue
   const { db, issue, location } = await issueAndMember(context, input.issueId, input.teamMemberId, "Temperature");
   const updates = await db.select().from(issueUpdates).where(eq(issueUpdates.issueId, issue.id));
   if (!updates.some(item => item.updateType === "immediate_action" && item.note.trim())) throw new ApiError(422, "Corrective action is required before recheck");
+  let minimum = 0;
   let maximum = 8;
   if (issue.sourceTemperatureReadingId) {
     const [reading] = await db.select().from(temperatureReadings).where(eq(temperatureReadings.id, issue.sourceTemperatureReadingId)).limit(1);
     if (!reading || reading.locationId !== location.id || reading.maximumTemperature === null) throw new ApiError(422, "Source temperature reading does not contain a maximum temperature snapshot");
+    minimum = reading.minimumTemperature ?? 0;
     maximum = reading.maximumTemperature;
   }
   return db.transaction(async (tx) => {
     const timestamp = now();
-    const result = input.temperature <= maximum ? "pass" : "fail";
+    const result = input.temperature >= minimum && input.temperature <= maximum ? "pass" : "fail";
     await tx.insert(rechecks).values({ issueId: issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     if (result === "pass") {
       const note = `Rechecked at ${input.temperature}°C`;
@@ -111,6 +114,6 @@ export async function addTemperatureRecheck(context: AuthContext, input: { issue
     } else {
       await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "further_action", note: `Recheck remained out of range at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     }
-    return { result, maximumTemperature: maximum };
+    return { result, minimumTemperature: minimum, maximumTemperature: maximum };
   });
 }

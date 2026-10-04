@@ -57,6 +57,7 @@ export type AdminTrainingRequirement = {
 
 export type AdminEquipment = {
   _id: string;
+  minimumTemperature?: number;
   preferredTemperature?: number;
   maximumTemperature?: number;
 };
@@ -117,6 +118,7 @@ export type AdminEditorValues = {
 
 export type FridgeEditorValues = {
   count?: string;
+  minimum?: string;
   preferred?: string;
   maximum?: string;
 };

@@ -30,7 +30,7 @@ for (const location of locations) {
   for (let order = 1; order <= 4; order += 1) {
     const name = `Fridge ${order}`;
     const existing = await sql`select id from equipment where location_id = ${location.id} and name = ${name} limit 1`;
-    if (!existing.length) await sql`insert into equipment (location_id, name, type, preferred_temperature, maximum_temperature, sort_order, active) values (${location.id}, ${name}, 'Food fridge', 5, 8, ${order - 1}, true)`;
+    if (!existing.length) await sql`insert into equipment (location_id, name, type, minimum_temperature, preferred_temperature, maximum_temperature, sort_order, active) values (${location.id}, ${name}, 'Food fridge', 0, 5, 8, ${order - 1}, true)`;
   }
   for (const session of ["AM", "PM"]) {
     for (const [order, question] of OPERATIONAL_DEFAULTS.security.entries()) {

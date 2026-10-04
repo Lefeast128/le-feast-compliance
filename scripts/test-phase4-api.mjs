@@ -22,7 +22,7 @@ const requireString = value => { if (typeof value !== "string" || !value.trim())
 const requireFiniteNumber = value => { if (typeof value !== "number" || !Number.isFinite(value)) fail("number"); return value; };
 const requirePositiveNumberString = value => { const text = requireString(value); if (!Number.isFinite(Number(text)) || Number(text) <= 0) fail("positive"); return text; };
 const requireEnum = (value, _name, allowed) => { if (!allowed.includes(value)) fail("enum"); return value; };
-const temperatureResult = (temperature, preferred, maximum) => temperature > maximum ? "fail" : temperature > preferred ? "within_limit" : "normal";
+const temperatureResult = (temperature, minimum, preferred, maximum) => temperature < minimum || temperature > maximum ? "fail" : temperature > preferred ? "within_limit" : "normal";
 const probeResult = (temperature, minimum) => temperature >= minimum ? "pass" : "fail";
 const equipmentApplicableAtRound = (createdAt, deactivatedAt, startedAt) => createdAt <= startedAt && (!deactivatedAt || deactivatedAt >= startedAt);
 check(validationSource.includes("equipmentApplicableAtRound"), "round-start equipment rule is present");
@@ -40,9 +40,10 @@ for (const route of routes) {
   check(fs.readFileSync(`${root}${route}`, "utf8").includes("handleMutation"), `route is authenticated: ${route}`);
 }
 
-check(temperatureResult(4, 5, 8) === "normal", "normal temperature");
-check(temperatureResult(6, 5, 8) === "within_limit", "within-limit temperature");
-check(temperatureResult(9, 5, 8) === "fail", "failing temperature");
+check(temperatureResult(4, 0, 5, 8) === "normal", "normal temperature");
+check(temperatureResult(6, 0, 5, 8) === "within_limit", "within-limit temperature");
+check(temperatureResult(-0.1, 0, 5, 8) === "fail", "low failing temperature");
+check(temperatureResult(9, 0, 5, 8) === "fail", "high failing temperature");
 check(probeResult(76, 76) === "pass", "passing probe");
 check(probeResult(75, 76) === "fail", "failing probe");
 const started = new Date("2026-01-10T10:00:00Z");

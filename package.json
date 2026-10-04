@@ -35,6 +35,7 @@
     "test:report-exports": "node --import=tsx/esm scripts/test-report-exports.mjs",
     "test:lazy-temperature-round": "node --import=tsx/esm scripts/test-lazy-temperature-round.mjs",
     "test:temperature-resolution": "node --import=tsx/esm scripts/test-temperature-resolution.mjs",
+    "test:temperature-range": "node --import=tsx/esm scripts/test-temperature-range.mjs",
     "test:user-access": "node scripts/test-user-access.mjs",
     "test:manager-reviews": "node --import=tsx/esm scripts/test-manager-reviews.mjs"
   },
