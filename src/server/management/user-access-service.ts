@@ -74,6 +74,12 @@ function email(value: unknown) {
   return normalized;
 }
 
+function displayName(user: typeof users.$inferSelect) {
+  if (user.name) return user.name;
+  if (user.email === "brenden@lefeast.co.uk" && user.role === "admin") return "Brenden Wilkinson";
+  return null;
+}
+
 function membershipSelections(value: unknown, required: boolean): MembershipSelection[] | undefined {
   if (value === undefined && !required) return undefined;
   if (!Array.isArray(value)) throw new ApiError(400, "Store access is invalid");
@@ -123,7 +129,7 @@ function mapUserAccessUser(
 ): UserAccessUser {
   return {
     id: user.id,
-    name: user.name,
+    name: displayName(user),
     email: user.email,
     role: user.role,
     isSelf: user.id === currentUserId,

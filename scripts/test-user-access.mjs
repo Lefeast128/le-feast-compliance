@@ -37,6 +37,7 @@ contains(service, "syncMemberships", "membership synchronisation");
 contains(service, "existingByLocation", "no duplicate membership intent");
 contains(service, "locationsForOrganisation", "location ownership validation");
 contains(service, "allOrganisationLocations: user.role === \"admin\"", "all-store organisation admin");
+contains(service, "Brenden Wilkinson", "existing organisation administrator display name");
 contains(service, "user.id === context.user.id", "admin self-protection");
 contains(service, "UserAccessDeliveryError", "safe delivery failure");
 assert.doesNotMatch(service, /teamMembers/, "user access must stay separate from Team Members");
