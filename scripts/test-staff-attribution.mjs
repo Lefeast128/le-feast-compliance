@@ -3,7 +3,12 @@ import { readFile } from "node:fs/promises";
 
 const root = new URL("../", import.meta.url);
 const read = path => readFile(new URL(path, root), "utf8");
-const service = await read("src/server/compliance/service.ts");
+const service = await Promise.all([
+  "src/server/compliance/service.ts",
+  "src/server/compliance/shared.ts",
+  "src/server/compliance/checklist-service.ts",
+  "src/server/compliance/security-service.ts",
+].map(read)).then(sources => sources.join("\n"));
 const dashboard = await read("src/pages/Dashboard.tsx");
 const dashboardToday = await read("src/components/dashboard/DashboardToday.tsx");
 const dashboardWorkflows = await read("src/components/dashboard/useDashboardWorkflows.ts");

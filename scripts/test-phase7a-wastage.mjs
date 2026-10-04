@@ -40,7 +40,10 @@ assert.deepEqual(exportRows.map(row => row.Quantity), [1, 3, 2]);
 
 const schema = fs.readFileSync(new URL("../src/server/db/schema.ts", import.meta.url), "utf8");
 const catalogueService = fs.readFileSync(new URL("../src/server/catalogue/service.ts", import.meta.url), "utf8");
-const complianceService = fs.readFileSync(new URL("../src/server/compliance/service.ts", import.meta.url), "utf8");
+const complianceService = [
+  "service.ts",
+  "wastage-service.ts",
+].map(file => fs.readFileSync(new URL(`../src/server/compliance/${file}`, import.meta.url), "utf8")).join("\n");
 const migration = fs.readFileSync(new URL("../drizzle/0006_touchoffice_wastage_foundation.sql", import.meta.url), "utf8");
 assert.match(schema, /excludedFromWastage/);
 assert.match(schema, /wastageReviewedBy/);

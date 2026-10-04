@@ -6,6 +6,16 @@ let passed = 0;
 const check = (value, message) => { assert.ok(value, message); passed += 1; };
 const root = new URL("../", import.meta.url).pathname;
 const validationSource = fs.readFileSync(`${root}src/server/compliance/validation.ts`, "utf8");
+const complianceSource = [
+  "service.ts",
+  "temperature-service.ts",
+  "probe-service.ts",
+  "checklist-service.ts",
+  "security-service.ts",
+  "wastage-service.ts",
+  "cleaning-service.ts",
+  "issue-service.ts",
+].map(file => fs.readFileSync(`${root}src/server/compliance/${file}`, "utf8")).join("\n");
 const fail = message => { throw new Error(message); };
 const requireUuid = value => { if (typeof value !== "string" || !/^[0-9a-f-]{36}$/i.test(value)) fail("invalid id"); return value; };
 const requireString = value => { if (typeof value !== "string" || !value.trim()) fail("required"); return value.trim(); };
@@ -54,6 +64,6 @@ check(requirePositiveNumberString("1.5") === "1.5", "positive quantity");
 check(requireEnum("AM", "session", ["AM", "PM"]) === "AM", "session enum");
 check(fs.readFileSync(`${root}src/server/compliance/http.ts`, "utf8").includes("Authentication required"), "unauthenticated requests are rejected");
 check(fs.readFileSync(`${root}src/server/compliance/http.ts`, "utf8").includes("Invalid request origin"), "invalid origins are rejected");
-check(fs.readFileSync(`${root}src/server/compliance/service.ts`, "utf8").includes("db.transaction"), "multi-record writes use transactions");
+check(complianceSource.includes("db.transaction"), "multi-record writes use transactions");
 
 console.log(`Phase 4 operational API tests passed (${passed}/${passed})`);
