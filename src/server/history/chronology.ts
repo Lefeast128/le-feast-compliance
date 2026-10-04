@@ -80,6 +80,9 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
 
   const rounds = input.rounds ?? [];
   const roundById = new Map(rounds.map(round => [round.id ?? round._id, round]));
+  const issues = input.issues ?? [];
+  const issueByReadingId = new Map(issues.filter(issue => issue.sourceTemperatureReadingId).map(issue => [issue.sourceTemperatureReadingId, issue]));
+  const resolutionUpdateByIssue = new Map((input.issueUpdates ?? []).filter(update => update.updateType === "resolution").map(update => [update.issueId, update]));
 
   for (const round of rounds) {
     const completed = asDate(round.completedAt);
@@ -107,6 +110,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       detail: `${equipmentName} · ${reading.temperature}°C`,
       result: reading.result === "fail" ? "fail" : "pass",
       sourceRecordId: reading.id,
+      relatedIssueId: issueByReadingId.get(reading.id)?.id ?? null,
       ...member(reading.teamMemberId ? reading : round ?? reading),
     });
   }
@@ -224,7 +228,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
     });
   }
 
-  for (const issue of input.issues ?? []) {
+  for (const issue of issues) {
     push({
       id: `issue-created:${issue.id}`,
       eventType: "issue_created",
@@ -245,8 +249,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       result: "resolved",
       sourceRecordId: issue.id,
       relatedIssueId: issue.id,
-      teamMemberId: null,
-      teamMemberName: null,
+      ...member(resolutionUpdateByIssue.get(issue.id) ?? {}),
     });
   }
 

@@ -4,6 +4,7 @@ import { ArrowLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { restApi } from "@/lib/rest-domain";
+import IssueJourneyDialog from "@/components/IssueJourneyDialog";
 import { toast } from "sonner";
 import {
   currentMonthRange,
@@ -55,6 +56,7 @@ export default function ComplianceReports({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<any>(null);
   const activeLocation = locations.find(
     (location) => locationIdOf(location) === activeLocationId,
   );
@@ -71,6 +73,7 @@ export default function ComplianceReports({
     if (!activeLocationId || !range.start || !range.end) return;
     let cancelled = false;
     setReport(null);
+    setSelectedIssue(null);
     setError(null);
     setLoading(true);
     restApi.reports
@@ -364,7 +367,7 @@ export default function ComplianceReports({
                         <div className="flex justify-between gap-3">
                           <p className="font-semibold">{exception.label}</p>
                           <span className="text-sm text-[#b64738]">
-                            {exception.result}
+                            {exception.result === "fail" ? "Failed" : exception.result}
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-[#727a74]">
@@ -377,6 +380,20 @@ export default function ComplianceReports({
                           Recorded by{" "}
                           {exception.teamMemberName ?? "Not recorded"}
                         </p>
+                        {exception.type === "temperature" && exception.issueStatusLabel && (
+                          <div className="mt-3 rounded-lg border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm">
+                            <p className="font-semibold">Original result: Failed</p>
+                            <p className="mt-1 text-[#727a74]">Issue status: {exception.issueStatusLabel}</p>
+                            {exception.correctiveActionStatus && <p className="mt-1 text-[#727a74]">{exception.correctiveActionStatus}</p>}
+                            {exception.latestAction && <p className="mt-1 text-[#727a74]">Action: {exception.latestAction.note}</p>}
+                            {exception.latestRecheck && <p className="mt-1 text-[#727a74]">Latest recheck: {exception.latestRecheck.temperature}°C · {exception.latestRecheck.resultLabel}</p>}
+                          </div>
+                        )}
+                        {exception.relatedIssueId && report.issues.rows.some((issue: any) => issue.id === exception.relatedIssueId) && (
+                          <Button variant="outline" size="sm" className="mt-3" onClick={() => setSelectedIssue(report.issues.rows.find((issue: any) => issue.id === exception.relatedIssueId))}>
+                            View issue
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -502,6 +519,7 @@ export default function ComplianceReports({
           </>
         )}
       </main>
+      {selectedIssue && <IssueJourneyDialog issue={selectedIssue} timeZone={report?.range?.timezone ?? "Europe/London"} onClose={() => setSelectedIssue(null)} />}
     </div>
   );
 }

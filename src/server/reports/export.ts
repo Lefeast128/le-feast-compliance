@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import ExcelJS from "exceljs";
+import { resultLabel } from "../../lib/temperature-resolution.js";
 
 export type ComplianceReport = {
   location: { name?: string | null; shortName?: string | null; timezone: string };
@@ -185,10 +186,13 @@ const exceptionRows = (report: ComplianceReport) => report.exceptions.map(except
   formatLocalTimestamp(exception.occurredAt, report.range.timezone),
   exception.type,
   exception.label,
-  exception.result,
+  exception.result === "fail" ? "Failed" : exception.result,
   exception.value ?? exception.detail ?? "",
   exception.teamMemberName ?? "Not recorded",
   exception.relatedIssueId ?? "",
+  exception.issueStatusLabel ?? exception.issueStatus ?? "",
+  exception.correctiveActionStatus ?? "",
+  exception.latestRecheck ? `${exception.latestRecheck.temperature}°C · ${resultLabel(exception.latestRecheck.result)} · ${formatLocalTimestamp(exception.latestRecheck.occurredAt, report.range.timezone)} · ${exception.latestRecheck.teamMemberName ?? "Not recorded"}` : "",
 ]);
 
 const issueRows = (report: ComplianceReport) => report.issues.rows.map(issue => [
@@ -231,7 +235,7 @@ export const renderComplianceCsv = (report: ComplianceReport, generatedAt = new 
     ...dailyRows(report),
     [],
     ["EXCEPTIONS"],
-    ["Date", "Time", "Type", "Item / Question", "Result", "Value / Detail", "Team Member", "Related Issue ID"],
+    ["Date", "Time", "Type", "Item / Question", "Result", "Value / Detail", "Team Member", "Related Issue ID", "Issue Status", "Corrective Action Status", "Latest Recheck"],
     ...exceptionRows(report),
     [],
     ["ISSUES"],
@@ -282,7 +286,7 @@ export const renderComplianceWorkbook = async (report: ComplianceReport, generat
   addTable(daily, DAILY_HEADERS, dailyRows(report));
 
   const exceptions = workbook.addWorksheet("Exceptions");
-  addTable(exceptions, ["Date", "Time", "Type", "Item / Question", "Result", "Value / Detail", "Team Member", "Related Issue ID"], exceptionRows(report));
+  addTable(exceptions, ["Date", "Time", "Type", "Item / Question", "Result", "Value / Detail", "Team Member", "Related Issue ID", "Issue Status", "Corrective Action Status", "Latest Recheck"], exceptionRows(report));
 
   const issues = workbook.addWorksheet("Issues");
   addTable(issues, ["Issue ID", "Title", "Category", "Created At", "Status At Range End", "Resolved At", "Team Member", "Recheck Count", "Latest Action", "Latest Action Time", "Latest Action Team Member"], issueRows(report));

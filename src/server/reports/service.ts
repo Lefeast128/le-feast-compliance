@@ -7,6 +7,7 @@ import { ApiError } from "../compliance/errors.js";
 import { localDateKey, localDayRange } from "../compliance/validation.js";
 import { localWeekday } from "../dashboard/time.js";
 import { calendar } from "../history/service.js";
+import { correctiveActionLabel, issueStatusLabel, resultLabel } from "../../lib/temperature-resolution.js";
 import { asOfIssue, evaluatedDays, reportDateRange, REPORT_SECTION_KEYS, sectionCompletion, type ReportSectionKey } from "./calculations.js";
 
 const db = () => getDb();
@@ -126,9 +127,51 @@ export async function complianceReport(context: AuthContext, input: { locationId
 
   const today = localDateKey(Date.now(), location.timezone);
   const exceptionRows: any[] = [];
-  const sourceIssue = (field: string, id: string) => issuesRows.find(issue => (issue as any)[field] === id)?.id ?? null;
-  for (const reading of readings.filter(row => row.result === "fail")) exceptionRows.push({ type: "temperature", date: localDateKey(reading.createdAt.getTime(), location.timezone), occurredAt: iso(reading.createdAt), label: reading.equipmentName ?? equipmentNames.get(reading.equipmentId) ?? "Equipment", value: `${reading.temperature}°C`, result: "fail", teamMemberName: memberName(reading.teamMemberId), relatedIssueId: sourceIssue("sourceTemperatureReadingId", reading.id) });
-  for (const probe of probes.filter(row => row.result === "fail")) exceptionRows.push({ type: "food_probe", date: localDateKey(probe.createdAt.getTime(), location.timezone), occurredAt: iso(probe.createdAt), label: probe.product, value: `${probe.temperature}°C`, result: "fail", teamMemberName: memberName(probe.teamMemberId), relatedIssueId: sourceIssue("sourceFoodCheckId", probe.id) });
+  const issueFor = (field: string, id: string) => issuesRows.find(issue => (issue as any)[field] === id) ?? null;
+  const updatesFor = (issueId: string) => updates.filter(update => update.issueId === issueId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const rechecksFor = (issueId: string) => recheckRows.filter(recheck => recheck.issueId === issueId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const statusAtEnd = (issue: any) => {
+    const relevantUpdates = updatesFor(issue.id);
+    if (issue.resolvedAt && issue.resolvedAt <= end) return "resolved";
+    if (relevantUpdates.length) return relevantUpdates[relevantUpdates.length - 1].status;
+    return issue.status === "resolved" ? "open" : issue.status;
+  };
+  const resolutionUpdateFor = (issueId: string) => updatesFor(issueId).find(update => update.updateType === "resolution");
+  const issueJourney = (issue: any) => {
+    const sourceReading = readings.find(reading => reading.id === issue.sourceTemperatureReadingId);
+    const events = [
+      sourceReading ? { eventType: "original_failure", occurredAt: iso(sourceReading.createdAt), title: "Original failed reading", detail: `${sourceReading.equipmentName ?? equipmentNames.get(sourceReading.equipmentId) ?? "Equipment"} · ${sourceReading.temperature}°C`, result: "fail", teamMemberName: memberName(sourceReading.teamMemberId) } : null,
+      { eventType: "issue_created", occurredAt: iso(issue.createdAt), title: "Issue created", detail: issue.description, result: "open", teamMemberName: memberName(issue.teamMemberId) },
+      ...updatesFor(issue.id).map(update => ({ eventType: update.updateType, occurredAt: iso(update.createdAt), title: update.updateType === "resolution" ? "Resolution" : "Corrective action", detail: update.note, result: update.status, teamMemberName: memberName(update.teamMemberId) })),
+      ...rechecksFor(issue.id).map(recheck => ({ eventType: "recheck", occurredAt: iso(recheck.createdAt), title: "Recheck", detail: `Temperature ${recheck.temperature}°C`, result: recheck.result, teamMemberName: memberName(recheck.teamMemberId) })),
+      issue.resolvedAt && issue.resolvedAt <= end ? { eventType: "issue_resolved", occurredAt: iso(issue.resolvedAt), title: "Issue resolved", detail: issue.resolutionNote ?? "Issue marked resolved", result: "resolved", teamMemberName: memberName(resolutionUpdateFor(issue.id)?.teamMemberId) } : null,
+    ].filter(Boolean) as any[];
+    const priorityFor = (event: any) => event.eventType === "original_failure" ? 10 : event.eventType === "issue_created" ? 20 : event.eventType === "recheck" ? 40 : event.eventType === "issue_resolved" ? 50 : 30;
+    return events.sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)) || priorityFor(a) - priorityFor(b));
+  };
+  const temperatureResolution = (issue: any) => {
+    if (!issue) return { issueStatus: null, issueStatusLabel: null, correctiveActionStatus: null, latestRecheck: null, latestAction: null };
+    const issueStatus = statusAtEnd(issue);
+    const relevantUpdates = updatesFor(issue.id);
+    const latestAction = [...relevantUpdates].reverse().find(update => update.updateType === "immediate_action" || update.updateType === "action" || update.updateType === "further_action") ?? null;
+    const rechecks = rechecksFor(issue.id);
+    const latestRecheck = rechecks[rechecks.length - 1] ?? null;
+    return {
+      issueStatus,
+      issueStatusLabel: issueStatusLabel(issueStatus),
+      correctiveActionStatus: correctiveActionLabel({ issueStatus, hasAction: Boolean(latestAction), latestRecheckResult: latestRecheck?.result }),
+      latestRecheck: latestRecheck ? { temperature: latestRecheck.temperature, result: latestRecheck.result, resultLabel: resultLabel(latestRecheck.result), occurredAt: iso(latestRecheck.createdAt), teamMemberName: memberName(latestRecheck.teamMemberId) } : null,
+      latestAction: latestAction ? { note: latestAction.note, occurredAt: iso(latestAction.createdAt), teamMemberName: memberName(latestAction.teamMemberId) } : null,
+    };
+  };
+  for (const reading of readings.filter(row => row.result === "fail")) {
+    const issue = issueFor("sourceTemperatureReadingId", reading.id);
+    exceptionRows.push({ type: "temperature", date: localDateKey(reading.createdAt.getTime(), location.timezone), occurredAt: iso(reading.createdAt), label: reading.equipmentName ?? equipmentNames.get(reading.equipmentId) ?? "Equipment", value: `${reading.temperature}°C`, result: "fail", teamMemberName: memberName(reading.teamMemberId), relatedIssueId: issue?.id ?? null, ...temperatureResolution(issue) });
+  }
+  for (const probe of probes.filter(row => row.result === "fail")) {
+    const issue = issueFor("sourceFoodCheckId", probe.id);
+    exceptionRows.push({ type: "food_probe", date: localDateKey(probe.createdAt.getTime(), location.timezone), occurredAt: iso(probe.createdAt), label: probe.product, value: `${probe.temperature}°C`, result: "fail", teamMemberName: memberName(probe.teamMemberId), relatedIssueId: issue?.id ?? null });
+  }
   for (const response of checklist.filter(row => row.answer === "no")) exceptionRows.push({ type: "checklist", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: checklistLabels.get(response.questionId) ?? "Checklist question", detail: [response.problem, response.action].filter(Boolean).join(" · "), result: "no", teamMemberName: memberName(response.teamMemberId) });
   for (const response of security.filter(row => row.answer === "no" || Boolean(row.issue))) exceptionRows.push({ type: "security", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: securityLabels.get(response.questionId) ?? "Security question", detail: response.issue ?? "", result: response.answer, teamMemberName: memberName(response.teamMemberId) });
 
@@ -145,10 +188,9 @@ export async function complianceReport(context: AuthContext, input: { locationId
     return issuesRows.some(issue => issue.createdAt < dayStart && asOfIssue(issue, dayStart));
   }).length;
   const issueRows = issuesRows.filter(issue => issue.createdAt >= start && issue.createdAt <= end || asOfIssue(issue, end)).map(issue => {
-    const relevantUpdates = updates.filter(update => update.issueId === issue.id).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const relevantUpdates = updatesFor(issue.id);
     const latest = relevantUpdates[relevantUpdates.length - 1];
-    const resolvedByEnd = Boolean(issue.resolvedAt && issue.resolvedAt <= end);
-    return { id: issue.id, title: issue.title, category: issue.category, createdAt: iso(issue.createdAt), status: resolvedByEnd ? "resolved" : latest?.status ?? issue.status, resolvedAt: iso(issue.resolvedAt), teamMemberName: memberName(issue.teamMemberId), recheckCount: recheckRows.filter(recheck => recheck.issueId === issue.id).length, latestUpdate: latest ? { occurredAt: iso(latest.createdAt), note: latest.note, status: latest.status, teamMemberName: memberName(latest.teamMemberId) } : null };
+    return { id: issue.id, title: issue.title, category: issue.category, createdAt: iso(issue.createdAt), status: statusAtEnd(issue), resolvedAt: iso(issue.resolvedAt), teamMemberName: memberName(issue.teamMemberId), recheckCount: rechecksFor(issue.id).length, latestUpdate: latest ? { occurredAt: iso(latest.createdAt), note: latest.note, status: latest.status, teamMemberName: memberName(latest.teamMemberId) } : null, journey: issueJourney(issue) };
   });
   const additionalByDate = evaluated.map(day => {
     const due = selectVersions(requirementRows, day.date).filter(requirement => localDateKey(requirement.nextDueAt.getTime(), location.timezone) === day.date);
