@@ -2,6 +2,7 @@ import ComplianceReports from "@/components/ComplianceReports";
 import AdminStoreOverview from "@/components/admin/AdminStoreOverview";
 import type { AdminLocation, AdminOperation, AdminStore, AdminTeamResponse } from "@/components/admin/admin-types";
 import WastageCatalogueAdmin from "@/components/WastageCatalogueAdmin";
+import UserAccessAdmin from "@/components/UserAccessAdmin";
 import { Button } from "@/components/ui/button";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { ArrowLeft } from "lucide-react";
@@ -79,6 +80,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Configuration</p>
         <h1 className="mt-2 text-3xl font-semibold">Current setup</h1>
+        <UserAccessAdmin />
         <div className="mt-5 flex flex-wrap gap-2">
           {(stores ?? []).map((entry) => (
             <Button

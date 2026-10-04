@@ -65,3 +65,38 @@ export async function sendOtpEmail(email: string, code: string, expiryMinutes = 
     throw toResendDeliveryError(error);
   }
 }
+
+export async function sendInvitationEmail(input: {
+  email: string;
+  recipientName: string;
+  inviterName: string | null;
+  locations: string[];
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.AUTH_FROM_EMAIL;
+  if (!apiKey || !from) {
+    throw new ResendDeliveryError({ safeMessage: "Resend configuration is missing" });
+  }
+
+  const inviter = input.inviterName?.trim() || "Your organisation administrator";
+  const appUrl = process.env.APP_URL ?? "https://le-feast-compliance.vercel.app";
+  const access = input.locations.join(", ");
+  try {
+    await axios.post("https://api.resend.com/emails", {
+      from,
+      to: [input.email],
+      subject: "You've been invited to Le Feast Compliance",
+      text: [
+        "Le Feast Compliance",
+        `Hello ${input.recipientName},`,
+        `${inviter} has given you access to Le Feast Compliance.`,
+        "",
+        `Your access: ${access}`,
+        "Use your invited email address to sign in securely with a verification code.",
+        `Open Le Feast Compliance: ${appUrl}`,
+      ].join("\n"),
+    }, { headers: { Authorization: `Bearer ${apiKey}` } });
+  } catch (error) {
+    throw toResendDeliveryError(error);
+  }
+}

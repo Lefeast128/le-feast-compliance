@@ -33,7 +33,8 @@
     "test:inspection-chronology": "node --import=tsx/esm scripts/test-inspection-chronology.mjs",
     "test:compliance-reports": "node --import=tsx/esm scripts/test-compliance-reports.mjs",
     "test:report-exports": "node --import=tsx/esm scripts/test-report-exports.mjs",
-    "test:lazy-temperature-round": "node --import=tsx/esm scripts/test-lazy-temperature-round.mjs"
+    "test:lazy-temperature-round": "node --import=tsx/esm scripts/test-lazy-temperature-round.mjs",
+    "test:user-access": "node scripts/test-user-access.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

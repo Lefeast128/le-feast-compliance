@@ -5,6 +5,24 @@ import { dateKeyFrom } from "@/lib/date-key";
 
 type AnyRecord = Record<string, any>;
 
+export type UserAccessLocation = { id: string; name: string; shortName: string };
+export type UserAccessRole = "staff" | "manager";
+export type UserAccessMembership = UserAccessLocation & { membershipId: string; role: "staff" | "manager" };
+export type UserAccessUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: "user" | "admin";
+  isSelf: boolean;
+  allOrganisationLocations: boolean;
+  memberships: UserAccessMembership[];
+};
+export type UserAccessResponse = {
+  currentUserId: string;
+  locations: UserAccessLocation[];
+  users: UserAccessUser[];
+};
+
 const unwrap = <T>(body: any): T => (body && typeof body === "object" && "data" in body ? body.data : body) as T;
 
 const compat = (value: any): any => {
@@ -114,6 +132,12 @@ export const restApi = {
     addTeamMemberName: (body: AnyRecord) => post("/api/team-members", body),
     updateTeamMemberName: (body: AnyRecord) => patch(`/api/team-members/${encodeURIComponent(idOf(body.memberId))}`, body),
     deactivateTeamMember: (body: AnyRecord) => remove(`/api/team-members/${encodeURIComponent(idOf(body.memberId))}`),
+    userAccess: {
+      list: async (): Promise<UserAccessResponse> => compat(await query("/api/admin/user-access")),
+      invite: (body: AnyRecord) => post("/api/admin/user-access", body),
+      update: ({ userId, ...body }: AnyRecord) => patch(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`, body),
+      resend: ({ userId }: AnyRecord) => post(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}/resend`, {}),
+    },
   },
 };
 

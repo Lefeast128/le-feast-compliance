@@ -50,3 +50,10 @@ export {
 } from "./wastage-service.js";
 
 export { operations } from "./operations-service.js";
+
+export {
+  listUserAccess,
+  inviteUser,
+  updateUserAccess,
+  resendUserInvitation,
+} from "./user-access-service.js";
