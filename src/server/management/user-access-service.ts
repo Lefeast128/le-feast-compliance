@@ -3,7 +3,7 @@ import { normalizeEmail, requireOrganisationAdmin, type AuthContext } from "../a
 import { sendInvitationEmail, toResendDeliveryError } from "../auth/resend.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
-import { locations, memberships, users } from "../db/schema.js";
+import { auditEvents, locations, memberships, users } from "../db/schema.js";
 import { db, id, type Transaction } from "./shared.js";
 
 export type UserAccessRole = "staff" | "manager";
@@ -33,12 +33,36 @@ export type UserAccessResponse = {
   currentUserId: string;
   locations: UserAccessLocation[];
   users: UserAccessUser[];
+  accessHistory: AccessHistoryEntry[];
+};
+
+export type AccessHistoryEntry = {
+  occurredAt: string;
+  adminName: string;
+  userName: string;
+  userEmail: string;
+  change: string;
 };
 
 type MembershipSelection = {
   locationId: string;
   role: UserAccessRole;
 };
+
+type MembershipChange = {
+  kind: "added" | "removed" | "role_changed";
+  locationId: string;
+  oldRole?: UserAccessRole;
+  newRole?: UserAccessRole;
+};
+
+const ACCESS_AUDIT_TYPES = [
+  "user_access_invited",
+  "user_access_added",
+  "user_access_removed",
+  "user_access_role_changed",
+  "user_access_updated",
+] as const;
 
 export class UserAccessDeliveryError extends Error {
   readonly accessCreated: boolean;
@@ -122,6 +146,46 @@ async function membershipRowsForUsers(organisationId: string, userIds: string[])
     .where(and(eq(locations.organisationId, organisationId), inArray(memberships.userId, userIds)));
 }
 
+function accessAuditDetail(input: {
+  userName: string;
+  userEmail: string;
+  storeName?: string;
+  oldRole?: UserAccessRole;
+  newRole?: UserAccessRole;
+  oldStores?: string[];
+  newStores?: string[];
+}) {
+  return JSON.stringify({
+    userName: input.userName,
+    userEmail: input.userEmail,
+    storeName: input.storeName,
+    oldRole: input.oldRole,
+    newRole: input.newRole,
+    oldStores: input.oldStores,
+    newStores: input.newStores,
+  });
+}
+
+async function recordAccessAudit(
+  tx: Transaction,
+  context: AuthContext,
+  type: (typeof ACCESS_AUDIT_TYPES)[number],
+  locationId: string | null,
+  detail: string,
+) {
+  await tx.insert(auditEvents).values({
+    locationId,
+    userId: context.user.id,
+    type,
+    detail,
+    createdAt: new Date(),
+  });
+}
+
+function locationNameMap(rows: Array<{ id: string; name: string }>) {
+  return new Map(rows.map(row => [row.id, row.name]));
+}
+
 function mapUserAccessUser(
   user: typeof users.$inferSelect,
   rows: Array<{ membership: typeof memberships.$inferSelect; location: typeof locations.$inferSelect }>,
@@ -148,20 +212,57 @@ function mapUserAccessUser(
 }
 
 async function syncMemberships(tx: Transaction, userId: string, desired: MembershipSelection[]) {
+  const changes: MembershipChange[] = [];
   const existing = await tx.select().from(memberships).where(eq(memberships.userId, userId));
   const desiredByLocation = new Map(desired.map(selection => [selection.locationId, selection.role]));
   const existingByLocation = new Map(existing.map(row => [row.locationId, row]));
 
   for (const row of existing) {
     const desiredRole = desiredByLocation.get(row.locationId);
-    if (!desiredRole) await tx.delete(memberships).where(eq(memberships.id, row.id));
-    else if (desiredRole !== row.role) await tx.update(memberships).set({ role: desiredRole }).where(eq(memberships.id, row.id));
+    if (!desiredRole) {
+      await tx.delete(memberships).where(eq(memberships.id, row.id));
+      changes.push({ kind: "removed", locationId: row.locationId, oldRole: row.role });
+    } else if (desiredRole !== row.role) {
+      await tx.update(memberships).set({ role: desiredRole }).where(eq(memberships.id, row.id));
+      changes.push({ kind: "role_changed", locationId: row.locationId, oldRole: row.role, newRole: desiredRole });
+    }
   }
 
   for (const selection of desired) {
     if (!existingByLocation.has(selection.locationId)) {
       await tx.insert(memberships).values({ userId, locationId: selection.locationId, role: selection.role });
+      changes.push({ kind: "added", locationId: selection.locationId, newRole: selection.role });
     }
+  }
+  return changes;
+}
+
+async function recordMembershipAudits(
+  tx: Transaction,
+  context: AuthContext,
+  user: { name: string | null; email: string },
+  changes: MembershipChange[],
+  names: Map<string, string>,
+) {
+  for (const change of changes) {
+    const type = change.kind === "added"
+      ? "user_access_added"
+      : change.kind === "removed"
+        ? "user_access_removed"
+        : "user_access_role_changed";
+    await recordAccessAudit(
+      tx,
+      context,
+      type,
+      change.locationId,
+      accessAuditDetail({
+        userName: user.name ?? user.email,
+        userEmail: user.email,
+        storeName: names.get(change.locationId),
+        oldRole: change.oldRole,
+        newRole: change.newRole,
+      }),
+    );
   }
 }
 
@@ -190,10 +291,38 @@ export async function listUserAccess(context: AuthContext): Promise<UserAccessRe
     db().select().from(users).where(eq(users.organisationId, organisationId)).orderBy(asc(users.email)),
   ]);
   const rows = await membershipRowsForUsers(organisationId, userRows.map(user => user.id));
+  const historyRows = await db().select({ event: auditEvents, admin: users, location: locations })
+    .from(auditEvents)
+    .innerJoin(users, eq(users.id, auditEvents.userId))
+    .leftJoin(locations, eq(locations.id, auditEvents.locationId))
+    .where(and(eq(users.organisationId, organisationId), inArray(auditEvents.type, [...ACCESS_AUDIT_TYPES])))
+    .orderBy(asc(auditEvents.createdAt));
+  const accessHistory = historyRows.reverse().slice(0, 50).map(row => {
+    let detail: { userName?: string; userEmail?: string; storeName?: string; oldRole?: UserAccessRole; newRole?: UserAccessRole } = {};
+    try { detail = JSON.parse(row.event.detail) as typeof detail; } catch { /* preserve older audit entries */ }
+    const roleChange = detail.oldRole && detail.newRole ? `${detail.oldRole === "manager" ? "Manager" : "Staff"} → ${detail.newRole === "manager" ? "Manager" : "Staff"}` : null;
+    const change = row.event.type === "user_access_invited"
+      ? `User invited${detail.storeName ? ` with ${detail.storeName} access` : ""}`
+      : row.event.type === "user_access_added"
+        ? `${detail.storeName ?? row.location?.name ?? "Store"} access added${detail.newRole ? ` (${detail.newRole === "manager" ? "Manager" : "Staff"})` : ""}`
+        : row.event.type === "user_access_removed"
+          ? `${detail.storeName ?? row.location?.name ?? "Store"} access removed`
+          : row.event.type === "user_access_role_changed"
+            ? `${detail.storeName ?? row.location?.name ?? "Store"} access changed: ${roleChange ?? "role updated"}`
+            : "User access updated";
+    return {
+      occurredAt: row.event.createdAt.toISOString(),
+      adminName: row.admin.name ?? row.admin.email,
+      userName: detail.userName ?? "User",
+      userEmail: detail.userEmail ?? "",
+      change,
+    };
+  });
   return {
     currentUserId: context.user.id,
     locations: locationRows,
     users: userRows.map(user => mapUserAccessUser(user, rows, context.user.id)),
+    accessHistory,
   };
 }
 
@@ -215,7 +344,11 @@ export async function inviteUser(context: AuthContext, input: Record<string, unk
   const user = await db().transaction(async tx => {
     if (existing) {
       await tx.update(users).set({ name, isAnonymous: false }).where(eq(users.id, existing.id));
-      await syncMemberships(tx, existing.id, desired);
+      const changes = await syncMemberships(tx, existing.id, desired);
+      await recordMembershipAudits(tx, context, { name, email: existing.email }, changes, locationNameMap(availableLocations));
+      if (existing.name !== name) {
+        await recordAccessAudit(tx, context, "user_access_updated", availableLocations[0]?.id ?? null, accessAuditDetail({ userName: name, userEmail: existing.email, oldStores: [], newStores: availableLocations.map(location => location.name) }));
+      }
       const [updated] = await tx.select().from(users).where(eq(users.id, existing.id)).limit(1);
       return updated;
     }
@@ -229,6 +362,9 @@ export async function inviteUser(context: AuthContext, input: Record<string, unk
       isAnonymous: false,
     }).returning();
     await syncMemberships(tx, created.id, desired);
+    for (const location of availableLocations) {
+      await recordAccessAudit(tx, context, "user_access_invited", location.id, accessAuditDetail({ userName: name, userEmail: normalizedEmail, storeName: location.name, newRole: role }));
+    }
     return created;
   });
 
@@ -241,10 +377,18 @@ export async function updateUserAccess(context: AuthContext, userId: string, inp
   const current = await ensureOrdinaryUser(context, id(userId, "userId"), organisationId);
   const name = input.name === undefined ? undefined : userName(input.name);
   const desired = membershipSelections(input.memberships, false);
-  if (desired) await locationsForOrganisation(organisationId, desired);
+  const desiredLocations = desired ? await locationsForOrganisation(organisationId, desired) : [];
   await db().transaction(async tx => {
     if (name !== undefined) await tx.update(users).set({ name }).where(eq(users.id, current.id));
-    if (desired) await syncMemberships(tx, current.id, desired);
+    if (desired) {
+      const changes = await syncMemberships(tx, current.id, desired);
+      await recordMembershipAudits(tx, context, { name: name ?? current.name, email: current.email }, changes, locationNameMap(desiredLocations));
+      if (name !== undefined && name !== current.name) {
+        await recordAccessAudit(tx, context, "user_access_updated", desiredLocations[0]?.id ?? null, accessAuditDetail({ userName: name, userEmail: current.email, oldStores: [], newStores: desiredLocations.map(location => location.name) }));
+      }
+    } else if (name !== undefined && name !== current.name) {
+      await recordAccessAudit(tx, context, "user_access_updated", null, accessAuditDetail({ userName: name, userEmail: current.email }));
+    }
   });
   return { id: current.id, name: name ?? current.name, memberships: desired };
 }

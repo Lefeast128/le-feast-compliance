@@ -21,6 +21,13 @@ export type UserAccessResponse = {
   currentUserId: string;
   locations: UserAccessLocation[];
   users: UserAccessUser[];
+  accessHistory: Array<{
+    occurredAt: string;
+    adminName: string;
+    userName: string;
+    userEmail: string;
+    change: string;
+  }>;
 };
 
 const unwrap = <T>(body: any): T => (body && typeof body === "object" && "data" in body ? body.data : body) as T;

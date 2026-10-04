@@ -48,6 +48,7 @@ export type DashboardTodayProps = {
   onLocationChange: (locationId: string) => void;
   onAdmin: () => void;
   onManagerReviews: () => void;
+  canUseManagement: boolean;
   managerReviewStatus?: ManagerReviewStatus | null;
   onCalendar: () => void;
   onTraining: () => void;
@@ -110,6 +111,7 @@ export default function DashboardToday({
   onLocationChange,
   onAdmin,
   onManagerReviews,
+  canUseManagement,
   managerReviewStatus,
   onCalendar,
   onTraining,
@@ -173,6 +175,7 @@ export default function DashboardToday({
         onCalendar={onCalendar}
         onTraining={onTraining}
         onLogout={onLogout}
+        canUseManagement={canUseManagement}
       />
       <main className="mx-auto max-w-5xl px-4 py-7 sm:px-8 sm:py-10">
         <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -196,7 +199,7 @@ export default function DashboardToday({
             </p>
           </div>
         </div>
-        {dashboard.access?.role !== "staff" && (
+        {canUseManagement && (
           <section className="mb-7 rounded-2xl border border-black/[0.07] bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>

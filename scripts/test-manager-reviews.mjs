@@ -48,7 +48,7 @@ const dashboard = await readFile(new URL("../src/pages/Dashboard.tsx", import.me
 const dashboardToday = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
 assert.match(dashboard, /managerReviewStatus/);
 assert.match(dashboardToday, /Weekly review/);
-assert.match(dashboardToday, /dashboard\.access\?\.role !== "staff"/);
+assert.match(dashboardToday, /canUseManagement/);
 assert.match(ui, /Have you reviewed your safe methods/);
 assert.match(report, /managerReviews/);
 assert.match(exportService, /MANAGER REVIEWS/);

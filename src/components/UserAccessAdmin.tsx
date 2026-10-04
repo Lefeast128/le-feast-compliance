@@ -21,8 +21,8 @@ function selectionsFor(user: UserAccessUser): SelectedStores {
   return Object.fromEntries(user.memberships.map(membership => [membership.id, membership.role]));
 }
 
-export default function UserAccessAdmin() {
-  const data = useRestQuery<UserAccessResponse>("user-access", restApi.admin.userAccess.list, true);
+export default function UserAccessAdmin({ visible = true }: { visible?: boolean }) {
+  const data = useRestQuery<UserAccessResponse>(visible ? "user-access" : null, restApi.admin.userAccess.list, visible);
   const invite = useRestMutation(restApi.admin.userAccess.invite);
   const update = useRestMutation(restApi.admin.userAccess.update);
   const resend = useRestMutation(restApi.admin.userAccess.resend);
@@ -33,7 +33,7 @@ export default function UserAccessAdmin() {
   const [selectedStores, setSelectedStores] = useState<SelectedStores>({});
   const [saving, setSaving] = useState(false);
 
-  if (!data) return null;
+  if (!visible || !data) return null;
 
   function openInvite() {
     setEditor({ mode: "invite" });
@@ -138,6 +138,20 @@ export default function UserAccessAdmin() {
           </div>
         ))}
         {!data.users.length && <p className="p-4 text-sm text-[#727a74]">No user access accounts found.</p>}
+      </div>
+
+      <div className="mt-6 rounded-xl border border-black/[0.07] bg-[#fafbf9] p-4">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Access history</p>
+        <div className="mt-3 space-y-3">
+          {data.accessHistory.map((event, index) => (
+            <div key={`${event.occurredAt}:${event.userEmail}:${index}`} className="rounded-xl bg-white p-3 text-sm">
+              <p className="font-semibold">{new Date(event.occurredAt).toLocaleString("en-GB")}</p>
+              <p className="mt-1 text-[#727a74]">{event.adminName} · {event.userName}{event.userEmail ? ` (${event.userEmail})` : ""}</p>
+              <p className="mt-1">{event.change}</p>
+            </div>
+          ))}
+          {!data.accessHistory.length && <p className="text-sm text-[#727a74]">No access changes recorded yet.</p>}
+        </div>
       </div>
 
       {editor && (

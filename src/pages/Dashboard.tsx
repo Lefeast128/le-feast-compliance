@@ -15,13 +15,15 @@ import type { CalendarDay, DashboardData, DashboardLocation, DashboardView, Mana
 import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { formatDateKey } from "@/lib/date-key";
+import { getRoleCapabilities } from "@/lib/role-capabilities";
 import { useState } from "react";
 
 const dateLabel = (value = new Date()) => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(value);
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
+const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
 
 export default function Dashboard() {
-  const { logout } = useAuth();
+  const { logout, user, memberships } = useAuth();
   const [renderTimestamp] = useState(() => Date.now());
   const [locationId, setLocationId] = useState<string | null>(null);
   const [view, setView] = useState<DashboardView>("today");
@@ -30,6 +32,7 @@ export default function Dashboard() {
   const bounds = monthBounds(calendarMonth);
   const locations = useRestQuery<DashboardLocation[]>("locations", restApi.locations.myLocations, true);
   const currentLocationId = locationId ?? locations?.[0]?._id ?? null;
+  const capabilities = getRoleCapabilities(user, memberships, currentLocationId);
   const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
   const managerReviewStatus = useRestQuery<ManagerReviewStatus | null>(dashboard && dashboard.access?.role !== "staff" ? `manager-reviews-status:${dashboard.location._id}` : null, () => restApi.managerReviews.list({ locationId: dashboard!.location._id }), Boolean(dashboard && dashboard.access?.role !== "staff"));
   const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
@@ -42,6 +45,16 @@ export default function Dashboard() {
     setLocationId(nextLocationId);
     setView("today");
     workflows.resetForLocation();
+  }
+
+  function openManagementView() {
+    if (!capabilities.canUseManagement) return;
+    setView("admin");
+  }
+
+  function openManagerReviews() {
+    if (!capabilities.canViewManagerReviews) return;
+    setView("managerReviews");
   }
 
   function viewTodayRecords() {
@@ -61,8 +74,12 @@ export default function Dashboard() {
   if (view === "day") return <MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => setView("calendar")} />;
   if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />;
   if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
-  if (view === "admin") return <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />;
-  if (view === "managerReviews") return <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} />;
+  if (view === "admin") return capabilities.canUseManagement
+    ? <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />
+    : <AccessDenied />;
+  if (view === "managerReviews") return capabilities.canViewManagerReviews
+    ? <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} />
+    : <AccessDenied />;
 
   const todayProps: DashboardTodayProps = {
     ...workflows,
@@ -71,8 +88,9 @@ export default function Dashboard() {
     locations,
     locationId,
     onLocationChange: switchLocation,
-    onAdmin: () => setView("admin"),
-    onManagerReviews: () => setView("managerReviews"),
+    onAdmin: openManagementView,
+    onManagerReviews: openManagerReviews,
+    canUseManagement: capabilities.canUseManagement,
     managerReviewStatus,
     onCalendar: () => setView("calendar"),
     onTraining: () => setView("training"),
