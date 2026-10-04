@@ -1,4 +1,5 @@
 import ComplianceReports from "@/components/ComplianceReports";
+import ManagerReviews from "@/components/ManagerReviews";
 import AdminStoreOverview from "@/components/admin/AdminStoreOverview";
 import type { AdminLocation, AdminOperation, AdminStore, AdminTeamResponse } from "@/components/admin/admin-types";
 import WastageCatalogueAdmin from "@/components/WastageCatalogueAdmin";
@@ -18,6 +19,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
   const [storeId, setStoreId] = useState<string | null>(null);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [reviewsOpen, setReviewsOpen] = useState(false);
   const selected = stores?.find((entry) => entry.location._id === storeId) ?? stores?.[0];
   const selectedLocationId = selected?.location._id ?? null;
   const locations: AdminLocation[] = (stores ?? []).map((entry) => entry.location);
@@ -37,6 +39,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
     setStoreId(nextLocationId);
     setCatalogueOpen(false);
     setReportsOpen(false);
+    setReviewsOpen(false);
   }
 
   if (catalogueOpen && selectedLocationId) {
@@ -64,6 +67,10 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
     );
   }
 
+  if (reviewsOpen && selectedLocationId) {
+    return <ManagerReviews locationId={selectedLocationId} locations={locations} onBack={() => setReviewsOpen(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
@@ -81,6 +88,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Configuration</p>
         <h1 className="mt-2 text-3xl font-semibold">Current setup</h1>
         <UserAccessAdmin />
+        {selectedLocationId && <section className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Manager controls</p><h2 className="mt-1 text-xl font-semibold">Issues &amp; Reviews</h2><p className="mt-1 text-sm text-[#727a74]">Review open issues and complete weekly or 4-weekly management reviews.</p><Button className="mt-4 bg-[#202522] text-white" onClick={() => setReviewsOpen(true)}>Open Issues &amp; Reviews</Button></section>}
         <div className="mt-5 flex flex-wrap gap-2">
           {(stores ?? []).map((entry) => (
             <Button

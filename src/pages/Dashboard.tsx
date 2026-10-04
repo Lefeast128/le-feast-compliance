@@ -3,6 +3,7 @@ import AdditionalChecksView from "@/components/AdditionalChecksView";
 import InlineChecklist from "@/components/InlineChecklist";
 import InlineCleaning from "@/components/InlineCleaning";
 import MobileDayView from "@/components/MobileDayView";
+import ManagerReviews from "@/components/ManagerReviews";
 import TrainingView from "@/components/TrainingView";
 import TemperatureActionScreen from "@/components/TemperatureActionScreen";
 import TemperatureRoundEntry from "@/components/TemperatureRoundEntry";
@@ -60,6 +61,7 @@ export default function Dashboard() {
   if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />;
   if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
   if (view === "admin") return <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />;
+  if (view === "managerReviews") return <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} />;
 
   const todayProps: DashboardTodayProps = {
     ...workflows,
@@ -69,6 +71,7 @@ export default function Dashboard() {
     locationId,
     onLocationChange: switchLocation,
     onAdmin: () => setView("admin"),
+    onManagerReviews: () => setView("managerReviews"),
     onCalendar: () => setView("calendar"),
     onTraining: () => setView("training"),
     onLogout: logout,

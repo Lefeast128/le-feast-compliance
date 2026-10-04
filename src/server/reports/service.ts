@@ -9,6 +9,7 @@ import { localWeekday } from "../dashboard/time.js";
 import { calendar } from "../history/service.js";
 import { correctiveActionLabel, issueStatusLabel, resultLabel } from "../../lib/temperature-resolution.js";
 import { asOfIssue, evaluatedDays, reportDateRange, REPORT_SECTION_KEYS, sectionCompletion, type ReportSectionKey } from "./calculations.js";
+import { listManagerReviewsForReport } from "../reviews/service.js";
 
 const db = () => getDb();
 const iso = (value: unknown) => value instanceof Date ? value.toISOString() : value == null ? null : String(value);
@@ -201,6 +202,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
   const wastageDays = new Set(wastage.map(row => localDateKey(row.createdAt.getTime(), location.timezone)));
   const summary = { daysEvaluated: evaluated.length, completeDays: evaluated.filter(day => day.complete).length, incompleteDays: evaluated.filter(day => !day.complete).length, correctiveActionDays: evaluated.filter(day => day.correctiveActionRecorded).length, daysWithOpenIssueAtStart: openIssuesAtStart, daysWithTemperatureFailure: new Set(exceptionRows.filter(row => row.type === "temperature").map(row => row.date)).size, daysWithProbeFailure: new Set(exceptionRows.filter(row => row.type === "food_probe").map(row => row.date)).size, completionRate: evaluated.length ? evaluated.filter(day => day.complete).length / evaluated.length : null };
   const additionalSummary = { due: additionalByDate.reduce((sum, row) => sum + row.due, 0), completed: additionalByDate.reduce((sum, row) => sum + row.completed, 0), incomplete: additionalByDate.reduce((sum, row) => sum + row.incomplete, 0), rows: additionalRows };
+  const managerReviewRows = await listManagerReviewsForReport(context, location.id, start, end);
   return {
     location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone },
     range: { start: range.start, end: range.end, timezone: location.timezone },
@@ -211,5 +213,6 @@ export async function complianceReport(context: AuthContext, input: { locationId
     issues: { issuesCreated: issuesRows.filter(issue => issue.createdAt >= start && issue.createdAt <= end).length, issuesResolved: issuesRows.filter(issue => issue.resolvedAt && issue.resolvedAt >= start && issue.resolvedAt <= end).length, rechecksRecorded: recheckRows.filter(row => row.createdAt >= start && row.createdAt <= end).length, openAtRangeEnd: issueRows.filter(issue => issue.status !== "resolved").length, rows: issueRows },
     wastage: { totalRecords: wastage.length, noWasteRecords: wastage.filter(row => row.noWaste).length, daysWithRecord: wastageDays.size, evaluatedDaysMissingEvidence: evaluated.filter(day => !wastageDays.has(day.date)).length },
     additional: additionalSummary,
+    managerReviews: { rows: managerReviewRows },
   };
 }

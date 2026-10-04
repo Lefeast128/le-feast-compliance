@@ -173,6 +173,21 @@ export const issues = pgTable("issues", { id: id(), locationId: uuid("location_i
 export const rechecks = pgTable("rechecks", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), readingId: uuid("reading_id").references(() => temperatureReadings.id, { onDelete: "restrict" }), temperature: real("temperature").notNull(), result: text("result").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) });
 export const issueUpdates = pgTable("issue_updates", { id: id(), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), updateType: text("update_type").notNull(), note: text("note").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) }, table => ({ issueCreated: index("issue_updates_issue_created_idx").on(table.issueId, table.createdAt), locationCreated: index("issue_updates_location_created_idx").on(table.locationId, table.createdAt) }));
 export const auditEvents = pgTable("audit_events", { id: id(), locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }), type: text("type").notNull(), detail: text("detail").notNull(), createdAt: createdAt() });
+export const managerReviews = pgTable("manager_reviews", {
+  id: id(),
+  locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
+  reviewType: text("review_type").notNull(),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+  completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  summary: jsonb("summary").notNull(),
+  seriousProblems: boolean("serious_problems"),
+  details: text("details"),
+  actionTaken: text("action_taken"),
+  answers: jsonb("answers"),
+  createdAt: createdAt(),
+}, table => ({ period: uniqueIndex("manager_reviews_period_idx").on(table.locationId, table.reviewType, table.periodStart) }));
 
 export const authOtpChallenges = pgTable("auth_otp_challenges", {
   id: id(), normalizedEmail: text("normalized_email").notNull(), otpDigest: text("otp_digest").notNull(),
@@ -192,6 +207,6 @@ export const foundationTables = {
   checklistSignOffs, securityQuestions, securityResponses, securitySignOffs, foodChecks,
   wastageItems, wastageRecords, catalogueProducts, catalogueSyncStatus, cleaningTasks,
   cleaningCompletions, documents, trainingRequirements, trainingDocumentVersions, trainingCompletions,
-  additionalRequirements, additionalCompletions, rechecks, issues, issueUpdates, auditEvents,
+  additionalRequirements, additionalCompletions, rechecks, issues, issueUpdates, auditEvents, managerReviews,
   authOtpChallenges, authSessions,
 } as const;

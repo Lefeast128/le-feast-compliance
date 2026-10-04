@@ -28,7 +28,7 @@ export type CalendarDay = {
   status: string;
 };
 
-export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "additional";
+export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "additional" | "managerReviews";
 
 export type DashboardIssue = {
   _id: string;
@@ -98,6 +98,7 @@ export type WastageRecord = {
 
 export type DashboardData = {
   location: DashboardLocation;
+  access?: { role: "admin" | "manager" | "staff" };
   teamMembers: TeamMember[];
   equipment: Equipment[];
   issues: DashboardIssue[];

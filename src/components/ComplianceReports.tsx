@@ -516,6 +516,28 @@ export default function ComplianceReports({
                 </div>
               </section>
             </section>
+            <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+              <h2 className="text-lg font-semibold">Manager reviews</h2>
+              {report.managerReviews?.rows?.length ? (
+                <div className="mt-4 space-y-3">
+                  {report.managerReviews.rows.map((review: any) => (
+                    <div key={review.id} className="rounded-xl bg-[#fafbf9] p-4">
+                      <p className="font-semibold">
+                        {review.reviewType === "four_weekly" ? "4-weekly review" : "Weekly review"}
+                      </p>
+                      <p className="mt-1 text-sm text-[#727a74]">
+                        {review.periodStart} – {review.periodEnd} · {review.summary?.issuesRaised ?? 0} issues raised · {review.summary?.outstandingIssues ?? 0} outstanding
+                      </p>
+                      <p className="mt-1 text-xs text-[#89918b]">
+                        Completed by {review.completedBy ?? "Not recorded"} · {new Date(review.completedAt).toLocaleString("en-GB")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-[#727a74]">No manager reviews recorded in this period.</p>
+              )}
+            </section>
           </>
         )}
       </main>

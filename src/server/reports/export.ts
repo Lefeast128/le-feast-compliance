@@ -24,6 +24,9 @@ export type ComplianceReport = {
   additional: {
     rows: Array<Record<string, any>>;
   };
+  managerReviews?: {
+    rows: Array<Record<string, any>>;
+  };
 };
 
 export type ExportFormat = "csv" | "xlsx";
@@ -217,6 +220,23 @@ const additionalRows = (report: ComplianceReport) => report.additional.rows.map(
   boolLabel(row.certificatePresent),
 ]);
 
+const managerReviewRows = (report: ComplianceReport) => (report.managerReviews?.rows ?? []).map(row => [
+  row.reviewType === "four_weekly" ? "4-weekly review" : "Weekly review",
+  row.periodStart,
+  row.periodEnd,
+  formatLocalTimestamp(row.completedAt, report.range.timezone),
+  row.completedBy ?? "Not recorded",
+  row.summary?.issuesRaised ?? 0,
+  row.summary?.issuesResolved ?? 0,
+  row.summary?.outstandingIssues ?? 0,
+  row.summary?.failedTemperatureChecks ?? 0,
+  row.summary?.failedProbeChecks ?? 0,
+  row.seriousProblems == null ? "" : boolLabel(row.seriousProblems),
+  row.details ?? "",
+  row.actionTaken ?? "",
+  row.answers ? JSON.stringify(row.answers) : "",
+]);
+
 export const renderComplianceCsv = (report: ComplianceReport, generatedAt = new Date().toISOString()) => {
   const rows: unknown[][] = [
     ["REPORT METADATA"],
@@ -245,6 +265,10 @@ export const renderComplianceCsv = (report: ComplianceReport, generatedAt = new 
     ["ADDITIONAL CHECKS"],
     ["Requirement", "Scheduled Due Date", "Completed At", "Team Member", "Certificate Present"],
     ...additionalRows(report),
+    [],
+    ["MANAGER REVIEWS"],
+    ["Review Type", "Period Start", "Period End", "Completed At", "Completed By", "Issues Raised", "Issues Resolved", "Outstanding Issues", "Failed Temperature Checks", "Failed Probe Checks", "Serious Problems", "Details", "Action Taken", "FSA Answers"],
+    ...managerReviewRows(report),
   ];
   return Buffer.from(`\uFEFF${rows.map(csvRow).join("\n")}\n`, "utf8");
 };
@@ -293,6 +317,11 @@ export const renderComplianceWorkbook = async (report: ComplianceReport, generat
 
   const additional = workbook.addWorksheet("Additional Checks");
   addTable(additional, ["Requirement", "Scheduled Due Date", "Completed At", "Team Member", "Certificate Present"], additionalRows(report));
+
+  if (report.managerReviews) {
+    const reviews = workbook.addWorksheet("Manager Reviews");
+    addTable(reviews, ["Review Type", "Period Start", "Period End", "Completed At", "Completed By", "Issues Raised", "Issues Resolved", "Outstanding Issues", "Failed Temperature Checks", "Failed Probe Checks", "Serious Problems", "Details", "Action Taken", "FSA Answers"], managerReviewRows(report));
+  }
 
   const sectionSheet = workbook.addWorksheet("Section Completion");
   addTable(sectionSheet, SECTION_HEADERS, sectionRows(report));

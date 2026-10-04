@@ -35,7 +35,8 @@
     "test:report-exports": "node --import=tsx/esm scripts/test-report-exports.mjs",
     "test:lazy-temperature-round": "node --import=tsx/esm scripts/test-lazy-temperature-round.mjs",
     "test:temperature-resolution": "node --import=tsx/esm scripts/test-temperature-resolution.mjs",
-    "test:user-access": "node scripts/test-user-access.mjs"
+    "test:user-access": "node scripts/test-user-access.mjs",
+    "test:manager-reviews": "node --import=tsx/esm scripts/test-manager-reviews.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
