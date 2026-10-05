@@ -10,6 +10,7 @@ async function cleaningLocation(context: AuthContext, taskId: string) {
   const [row] = await db().select().from(cleaningTasks).where(eq(cleaningTasks.id, idValue)).limit(1);
   if (!row) throw new ApiError(404, "Cleaning task not found");
   await locationFor(context, row.locationId);
+  if (row.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard cleaning tasks are controlled centrally");
   return row;
 }
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { documents, locations, teamMembers, trainingCompletions, trainingDocumentVersions, trainingRequirements } from "../db/schema.js";
+import { auditEvents, documents, locations, teamMembers, trainingCompletions, trainingContentVersions, trainingDocumentVersions, trainingRequirements } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
@@ -38,8 +38,9 @@ export async function trainingDashboard(context: AuthContext, locationId: string
     db.select().from(teamMembers).where(and(eq(teamMembers.locationId, location.id), eq(teamMembers.active, true))).orderBy(asc(teamMembers.name)),
   ]);
   const requirementIds = requirements.map(item => item.id);
-  const [versions, completions] = await Promise.all([
+  const [versions, contentVersions, completions] = await Promise.all([
     requirementIds.length ? db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.requirementId, requirementIds)) : [],
+    requirementIds.length ? db.select().from(trainingContentVersions).where(inArray(trainingContentVersions.requirementId, requirementIds)) : [],
     db.select().from(trainingCompletions).where(eq(trainingCompletions.locationId, location.id)),
   ]);
   const versionIds = [...new Set(requirements.flatMap(item => [item.currentDocumentVersionId, item.requiredDocumentVersionId]).concat(completions.map(item => item.documentVersionId)).filter((id): id is string => Boolean(id)))];
@@ -50,24 +51,32 @@ export async function trainingDashboard(context: AuthContext, locationId: string
   const documentById = new Map(documentRows.map(item => [item.id, item]));
   const requirementData = requirements.map(requirement => {
     const requirementVersions = versions.filter(version => version.requirementId === requirement.id).sort((a, b) => a.versionNumber - b.versionNumber);
+    const requirementContentVersions = contentVersions.filter(version => version.requirementId === requirement.id).sort((a, b) => a.versionNumber - b.versionNumber);
     const current = requirement.currentDocumentVersionId ? versionById.get(requirement.currentDocumentVersionId) : undefined;
     const required = requirement.requiredDocumentVersionId ? versionById.get(requirement.requiredDocumentVersionId) : requirementVersions[0];
+    const currentContent = requirement.currentContentVersionId ? contentVersions.find(version => version.id === requirement.currentContentVersionId) : undefined;
+    const requiredContent = requirement.requiredContentVersionId ? contentVersions.find(version => version.id === requirement.requiredContentVersionId) : requirementContentVersions[0];
     const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
     const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
     const audience = requirement.audience ?? "all_team";
     return {
       ...dto(requirement),
+      trainingFormat: requirement.trainingFormat,
+      trainingInstructions: currentContent?.content ?? requirement.description,
       applicableTeamMemberIds: memberIdsFor(members, audience, selected),
       currentDocumentVersion: versionDto(current ?? null),
       requiredDocumentVersion: versionDto(required ?? null),
       currentDocumentVersionNumber: current?.versionNumber,
       requiredDocumentVersionNumber: required?.versionNumber,
+      currentContentVersionNumber: currentContent?.versionNumber,
+      requiredContentVersionNumber: requiredContent?.versionNumber,
       documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null,
     };
   });
   const completionData = completions.map(completion => {
     const version = completion.documentVersionId ? versionById.get(completion.documentVersionId) : undefined;
-    return { id: completion.id, locationId: completion.locationId, requirementId: completion.requirementId, teamMemberId: completion.teamMemberId, completedAt: iso(completion.completedAt), completedBy: completion.completedBy, documentVersion: versionDto(version ?? null), documentVersionNumber: version?.versionNumber, teamMemberName: members.find(member => member.id === completion.teamMemberId)?.name, requirementTitle: requirements.find(item => item.id === completion.requirementId)?.title };
+    const contentVersion = completion.contentVersionId ? contentVersions.find(item => item.id === completion.contentVersionId) : undefined;
+    return { id: completion.id, locationId: completion.locationId, requirementId: completion.requirementId, teamMemberId: completion.teamMemberId, completedAt: iso(completion.completedAt), completedBy: completion.completedBy, documentVersion: versionDto(version ?? null), documentVersionNumber: version?.versionNumber, contentVersionId: completion.contentVersionId, contentVersionNumber: contentVersion?.versionNumber, teamMemberName: members.find(member => member.id === completion.teamMemberId)?.name, requirementTitle: requirements.find(item => item.id === completion.requirementId)?.title };
   });
   return { location: { id: location.id, name: location.name, shortName: location.shortName, timezone: location.timezone }, teamMembers: members.map(dto), requirements: requirementData, completions: completionData };
 }
@@ -79,12 +88,13 @@ export async function listTraining(context: AuthContext, locationId: string) {
 
 function metadata(input: Record<string, unknown>) {
   const title = requireString(input.title, "Title");
-  const description = input.description === undefined ? undefined : (typeof input.description === "string" ? input.description.trim() : (() => { throw new ApiError(400, "Description is invalid"); })());
+  const description = input.description === undefined || input.description === null ? null : (typeof input.description === "string" ? input.description.trim() : (() => { throw new ApiError(400, "Description is invalid"); })());
   const category = requireEnum(input.category ?? "other", "category", categories);
   const audience = requireEnum(input.audience ?? "all_team", "audience", audiences);
+  const trainingFormat = requireEnum(input.trainingFormat ?? "briefing", "trainingFormat", ["briefing", "document"] as const);
   const selectedTeamMemberIds = input.selectedTeamMemberIds ?? [];
   if (!Array.isArray(selectedTeamMemberIds) || selectedTeamMemberIds.some(item => typeof item !== "string")) throw new ApiError(400, "selectedTeamMemberIds is invalid");
-  return { title, description, category, audience, selectedTeamMemberIds: selectedTeamMemberIds as string[] };
+  return { title, description, category, audience, trainingFormat, selectedTeamMemberIds: selectedTeamMemberIds as string[] };
 }
 
 export async function addTraining(context: AuthContext, input: Record<string, unknown>) {
@@ -93,6 +103,11 @@ export async function addTraining(context: AuthContext, input: Record<string, un
   if (values.audience === "selected_people") await selectedMembers(context, location.id, values.selectedTeamMemberIds);
   const rows = await getDb().select({ id: trainingRequirements.id }).from(trainingRequirements).where(eq(trainingRequirements.locationId, location.id));
   const [row] = await getDb().insert(trainingRequirements).values({ locationId: location.id, ...values, order: rows.length, active: true }).returning();
+  if (values.trainingFormat === "briefing") {
+    const [version] = await getDb().insert(trainingContentVersions).values({ requirementId: row.id, versionNumber: 1, content: values.description ?? "", createdBy: context.user.id, requiresReacknowledgement: true }).returning();
+    const [updated] = await getDb().update(trainingRequirements).set({ currentContentVersionId: version.id, requiredContentVersionId: version.id }).where(eq(trainingRequirements.id, row.id)).returning();
+    return updated;
+  }
   return row;
 }
 
@@ -101,10 +116,19 @@ export async function updateTraining(context: AuthContext, requirementId: string
   const [existing] = await getDb().select().from(trainingRequirements).where(eq(trainingRequirements.id, requirementId)).limit(1);
   if (!existing) throw new ApiError(404, "Training requirement not found");
   const location = await locationFor(context, existing.locationId, true);
+  if (existing.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
   if (!existing.active) throw new ApiError(409, "Training requirement is inactive");
-  const values = metadata(input);
+  const values = metadata({ ...existing, ...input });
   if (values.audience === "selected_people") await selectedMembers(context, location.id, values.selectedTeamMemberIds);
   const [row] = await getDb().update(trainingRequirements).set(values).where(eq(trainingRequirements.id, existing.id)).returning();
+  if (values.trainingFormat === "briefing" && existing.description !== values.description) {
+    const versions = await getDb().select().from(trainingContentVersions).where(eq(trainingContentVersions.requirementId, existing.id));
+    const [version] = await getDb().insert(trainingContentVersions).values({ requirementId: existing.id, versionNumber: Math.max(0, ...versions.map(item => item.versionNumber)) + 1, content: values.description ?? "", createdBy: context.user.id, requiresReacknowledgement: input.requireReacknowledgement === true }).returning();
+    const versionPatch = input.requireReacknowledgement === true || !existing.requiredContentVersionId
+      ? { currentContentVersionId: version.id, requiredContentVersionId: version.id }
+      : { currentContentVersionId: version.id };
+    await getDb().update(trainingRequirements).set(versionPatch).where(eq(trainingRequirements.id, existing.id));
+  }
   return row;
 }
 
@@ -113,6 +137,7 @@ export async function deleteTraining(context: AuthContext, requirementId: string
   const [existing] = await getDb().select().from(trainingRequirements).where(eq(trainingRequirements.id, requirementId)).limit(1);
   if (!existing) throw new ApiError(404, "Training requirement not found");
   await locationFor(context, existing.locationId, true);
+  if (existing.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
   if (!existing.active) throw new ApiError(409, "Training requirement is inactive");
   const [row] = await getDb().update(trainingRequirements).set({ active: false }).where(eq(trainingRequirements.id, existing.id)).returning();
   return row;
@@ -135,6 +160,7 @@ export async function attachTrainingDocument(context: AuthContext, requirementId
   const [requirement] = await getDb().select().from(trainingRequirements).where(eq(trainingRequirements.id, requirementId)).limit(1);
   if (!requirement) throw new ApiError(404, "Training requirement not found");
   const location = await locationFor(context, requirement.locationId, true);
+  if (requirement.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
   const [document] = await getDb().select().from(documents).where(and(eq(documents.id, documentId), eq(documents.locationId, location.id), eq(documents.purpose, "training_document"), eq(documents.status, "active"))).limit(1);
   if (!document) throw new ApiError(404, "Document not found");
   const requireReacknowledgement = input.requireReacknowledgement === true;
@@ -143,9 +169,10 @@ export async function attachTrainingDocument(context: AuthContext, requirementId
     const versionNumber = Math.max(0, ...versions.map(version => version.versionNumber)) + 1;
     const [version] = await tx.insert(trainingDocumentVersions).values({ requirementId: requirement.id, documentId: document.id, versionNumber, storageId: document.pathname, documentName: document.originalFilename, createdBy: context.user.id, requiresReacknowledgement: requireReacknowledgement }).returning();
     const baseline = requirement.requiredDocumentVersionId ?? versions.sort((a, b) => a.versionNumber - b.versionNumber)[0]?.id;
-    const patch: any = { currentDocumentVersionId: version.id, documentStorageId: document.pathname, documentName: document.originalFilename };
+    const patch: any = { currentDocumentVersionId: version.id, documentStorageId: document.pathname, documentName: document.originalFilename, trainingFormat: "document" };
     if (!baseline || requireReacknowledgement) patch.requiredDocumentVersionId = version.id;
     const [updated] = await tx.update(trainingRequirements).set(patch).where(eq(trainingRequirements.id, requirement.id)).returning();
+    if (requirement.centralPublicationId) await tx.insert(auditEvents).values({ locationId: requirement.locationId, userId: context.user.id, type: "central_training_document_version_changed", detail: JSON.stringify({ publicationId: requirement.centralPublicationId, requirementId: requirement.id, versionNumber }), createdAt: new Date() });
     return { requirement: updated, version };
   });
 }
@@ -155,7 +182,8 @@ export async function removeTrainingDocument(context: AuthContext, requirementId
   const [requirement] = await getDb().select().from(trainingRequirements).where(eq(trainingRequirements.id, requirementId)).limit(1);
   if (!requirement) throw new ApiError(404, "Training requirement not found");
   await locationFor(context, requirement.locationId, true);
-  const [updated] = await getDb().update(trainingRequirements).set({ documentStorageId: null, documentName: null, currentDocumentVersionId: null, requiredDocumentVersionId: null }).where(eq(trainingRequirements.id, requirement.id)).returning();
+  if (requirement.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
+  const [updated] = await getDb().update(trainingRequirements).set({ documentStorageId: null, documentName: null, currentDocumentVersionId: null, requiredDocumentVersionId: null, trainingFormat: "briefing" }).where(eq(trainingRequirements.id, requirement.id)).returning();
   return updated;
 }
 
@@ -169,8 +197,9 @@ export async function completeTraining(context: AuthContext, input: Record<strin
   const audience = requirement.audience ?? "all_team"; const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
   if ((audience === "managers_only" && member.role !== "manager") || (audience === "selected_people" && !selected.includes(member.id))) throw new ApiError(403, "Training requirement is not assigned to this team member");
   const current = requirement.currentDocumentVersionId ? (await getDb().select().from(trainingDocumentVersions).where(eq(trainingDocumentVersions.id, requirement.currentDocumentVersionId)).limit(1))[0] : undefined;
-  const existing = await getDb().select().from(trainingCompletions).where(and(eq(trainingCompletions.requirementId, requirement.id), eq(trainingCompletions.teamMemberId, member.id), current ? eq(trainingCompletions.documentVersionId, current.id) : undefined as any)).limit(1);
+  const currentContent = requirement.currentContentVersionId ? (await getDb().select().from(trainingContentVersions).where(eq(trainingContentVersions.id, requirement.currentContentVersionId)).limit(1))[0] : undefined;
+  const existing = await getDb().select().from(trainingCompletions).where(and(eq(trainingCompletions.requirementId, requirement.id), eq(trainingCompletions.teamMemberId, member.id), current ? eq(trainingCompletions.documentVersionId, current.id) : currentContent ? eq(trainingCompletions.contentVersionId, currentContent.id) : undefined as any)).limit(1);
   if (existing[0]) return existing[0];
-  const [completion] = await getDb().insert(trainingCompletions).values({ locationId: location.id, requirementId: requirement.id, teamMemberId: member.id, documentVersionId: current?.id ?? null, completedAt: new Date(), completedBy: context.user.id }).returning();
+  const [completion] = await getDb().insert(trainingCompletions).values({ locationId: location.id, requirementId: requirement.id, teamMemberId: member.id, documentVersionId: current?.id ?? null, contentVersionId: currentContent?.id ?? null, completedAt: new Date(), completedBy: context.user.id }).returning();
   return completion;
 }

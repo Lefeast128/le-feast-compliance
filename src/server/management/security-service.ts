@@ -10,6 +10,7 @@ async function securityLocation(context: AuthContext, questionId: string) {
   const [row] = await db().select().from(securityQuestions).where(eq(securityQuestions.id, idValue)).limit(1);
   if (!row) throw new ApiError(404, "Question not found");
   await locationFor(context, row.locationId);
+  if (row.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard security questions are controlled centrally");
   return row;
 }
 

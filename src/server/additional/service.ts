@@ -50,7 +50,7 @@ async function locationFor(context: AuthContext, locationId: string, manager = f
   if (!location || !location.active) throw new ApiError(404, "Location not found"); (manager ? requireLocationManager : requireLocationAccess)(context, location.id, location.organisationId); return location;
 }
 async function requirementFor(context: AuthContext, requirementId: string, manager = false) {
-  requireUuid(requirementId, "requirementId"); const [requirement] = await getDb().select().from(additionalRequirements).where(eq(additionalRequirements.id, requirementId)).limit(1); if (!requirement) throw new ApiError(404, "Additional requirement not found"); await locationFor(context, requirement.locationId, manager); return requirement;
+  requireUuid(requirementId, "requirementId"); const [requirement] = await getDb().select().from(additionalRequirements).where(eq(additionalRequirements.id, requirementId)).limit(1); if (!requirement) throw new ApiError(404, "Additional requirement not found"); await locationFor(context, requirement.locationId, manager); if (requirement.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard additional checks are controlled centrally"); return requirement;
 }
 
 export async function additionalDashboard(context: AuthContext, locationId: string) {

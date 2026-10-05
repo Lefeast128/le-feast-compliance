@@ -27,6 +27,7 @@ export type AdminCleaningTask = {
   name: string;
   frequency: "after_use" | "daily" | "weekly" | "specific_days" | string;
   weekdays: number[];
+  centralItemId?: string | null;
 };
 
 export type AdminProbeProduct = {
@@ -45,6 +46,7 @@ export type AdminSecurityQuestion = {
   _id: string;
   question: string;
   session: "AM" | "PM";
+  centralItemId?: string | null;
 };
 
 export type AdminTrainingRequirement = {

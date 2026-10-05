@@ -155,6 +155,11 @@ export const restApi = {
       updateTraining: ({ publicationId, ...body }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, body),
       publishChecklist: (body: AnyRecord) => post("/api/admin/organisation/checklist", body),
       updateChecklist: ({ centralItemId, ...body }: AnyRecord) => patch(`/api/admin/organisation/checklist/${encodeURIComponent(idOf(centralItemId))}`, body),
+      publishOperationalTask: (body: AnyRecord) => post("/api/admin/organisation/operational-tasks", body),
+      updateOperationalTask: ({ centralItemId, ...body }: AnyRecord) => patch(`/api/admin/organisation/operational-tasks/${encodeURIComponent(idOf(centralItemId))}`, body),
+      retireOperationalTask: ({ centralItemId }: AnyRecord) => patch(`/api/admin/organisation/operational-tasks/${encodeURIComponent(idOf(centralItemId))}`, { retire: true }),
+      retireTraining: ({ publicationId }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, { retire: true }),
+      retireChecklist: ({ centralItemId }: AnyRecord) => patch(`/api/admin/organisation/checklist/${encodeURIComponent(idOf(centralItemId))}`, { retire: true }),
     },
   },
 };

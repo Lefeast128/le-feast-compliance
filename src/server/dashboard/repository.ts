@@ -4,7 +4,7 @@ import {
   additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs,
   cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates, issues, locations,
   probeProducts, securityQuestions, securityResponses, securitySignOffs, scheduledTasks, teamMembers, documents,
-  temperatureReadings, temperatureRounds, trainingCompletions, trainingDocumentVersions, trainingRequirements,
+  temperatureReadings, temperatureRounds, trainingCompletions, trainingContentVersions, trainingDocumentVersions, trainingRequirements,
   users, wastageItems, wastageRecords,
 } from "../db/schema.js";
 import { requireLocationAccess, type AuthContext } from "../auth/core.js";
@@ -125,6 +125,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   const weekday = localWeekday(now, location.timezone);
   const cleaningData = cleaningTaskRows.filter(task => dueCleaning(task, weekday));
   const currentVersions = trainingRequirementRows.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
+  const contentVersions = trainingRequirementRows.length ? await db.select().from(trainingContentVersions).where(inArray(trainingContentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
   const versionIds = [...new Set(trainingRequirementRows.flatMap(requirement => [requirement.currentDocumentVersionId, requirement.requiredDocumentVersionId]).concat(trainingCompletionRows.map(completion => completion.documentVersionId)).filter((id): id is string => Boolean(id)))];
   const pointerVersions = versionIds.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.id, versionIds)) : [];
   const versionById = new Map([...currentVersions, ...pointerVersions].map(version => [version.id, version]));
@@ -140,12 +141,14 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
     const applicableTeamMemberIds = activeTeamMemberRows.filter(member => audience === "managers_only" ? (member.role ?? "team") === "manager" : audience === "selected_people" ? selected.includes(member.id) : true).map(member => member.id);
     const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
-    return { ...serialize(requirement), currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, applicableTeamMemberIds, documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null };
+    const currentContent = requirement.currentContentVersionId ? contentVersions.find(version => version.id === requirement.currentContentVersionId) : undefined;
+    return { ...serialize(requirement), trainingInstructions: currentContent?.content ?? requirement.description, currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, currentContentVersionNumber: currentContent?.versionNumber, requiredContentVersionNumber: requirement.requiredContentVersionId ? contentVersions.find(version => version.id === requirement.requiredContentVersionId)?.versionNumber : undefined, applicableTeamMemberIds, documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null };
   });
   const trainingDataRows = trainingCompletionRows.map(completion => {
     const version = completion.documentVersionId ? versionById.get(completion.documentVersionId) : undefined;
+    const contentVersion = completion.contentVersionId ? contentVersions.find(item => item.id === completion.contentVersionId) : undefined;
     const requirement = trainingRequirementRows.find(item => item.id === completion.requirementId);
-    return { id: completion.id, locationId: completion.locationId, requirementId: completion.requirementId, teamMemberId: completion.teamMemberId, completedAt: completion.completedAt.toISOString(), completedBy: completion.completedBy, documentVersion: documentVersion(version), documentVersionNumber: version?.versionNumber, teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: requirement?.title };
+    return { id: completion.id, locationId: completion.locationId, requirementId: completion.requirementId, teamMemberId: completion.teamMemberId, completedAt: completion.completedAt.toISOString(), completedBy: completion.completedBy, documentVersion: documentVersion(version), documentVersionNumber: version?.versionNumber, contentVersionId: completion.contentVersionId, contentVersionNumber: contentVersion?.versionNumber, teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: requirement?.title };
   });
   const additionalData = additionalCompletionRows.map(completion => ({ ...serialize(completion), teamMemberName: teamNames.get(completion.teamMemberId), requirementTitle: additionalRequirementRows.find(requirement => requirement.id === completion.requirementId)?.title, documentUrl: completion.documentId && documentById.has(completion.documentId) ? `/api/documents/${completion.documentId}` : null }));
   const role = roleFor(context, location.id);
