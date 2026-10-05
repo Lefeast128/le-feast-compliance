@@ -6,7 +6,12 @@ export type WastagePickerProduct = {
   name: string;
   category?: string | null;
   department?: string | null;
+  group?: string | null;
+  active?: boolean;
+  excludedFromWastage?: boolean;
 };
+
+export const ALL_WASTAGE_CATEGORY = "All";
 
 export type WastagePickerDraft = {
   mode: WastagePickerMode;
@@ -19,10 +24,34 @@ export type WastagePickerDraft = {
 
 export const emptyWastagePickerDraft = (): WastagePickerDraft => ({ mode: "catalogue", catalogueProductId: "", adHocItemName: "", quantity: "", notes: "", teamMemberId: "" });
 
-export function filterWastageProducts(products: WastagePickerProduct[], search: string) {
+const nonBlank = (value: string | null | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed || null;
+};
+
+export function wastagePickerCategory(product: Pick<WastagePickerProduct, "group" | "department">) {
+  return nonBlank(product.group) ?? nonBlank(product.department) ?? "Other";
+}
+
+export function eligibleWastageProducts(products: WastagePickerProduct[]) {
+  return products.filter(product => product.active !== false && product.excludedFromWastage !== true);
+}
+
+export function sortWastageProducts(products: WastagePickerProduct[]) {
+  return [...products].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || left.plu - right.plu);
+}
+
+export function getWastagePickerCategories(products: WastagePickerProduct[]) {
+  const categories = new Set(eligibleWastageProducts(products).map(wastagePickerCategory));
+  categories.delete(ALL_WASTAGE_CATEGORY);
+  return [ALL_WASTAGE_CATEGORY, ...Array.from(categories).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }))];
+}
+
+export function filterWastageProducts(products: WastagePickerProduct[], search: string, selectedCategory = ALL_WASTAGE_CATEGORY) {
+  const categoryProducts = eligibleWastageProducts(products).filter(product => selectedCategory === ALL_WASTAGE_CATEGORY || wastagePickerCategory(product) === selectedCategory);
   const term = search.trim().toLocaleLowerCase();
-  if (!term) return products;
-  return products.filter(product => product.name.toLocaleLowerCase().includes(term) || String(product.plu).includes(term));
+  const filtered = !term ? categoryProducts : categoryProducts.filter(product => product.name.toLocaleLowerCase().includes(term) || String(product.plu).includes(term));
+  return sortWastageProducts(filtered);
 }
 
 export function isPositiveQuantity(value: string) {
