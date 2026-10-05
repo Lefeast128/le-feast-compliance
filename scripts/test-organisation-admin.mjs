@@ -26,7 +26,7 @@ const checks = [
   [security, ["Organisation standard security questions are controlled centrally"]],
   [additional, ["Organisation standard additional checks are controlled centrally"]],
   [ui, ["Training &amp; Documents", "Briefing / instruction", "Document / PDF", "Operational Tasks", "Opening checklist item", "Closing checklist item", "Cleaning task", "AM Security check", "PM Security check", "Additional / recurring check", "All stores", "Field definitions (JSON)", "Require staff to acknowledge this updated briefing again", "Recent organisation changes"]],
-  [trainingView, ["trainingInstructions", "whitespace-pre-wrap", "Complete Acknowledgement", "View supporting PDF"]],
+  [trainingView, ["trainingInstructions", "whitespace-pre-wrap", "Complete Acknowledgement", "Open PDF", "<iframe"]],
   [overview, ["Organisation standard"]],
   [rest, ["/api/admin/organisation", "publishTraining", "publishChecklist", "publishOperationalTask", "retireTraining"]],
   [opsApi, ["publishCentralOperationalTask", "handleMutation"]],

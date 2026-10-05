@@ -65,13 +65,19 @@ function fieldDefinitions(input: unknown) {
 
 function publicationDto(row: typeof centralTrainingPublications.$inferSelect, storeNames: Map<string, string>, requirements: Array<typeof trainingRequirements.$inferSelect>, versions: Array<typeof trainingDocumentVersions.$inferSelect>, contentVersions: Array<typeof trainingContentVersions.$inferSelect>) {
   const requirementIds = new Set(requirements.map(requirement => requirement.id));
+  const attachedVersionIds = new Set(versions.filter(version => requirementIds.has(version.requirementId) && Boolean(version.documentId)).map(version => version.id));
+  const attachmentStatus = requirements.map(requirement => ({
+    locationId: requirement.locationId,
+    store: storeNames.get(requirement.locationId) ?? "Unknown store",
+    status: requirement.currentDocumentVersionId && attachedVersionIds.has(requirement.currentDocumentVersionId) ? "attached" : "missing",
+  }));
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     category: row.category,
     audience: row.audience,
-    trainingFormat: requirements.some(requirement => Boolean(requirement.documentStorageId)) ? "document" : row.trainingFormat,
+    trainingFormat: row.trainingFormat,
     active: row.active,
     allocationMode: row.allocationMode,
     locationIds: row.locationIds,
@@ -79,6 +85,7 @@ function publicationDto(row: typeof centralTrainingPublications.$inferSelect, st
     version: Math.max(1, ...versions.filter(version => requirementIds.has(version.requirementId)).map(version => version.versionNumber), ...contentVersions.filter(version => requirementIds.has(version.requirementId)).map(version => version.versionNumber)),
     requirementIds: requirements.map(requirement => requirement.id),
     requirements: requirements.map(requirement => ({ id: requirement.id, locationId: requirement.locationId })),
+    attachmentStatus,
   };
 }
 
@@ -137,7 +144,7 @@ export async function listOrganisationControls(context: AuthContext) {
   const publicationIds = trainingRows.map(row => row.id);
   const centralIds = checklistRows.map(row => row.id);
   const [requirements, storeChecklistRows] = await Promise.all([
-    publicationIds.length ? db().select().from(trainingRequirements).where(inArray(trainingRequirements.centralPublicationId, publicationIds)) : [],
+    publicationIds.length ? db().select().from(trainingRequirements).where(and(inArray(trainingRequirements.centralPublicationId, publicationIds), eq(trainingRequirements.active, true))) : [],
     centralIds.length ? db().select().from(checklistQuestions).where(inArray(checklistQuestions.centralItemId, centralIds)) : [],
   ]);
   const requirementIds = requirements.map(requirement => requirement.id);
@@ -169,10 +176,19 @@ function trainingValues(input: Record<string, unknown>) {
   };
 }
 
+function safeTrainingRequirements(requirements: Array<typeof trainingRequirements.$inferSelect>) {
+  return requirements.map(requirement => ({
+    id: requirement.id,
+    locationId: requirement.locationId,
+    attached: Boolean(requirement.currentDocumentVersionId && requirement.documentStorageId),
+  }));
+}
+
 export async function publishCentralTraining(context: AuthContext, input: Record<string, unknown>) {
   const organisationId = organisationIdFor(context);
   const stores = await selectedLocations(context, input.locationIds, allocationMode(input) === "all");
   const values = trainingValues(input);
+  if (values.trainingFormat === "document" && input.documentSelected !== true) throw new ApiError(422, "A PDF is required for document training");
   const created = await db().transaction(async tx => {
     const [publication] = await tx.insert(centralTrainingPublications).values({ organisationId, ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input), createdBy: context.user.id, updatedAt: new Date(), active: true }).returning();
     const createdRequirements = [];
@@ -186,7 +202,7 @@ export async function publishCentralTraining(context: AuthContext, input: Record
       createdRequirements.push(requirement);
     }
     await audit(tx, null, context.user.id, "central_training_created", JSON.stringify({ publicationId: publication.id, locationIds: stores.map(store => store.id), title: values.title }));
-    return { publication, requirements: createdRequirements };
+    return { publication: { id: publication.id, title: publication.title, trainingFormat: publication.trainingFormat }, requirements: safeTrainingRequirements(createdRequirements) };
   });
   return created;
 }
@@ -200,6 +216,11 @@ export async function updateCentralTraining(context: AuthContext, publicationId:
   const stores = await selectedLocations(context, input.locationIds ?? existing.locationIds, allocationMode(input, existing.allocationMode) === "all");
   const values = trainingValues({ ...existing, ...input });
   const requireReacknowledgement = input.requireReacknowledgement === true;
+  const currentRequirements = await db().select().from(trainingRequirements).where(and(eq(trainingRequirements.centralPublicationId, existing.id), eq(trainingRequirements.active, true)));
+  if (values.trainingFormat === "document" && input.documentSelected !== true && stores.some(store => {
+    const requirement = currentRequirements.find(item => item.locationId === store.id);
+    return !requirement || !requirement.currentDocumentVersionId || !requirement.documentStorageId;
+  })) throw new ApiError(422, "A PDF is required for every document training store");
   return db().transaction(async tx => {
     await tx.update(centralTrainingPublications).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, existing.allocationMode), updatedAt: new Date() }).where(eq(centralTrainingPublications.id, existing.id));
     const current = await tx.select().from(trainingRequirements).where(eq(trainingRequirements.centralPublicationId, existing.id));
@@ -229,7 +250,8 @@ export async function updateCentralTraining(context: AuthContext, publicationId:
     for (const locationId of selectedLocationIds) if (!previous.has(locationId)) await audit(tx, locationId, context.user.id, "central_training_store_added", JSON.stringify({ publicationId: existing.id, locationId, title: values.title }));
     for (const locationId of previous) if (!selectedLocationIds.has(locationId)) await audit(tx, locationId, context.user.id, "central_training_store_removed", JSON.stringify({ publicationId: existing.id, locationId, title: values.title }));
     await audit(tx, null, context.user.id, "central_training_updated", JSON.stringify({ publicationId: existing.id, locationIds: stores.map(store => store.id), title: values.title }));
-    return { id: existing.id, locationIds: stores.map(store => store.id), title: values.title };
+    const activeRequirements = await tx.select().from(trainingRequirements).where(and(eq(trainingRequirements.centralPublicationId, existing.id), eq(trainingRequirements.active, true)));
+    return { id: existing.id, locationIds: stores.map(store => store.id), title: values.title, requirements: safeTrainingRequirements(activeRequirements) };
   });
 }
 

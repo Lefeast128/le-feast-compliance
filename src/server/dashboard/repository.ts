@@ -142,7 +142,10 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     const applicableTeamMemberIds = activeTeamMemberRows.filter(member => audience === "managers_only" ? (member.role ?? "team") === "manager" : audience === "selected_people" ? selected.includes(member.id) : true).map(member => member.id);
     const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
     const currentContent = requirement.currentContentVersionId ? contentVersions.find(version => version.id === requirement.currentContentVersionId) : undefined;
-    return { ...serialize(requirement), trainingInstructions: currentContent?.content ?? requirement.description, currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, currentContentVersionNumber: currentContent?.versionNumber, requiredContentVersionNumber: requirement.requiredContentVersionId ? contentVersions.find(version => version.id === requirement.requiredContentVersionId)?.versionNumber : undefined, applicableTeamMemberIds, documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null };
+    const requirementValue = serialize(requirement) as Record<string, unknown>;
+    delete requirementValue.documentStorageId;
+    delete requirementValue.documentName;
+    return { ...requirementValue, trainingInstructions: currentContent?.content ?? requirement.description, currentDocumentVersion: documentVersion(current), requiredDocumentVersion: documentVersion(required), currentDocumentVersionNumber: current?.versionNumber, requiredDocumentVersionNumber: required?.versionNumber, currentContentVersionNumber: currentContent?.versionNumber, requiredContentVersionNumber: requirement.requiredContentVersionId ? contentVersions.find(version => version.id === requirement.requiredContentVersionId)?.versionNumber : undefined, applicableTeamMemberIds, documentUrl: requirement.trainingFormat === "document" && currentDocument ? `/api/documents/${currentDocument.id}` : null };
   });
   const trainingDataRows = trainingCompletionRows.map(completion => {
     const version = completion.documentVersionId ? versionById.get(completion.documentVersionId) : undefined;

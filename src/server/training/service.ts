@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { auditEvents, documents, locations, teamMembers, trainingCompletions, trainingContentVersions, trainingDocumentVersions, trainingRequirements } from "../db/schema.js";
+import { auditEvents, centralTrainingPublications, documents, locations, teamMembers, trainingCompletions, trainingContentVersions, trainingDocumentVersions, trainingRequirements } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
@@ -59,8 +59,11 @@ export async function trainingDashboard(context: AuthContext, locationId: string
     const currentDocument = current?.documentId ? documentById.get(current.documentId) : undefined;
     const selected = Array.isArray(requirement.selectedTeamMemberIds) ? requirement.selectedTeamMemberIds : [];
     const audience = requirement.audience ?? "all_team";
+    const requirementValue = dto(requirement);
+    delete requirementValue.documentStorageId;
+    delete requirementValue.documentName;
     return {
-      ...dto(requirement),
+      ...requirementValue,
       trainingFormat: requirement.trainingFormat,
       trainingInstructions: currentContent?.content ?? requirement.description,
       applicableTeamMemberIds: memberIdsFor(members, audience, selected),
@@ -70,7 +73,7 @@ export async function trainingDashboard(context: AuthContext, locationId: string
       requiredDocumentVersionNumber: required?.versionNumber,
       currentContentVersionNumber: currentContent?.versionNumber,
       requiredContentVersionNumber: requiredContent?.versionNumber,
-      documentUrl: currentDocument ? `/api/documents/${currentDocument.id}` : null,
+      documentUrl: requirement.trainingFormat === "document" && currentDocument ? `/api/documents/${currentDocument.id}` : null,
     };
   });
   const completionData = completions.map(completion => {
@@ -172,8 +175,28 @@ export async function attachTrainingDocument(context: AuthContext, requirementId
     const patch: any = { currentDocumentVersionId: version.id, documentStorageId: document.pathname, documentName: document.originalFilename, trainingFormat: "document" };
     if (!baseline || requireReacknowledgement) patch.requiredDocumentVersionId = version.id;
     const [updated] = await tx.update(trainingRequirements).set(patch).where(eq(trainingRequirements.id, requirement.id)).returning();
-    if (requirement.centralPublicationId) await tx.insert(auditEvents).values({ locationId: requirement.locationId, userId: context.user.id, type: "central_training_document_version_changed", detail: JSON.stringify({ publicationId: requirement.centralPublicationId, requirementId: requirement.id, versionNumber }), createdAt: new Date() });
-    return { requirement: updated, version };
+    if (requirement.centralPublicationId) {
+      await tx.update(centralTrainingPublications).set({ trainingFormat: "document", updatedAt: new Date() }).where(eq(centralTrainingPublications.id, requirement.centralPublicationId));
+      await tx.insert(auditEvents).values({ locationId: requirement.locationId, userId: context.user.id, type: "central_training_document_version_changed", detail: JSON.stringify({ publicationId: requirement.centralPublicationId, requirementId: requirement.id, versionNumber }), createdAt: new Date() });
+    }
+    return {
+      requirement: {
+        id: updated.id,
+        locationId: updated.locationId,
+        title: updated.title,
+        trainingFormat: updated.trainingFormat,
+        documentName: updated.documentName,
+        currentDocumentVersionId: updated.currentDocumentVersionId,
+        requiredDocumentVersionId: updated.requiredDocumentVersionId,
+      },
+      version: {
+        id: version.id,
+        versionNumber: version.versionNumber,
+        documentName: version.documentName,
+        createdAt: iso(version.createdAt),
+        requiresReacknowledgement: version.requiresReacknowledgement,
+      },
+    };
   });
 }
 
@@ -184,7 +207,14 @@ export async function removeTrainingDocument(context: AuthContext, requirementId
   await locationFor(context, requirement.locationId, true);
   if (requirement.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
   const [updated] = await getDb().update(trainingRequirements).set({ documentStorageId: null, documentName: null, currentDocumentVersionId: null, requiredDocumentVersionId: null, trainingFormat: "briefing" }).where(eq(trainingRequirements.id, requirement.id)).returning();
-  return updated;
+  return {
+    id: updated.id,
+    locationId: updated.locationId,
+    title: updated.title,
+    trainingFormat: updated.trainingFormat,
+    currentDocumentVersionId: updated.currentDocumentVersionId,
+    requiredDocumentVersionId: updated.requiredDocumentVersionId,
+  };
 }
 
 export async function completeTraining(context: AuthContext, input: Record<string, unknown>) {

@@ -41,7 +41,8 @@
     "test:manager-reviews": "node --import=tsx/esm scripts/test-manager-reviews.mjs",
     "test:wastage-category-picker": "node --import=tsx/esm scripts/test-wastage-category-picker.mjs",
     "test:password-auth": "node --import=tsx/esm scripts/test-password-auth.mjs",
-    "test:organisation-admin": "node --import=tsx/esm scripts/test-organisation-admin.mjs"
+    "test:organisation-admin": "node --import=tsx/esm scripts/test-organisation-admin.mjs",
+    "test:training-pdf": "node scripts/test-training-pdf.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
