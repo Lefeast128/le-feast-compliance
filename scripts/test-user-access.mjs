@@ -12,6 +12,7 @@ const resend = await read("src/server/auth/resend.ts");
 const rest = await read("src/lib/rest-domain.ts");
 const ui = await read("src/components/UserAccessAdmin.tsx");
 const admin = await read("src/components/AdminSetup.tsx");
+const organisationAdmin = await read("src/components/OrganisationAdmin.tsx");
 const httpRoute = await read("api/admin/user-access.ts");
 const updateRoute = await read("api/admin/user-access/[id].ts");
 const resendRoute = await read("api/admin/user-access/[id]/resend.ts");
@@ -65,7 +66,7 @@ contains(ui, "Team Members", "team-member separation copy");
 contains(ui, "selectedStores", "transient store selection");
 contains(ui, "role", "role selection");
 contains(ui, "Resend invitation", "resend control");
-contains(admin, "UserAccessAdmin", "admin entry point");
+contains(organisationAdmin, "UserAccessAdmin", "organisation admin entry point");
 
 contains(otp, "genericOtpResponse", "existing generic OTP behaviour");
 contains(otp, "normalizeEmail", "existing email normalization");

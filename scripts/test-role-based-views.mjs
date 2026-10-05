@@ -8,6 +8,7 @@ const dashboard = await read("src/pages/Dashboard.tsx");
 const header = await read("src/components/dashboard/DashboardPrimitives.tsx");
 const today = await read("src/components/dashboard/DashboardToday.tsx");
 const admin = await read("src/components/AdminSetup.tsx");
+const organisationAdmin = await read("src/components/OrganisationAdmin.tsx");
 const userAccess = await read("src/components/UserAccessAdmin.tsx");
 const operations = await read("src/server/management/operations-service.ts");
 const accessService = await read("src/server/management/user-access-service.ts");
@@ -43,7 +44,8 @@ const checks = [
   () => assert.match(today, /canUseManagement &&/),
   () => assert.match(dashboard, /if \(view === "admin"\) return capabilities\.canUseManagement/),
   () => assert.match(dashboard, /if \(view === "managerReviews"\) return capabilities\.canViewManagerReviews/),
-  () => assert.match(admin, /<UserAccessAdmin visible=\{isOrganisationAdmin\}/),
+  () => assert.match(admin, /OrganisationAdmin/),
+  () => assert.match(organisationAdmin, /UserAccessAdmin/),
   () => assert.match(operations, /memberships\.role, "manager"/),
   () => assert.match(auth, /requireLocationManager/),
   () => assert.match(accessService, /requireOrganisationAdmin/),
@@ -53,4 +55,3 @@ const checks = [
 
 for (const check of checks) check();
 console.log(`Role-based view tests passed: ${checks.length}/${checks.length}`);
-

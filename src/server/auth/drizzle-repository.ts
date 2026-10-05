@@ -9,6 +9,9 @@ const toUser = (row: typeof users.$inferSelect): AuthUser => ({
   email: row.email,
   name: row.name,
   role: row.role,
+  hasPassword: Boolean(row.passwordHash),
+  passwordHash: row.passwordHash,
+  passwordSalt: row.passwordSalt,
 });
 
 const toChallenge = (row: typeof authOtpChallenges.$inferSelect): OtpChallenge => ({
@@ -104,6 +107,12 @@ export const createDrizzleAuthRepository = (): AuthRepository => {
     },
     async revokeSession(id, at) {
       await db.update(authSessions).set({ revokedAt: new Date(at) }).where(eq(authSessions.id, id));
+    },
+    async setPassword(userId, credential, at) {
+      await db.update(users).set({ passwordHash: credential.hash, passwordSalt: credential.salt, passwordSetAt: new Date(at) }).where(eq(users.id, userId));
+    },
+    async revokeUserSessions(userId, at) {
+      await db.update(authSessions).set({ revokedAt: new Date(at) }).where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)));
     },
   };
 };

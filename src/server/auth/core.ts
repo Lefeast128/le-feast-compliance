@@ -1,9 +1,12 @@
-import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 
 export const OTP_TTL_MS = 10 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+export const PASSWORD_LOGIN_MAX_ATTEMPTS = 5;
 
 export type AuthUser = {
   id: string;
@@ -11,6 +14,9 @@ export type AuthUser = {
   email: string;
   name: string | null;
   role: "user" | "admin";
+  hasPassword: boolean;
+  passwordHash?: string | null;
+  passwordSalt?: string | null;
 };
 
 export type AuthMembership = {
@@ -59,6 +65,13 @@ export type AuthRepository = {
   getSessionByHash: (tokenHash: string) => Promise<AuthSession | null>;
   touchSession: (id: string, at: number) => Promise<void>;
   revokeSession: (id: string, at: number) => Promise<void>;
+  setPassword: (userId: string, credential: PasswordCredential, at: number) => Promise<void>;
+  revokeUserSessions: (userId: string, at: number) => Promise<void>;
+};
+
+export type PasswordCredential = {
+  hash: string;
+  salt: string;
 };
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -83,6 +96,78 @@ const equalDigest = (left: string, right: string) => {
   const a = Buffer.from(left, "hex");
   const b = Buffer.from(right, "hex");
   return a.length === b.length && timingSafeEqual(a, b);
+};
+
+const passwordDigest = (password: string, salt: string) =>
+  scryptSync(password, salt, 64, { N: 32_768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+
+export const validatePassword = (password: unknown) => {
+  if (typeof password !== "string" || password.trim().length < PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+  return password;
+};
+
+export const createPasswordCredential = (password: unknown): PasswordCredential => {
+  const value = validatePassword(password);
+  const salt = randomBytes(16).toString("base64url");
+  return { salt, hash: passwordDigest(value, salt).toString("base64url") };
+};
+
+export const verifyPassword = (password: unknown, user: AuthUser) => {
+  if (typeof password !== "string" || !user.passwordHash || !user.passwordSalt) return false;
+  const expected = Buffer.from(user.passwordHash, "base64url");
+  const actual = passwordDigest(password, user.passwordSalt);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
+
+type LoginAttempt = { startedAt: number; failures: number; blockedUntil: number };
+const passwordLoginAttempts = new Map<string, LoginAttempt>();
+
+export class PasswordLoginRateLimitError extends Error {
+  constructor() {
+    super("Invalid email or password");
+    this.name = "PasswordLoginRateLimitError";
+  }
+}
+
+const loginKey = (email: string, rateLimitKey?: string) => `${rateLimitKey ?? "unknown"}:${email}`;
+
+function checkLoginRateLimit(key: string, now: number) {
+  const current = passwordLoginAttempts.get(key);
+  if (!current) return;
+  if (current.startedAt + PASSWORD_LOGIN_WINDOW_MS <= now) {
+    passwordLoginAttempts.delete(key);
+    return;
+  }
+  if (current.blockedUntil > now) throw new PasswordLoginRateLimitError();
+}
+
+function recordLoginFailure(key: string, now: number) {
+  const current = passwordLoginAttempts.get(key);
+  const next = current && current.startedAt + PASSWORD_LOGIN_WINDOW_MS > now
+    ? { ...current, failures: current.failures + 1 }
+    : { startedAt: now, failures: 1, blockedUntil: 0 };
+  if (next.failures >= PASSWORD_LOGIN_MAX_ATTEMPTS) next.blockedUntil = now + PASSWORD_LOGIN_WINDOW_MS;
+  passwordLoginAttempts.set(key, next);
+}
+
+const recordLoginSuccess = (key: string) => passwordLoginAttempts.delete(key);
+
+const newSession = (userId: string, now: number, sessionSecret?: string) => {
+  const sessionToken = generateSessionToken();
+  return {
+    sessionToken,
+    session: {
+      id: randomUUID(),
+      userId,
+      tokenHash: hashSessionToken(sessionToken, sessionSecret),
+      createdAt: now,
+      expiresAt: now + SESSION_TTL_MS,
+      revokedAt: null,
+      lastUsedAt: null,
+    } satisfies AuthSession,
+  };
 };
 
 export const genericOtpResponse = () => ({
@@ -167,17 +252,45 @@ export async function verifyOtp(
   const user = await repository.findUserByEmail(normalizedEmail);
   if (!user) return null;
   await repository.updateChallenge(challenge.id, { consumedAt: now });
-  const sessionToken = generateSessionToken();
-  await repository.insertSession({
-    id: randomUUID(),
-    userId: user.id,
-    tokenHash: hashSessionToken(sessionToken, input.sessionSecret),
-    createdAt: now,
-    expiresAt: now + SESSION_TTL_MS,
-    revokedAt: null,
-    lastUsedAt: null,
-  });
-  return { sessionToken, user };
+  const created = newSession(user.id, now, input.sessionSecret);
+  await repository.insertSession(created.session);
+  return { sessionToken: created.sessionToken, user };
+}
+
+export async function loginWithPassword(
+  repository: AuthRepository,
+  input: { email: string; password: string; now?: number; rateLimitKey?: string; sessionSecret?: string },
+) {
+  const normalizedEmail = normalizeEmail(input.email);
+  const now = input.now ?? Date.now();
+  const key = loginKey(normalizedEmail, input.rateLimitKey);
+  checkLoginRateLimit(key, now);
+  const user = await repository.findUserByEmail(normalizedEmail);
+  if (!user || !verifyPassword(input.password, user)) {
+    recordLoginFailure(key, now);
+    return null;
+  }
+  recordLoginSuccess(key);
+  const created = newSession(user.id, now, input.sessionSecret);
+  await repository.insertSession(created.session);
+  return { sessionToken: created.sessionToken, user };
+}
+
+export async function setPassword(
+  repository: AuthRepository,
+  userId: string,
+  password: unknown,
+  input: { now?: number; sessionSecret?: string } = {},
+) {
+  const now = input.now ?? Date.now();
+  const credential = createPasswordCredential(password);
+  await repository.setPassword(userId, credential, now);
+  await repository.revokeUserSessions(userId, now);
+  const created = newSession(userId, now, input.sessionSecret);
+  await repository.insertSession(created.session);
+  const user = await repository.findUserById(userId);
+  if (!user) return null;
+  return { sessionToken: created.sessionToken, user };
 }
 
 export async function authenticateSession(
@@ -239,6 +352,7 @@ export const safeUser = (user: AuthUser) => ({
   name: user.name,
   role: user.role,
   organisationId: user.organisationId,
+  hasPassword: user.hasPassword,
 });
 
 export const isAllowedOrigin = (origin: string | null, allowedOrigins: string[]) =>

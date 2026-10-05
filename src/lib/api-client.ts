@@ -4,6 +4,7 @@ export type AuthUser = {
   email: string;
   name: string | null;
   role: "user" | "admin";
+  hasPassword: boolean;
 };
 
 export type AuthMembership = {
@@ -22,6 +23,12 @@ export type OtpResponse = {
 };
 
 export type VerifyOtpResponse = {
+  ok: true;
+  user: AuthUser;
+  memberships: AuthMembership[];
+};
+
+export type PasswordAuthResponse = {
   ok: true;
   user: AuthUser;
   memberships: AuthMembership[];
@@ -88,7 +95,22 @@ export const authApi = {
   verifyOtp: (email: string, code: string) =>
     apiRequest<VerifyOtpResponse>("/api/auth/verify-otp", {
       method: "POST",
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ email, code, purpose: "setup" }),
+    }),
+  verifyOtpFor: (email: string, code: string, purpose: "setup" | "reset") =>
+    apiRequest<VerifyOtpResponse>("/api/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, code, purpose }),
+    }),
+  login: (email: string, password: string) =>
+    apiRequest<PasswordAuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  setPassword: (password: string) =>
+    apiRequest<PasswordAuthResponse>("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
     }),
 
   logout: () =>

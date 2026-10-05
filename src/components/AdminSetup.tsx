@@ -1,9 +1,9 @@
 import ComplianceReports from "@/components/ComplianceReports";
 import ManagerReviews from "@/components/ManagerReviews";
 import AdminStoreOverview from "@/components/admin/AdminStoreOverview";
+import OrganisationAdmin from "@/components/OrganisationAdmin";
 import type { AdminLocation, AdminOperation, AdminStore, AdminTeamResponse } from "@/components/admin/admin-types";
 import WastageCatalogueAdmin from "@/components/WastageCatalogueAdmin";
-import UserAccessAdmin from "@/components/UserAccessAdmin";
 import { Button } from "@/components/ui/button";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { useAuth } from "@/hooks/use-auth";
@@ -23,6 +23,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [organisationAdminOpen, setOrganisationAdminOpen] = useState(false);
   const selected = stores?.find((entry) => entry.location._id === storeId) ?? stores?.[0];
   const selectedLocationId = selected?.location._id ?? null;
   const locations: AdminLocation[] = (stores ?? []).map((entry) => entry.location);
@@ -37,6 +38,8 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
     Boolean(selectedLocationId),
   );
   const currentStore = store?.location._id === selectedLocationId ? store : undefined;
+
+  if (organisationAdminOpen && isOrganisationAdmin) return <OrganisationAdmin onBack={() => setOrganisationAdminOpen(false)} />;
 
   function selectStore(nextLocationId: string) {
     setStoreId(nextLocationId);
@@ -90,7 +93,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Configuration</p>
         <h1 className="mt-2 text-3xl font-semibold">Current setup</h1>
-        <UserAccessAdmin visible={isOrganisationAdmin} />
+        {isOrganisationAdmin && <section className="mt-5 rounded-2xl border border-[#e5d77b] bg-[#fffdf1] p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Organisation Admin</p><h2 className="mt-1 text-xl font-semibold">Central controls</h2><p className="mt-1 text-sm text-[#727a74]">Manage user access, central training and organisation checklist standards.</p><Button className="mt-4 bg-[#202522] text-white" onClick={() => setOrganisationAdminOpen(true)}>Open Organisation Admin</Button></section>}
         {selectedLocationId && <section className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Management</p><h2 className="mt-1 text-xl font-semibold">Manager controls</h2><p className="mt-1 text-sm text-[#727a74]">Review issues, complete management reviews and inspect compliance for this store.</p><div className="mt-4 flex flex-wrap gap-2"><Button className="bg-[#202522] text-white" onClick={() => setReviewsOpen(true)}>Open Issues &amp; Reviews</Button><Button variant="outline" onClick={() => setReportsOpen(true)}>Open Compliance Reports</Button></div></section>}
         <div className="mt-5 flex flex-wrap gap-2">
           {(stores ?? []).map((entry) => (

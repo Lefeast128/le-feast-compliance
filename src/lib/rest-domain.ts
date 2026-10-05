@@ -149,6 +149,13 @@ export const restApi = {
       update: ({ userId, ...body }: AnyRecord) => patch(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`, body),
       resend: ({ userId }: AnyRecord) => post(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}/resend`, {}),
     },
+    organisation: {
+      list: async () => compat(await query("/api/admin/organisation")),
+      publishTraining: (body: AnyRecord) => post("/api/admin/organisation/training", body),
+      updateTraining: ({ publicationId, ...body }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, body),
+      publishChecklist: (body: AnyRecord) => post("/api/admin/organisation/checklist", body),
+      updateChecklist: ({ centralItemId, ...body }: AnyRecord) => patch(`/api/admin/organisation/checklist/${encodeURIComponent(idOf(centralItemId))}`, body),
+    },
   },
 };
 

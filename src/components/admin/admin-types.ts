@@ -12,6 +12,7 @@ export type AdminQuestion = {
   _id: string;
   question: string;
   checklist?: "opening" | "closing";
+  centralItemId?: string | null;
 };
 
 export type AdminIssue = {
@@ -53,6 +54,7 @@ export type AdminTrainingRequirement = {
   category?: string;
   audience?: string;
   documentStorageId?: string | null;
+  centralPublicationId?: string | null;
 };
 
 export type AdminEquipment = {

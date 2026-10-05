@@ -15,7 +15,9 @@ type AuthContextValue = {
   memberships: AuthMembership[];
   authError: string | null;
   requestOtp: (email: string) => Promise<OtpResponse>;
-  verifyOtp: (email: string, code: string) => Promise<void>;
+  verifyOtp: (email: string, code: string, purpose?: "setup" | "reset") => Promise<Awaited<ReturnType<typeof authApi.verifyOtp>>>;
+  login: (email: string, password: string) => Promise<void>;
+  setPassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 };
@@ -77,15 +79,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const verifyOtp = useCallback(async (email: string, code: string) => {
+  const verifyOtp = useCallback(async (email: string, code: string, purpose: "setup" | "reset" = "setup") => {
     setAuthError(null);
     try {
-      const result = await authApi.verifyOtp(email, code);
+      const result = purpose === "setup" ? await authApi.verifyOtp(email, code) : await authApi.verifyOtpFor(email, code, purpose);
+      setIsAuthenticated(true);
+      setUser(result.user);
+      setMemberships(result.memberships);
+      return result;
+    } catch (error) {
+      setAuthError(errorMessage(error, "Unable to verify code"));
+      throw error;
+    }
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    setAuthError(null);
+    try {
+      const result = await authApi.login(email, password);
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
     } catch (error) {
-      setAuthError(errorMessage(error, "Unable to verify code"));
+      setAuthError(errorMessage(error, "Invalid email or password"));
+      throw error;
+    }
+  }, []);
+
+  const setPassword = useCallback(async (password: string) => {
+    setAuthError(null);
+    try {
+      const result = await authApi.setPassword(password);
+      setIsAuthenticated(true);
+      setUser(result.user);
+      setMemberships(result.memberships);
+    } catch (error) {
+      setAuthError(errorMessage(error, "Unable to set password"));
       throw error;
     }
   }, []);
@@ -109,9 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authError,
     requestOtp,
     verifyOtp,
+    login,
+    setPassword,
     logout,
     refreshSession,
-  }), [isLoading, isAuthenticated, user, memberships, authError, requestOtp, verifyOtp, logout, refreshSession]);
+  }), [isLoading, isAuthenticated, user, memberships, authError, requestOtp, verifyOtp, login, setPassword, logout, refreshSession]);
 
   return createElement(AuthContext.Provider, { value }, children);
 }

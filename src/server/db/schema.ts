@@ -39,6 +39,9 @@ export const users = pgTable("users", {
   name: text("name"),
   role: userRole("role").notNull().default("user"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  passwordHash: text("password_hash"),
+  passwordSalt: text("password_salt"),
+  passwordSetAt: timestampColumn("password_set_at"),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
   createdAt: createdAt(),
 }, table => ({ normalizedEmail: uniqueIndex("users_normalized_email_idx").on(table.normalizedEmail) }));
@@ -57,6 +60,18 @@ export const memberships = pgTable("memberships", {
 export const teamMembers = pgTable("team_members", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(),
   role: text("role").notNull().default("team"), active: boolean("active").notNull().default(true), createdAt: createdAt(),
+});
+
+export const centralChecklistItems = pgTable("central_checklist_items", {
+  id: id(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  checklist: checklistKind("checklist").notNull(),
+  question: text("question").notNull(),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(),
+  updatedAt: timestampColumn("updated_at"),
 });
 
 export const scheduledTasks = pgTable("scheduled_tasks", {
@@ -92,6 +107,7 @@ export const probeProducts = pgTable("probe_products", {
 
 export const checklistQuestions = pgTable("checklist_questions", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), checklist: checklistKind("checklist").notNull(), question: text("question").notNull(), order: integer("sort_order").notNull(),
+  centralItemId: uuid("central_item_id").references(() => centralChecklistItems.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), createdAt: createdAt(),
 }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "checklist_questions_root_fk" }).onDelete("restrict") }));
 export const checklistResponses = pgTable("checklist_responses", {
@@ -149,7 +165,21 @@ export const documents = pgTable("documents", {
   locationPurpose: index("documents_location_purpose_idx").on(table.locationId, table.purpose, table.status),
 }));
 
-export const trainingRequirements = pgTable("training_requirements", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), title: text("title").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), documentStorageId: text("document_storage_id"), documentName: text("document_name"), currentDocumentVersionId: uuid("current_document_version_id"), requiredDocumentVersionId: uuid("required_document_version_id"), description: text("description"), category: text("category"), audience: text("audience"), selectedTeamMemberIds: jsonb("selected_team_member_ids").$type<string[]>(), createdAt: createdAt() });
+export const centralTrainingPublications = pgTable("central_training_publications", {
+  id: id(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category"),
+  audience: text("audience"),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(),
+  updatedAt: timestampColumn("updated_at"),
+});
+
+export const trainingRequirements = pgTable("training_requirements", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), title: text("title").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), documentStorageId: text("document_storage_id"), documentName: text("document_name"), currentDocumentVersionId: uuid("current_document_version_id"), requiredDocumentVersionId: uuid("required_document_version_id"), description: text("description"), category: text("category"), audience: text("audience"), selectedTeamMemberIds: jsonb("selected_team_member_ids").$type<string[]>(), centralPublicationId: uuid("central_publication_id").references(() => centralTrainingPublications.id, { onDelete: "restrict" }), createdAt: createdAt() });
 export const trainingDocumentVersions = pgTable("training_document_versions", { id: id(), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), versionNumber: integer("version_number").notNull(), storageId: text("storage_id").notNull(), documentName: text("document_name").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
 export const trainingCompletions = pgTable("training_completions", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").notNull().references(() => teamMembers.id, { onDelete: "restrict" }), documentVersionId: uuid("document_version_id").references(() => trainingDocumentVersions.id, { onDelete: "restrict" }), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }) }, table => ({ locationMember: index("training_completions_location_member_idx").on(table.locationId, table.teamMemberId), requirement: index("training_completions_requirement_idx").on(table.requirementId) }));
 
@@ -207,6 +237,7 @@ export const foundationTables = {
   checklistSignOffs, securityQuestions, securityResponses, securitySignOffs, foodChecks,
   wastageItems, wastageRecords, catalogueProducts, catalogueSyncStatus, cleaningTasks,
   cleaningCompletions, documents, trainingRequirements, trainingDocumentVersions, trainingCompletions,
+  centralTrainingPublications, centralChecklistItems,
   additionalRequirements, additionalCompletions, rechecks, issues, issueUpdates, auditEvents, managerReviews,
   authOtpChallenges, authSessions,
 } as const;

@@ -4,7 +4,7 @@ import { createDrizzleAuthRepository } from "../../src/server/auth/drizzle-repos
 
 type Request = { method?: string; body?: unknown; headers?: Record<string, string | string[] | undefined> };
 type Response = { setHeader: (name: string, value: string) => void; status: (code: number) => Response; json: (body: unknown) => void };
-const bodyOf = (body: unknown) => typeof body === "string" ? JSON.parse(body) as { email?: string; code?: string } : body as { email?: string; code?: string };
+const bodyOf = (body: unknown) => typeof body === "string" ? JSON.parse(body) as { email?: string; code?: string; purpose?: "setup" | "reset" } : body as { email?: string; code?: string; purpose?: "setup" | "reset" };
 
 export default async function handler(req: Request, res: Response) {
   if (req.method !== "POST") {
@@ -19,7 +19,13 @@ export default async function handler(req: Request, res: Response) {
       return;
     }
     const repository = createDrizzleAuthRepository();
-    const result = await verifyOtp(repository, { email: normalizeEmail(body.email), code: body.code });
+    const normalizedEmail = normalizeEmail(body.email);
+    const existing = await repository.findUserByEmail(normalizedEmail);
+    if (existing?.hasPassword && body.purpose !== "reset") {
+      res.status(401).json({ ok: false, error: "Invalid or expired verification code" });
+      return;
+    }
+    const result = await verifyOtp(repository, { email: normalizedEmail, code: body.code });
     if (!result) {
       res.status(401).json({ ok: false, error: "Invalid or expired verification code" });
       return;
