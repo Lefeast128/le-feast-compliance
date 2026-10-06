@@ -1,5 +1,8 @@
 import UserAccessAdmin from "@/components/UserAccessAdmin";
 import OrganisationLibraryAdmin from "@/components/OrganisationLibraryAdmin";
+import OrganisationFeatureCards, {
+  type OrganisationFeatureKey,
+} from "@/components/admin/OrganisationFeatureCards";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +13,7 @@ import {
   useRestQuery,
 } from "@/lib/rest-domain";
 import { ArrowLeft, Pencil, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 type Store = { id: string; name: string; shortName: string };
@@ -22,7 +25,13 @@ type FieldDefinition = {
   maximum?: number;
   options?: string[];
 };
-type TaskStep = { id: string; label: string; description?: string | null; responseType: "confirm" | "yes_no" | "number" | "short_text"; required?: boolean };
+type TaskStep = {
+  id: string;
+  label: string;
+  description?: string | null;
+  responseType: "confirm" | "yes_no" | "number" | "short_text";
+  required?: boolean;
+};
 type OperationalTask = {
   id: string;
   kind: string;
@@ -196,11 +205,16 @@ export default function OrganisationAdmin({ onBack }: Props) {
     new Date().toISOString().slice(0, 10),
   );
   const [taskFields, setTaskFields] = useState<FieldDefinition[]>(emptyFields);
-  const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">("simple");
+  const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">(
+    "simple",
+  );
   const [taskSteps, setTaskSteps] = useState<TaskStep[]>([]);
   const [taskAllStores, setTaskAllStores] = useState(true);
   const [taskStores, setTaskStores] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [section, setSection] = useState<"home" | OrganisationFeatureKey>(
+    "home",
+  );
 
   function resetTraining() {
     setTrainingEdit(null);
@@ -262,7 +276,13 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskTitle(item.title ?? "");
     setTaskDescription(item.description ?? "");
     setTaskInterval(item.interval ? String(item.interval) : "");
-    setTaskDayOfMonth(item.dayOfMonth ? String(item.dayOfMonth) : item.nextDueAt ? String(new Date(item.nextDueAt).getUTCDate()) : "1");
+    setTaskDayOfMonth(
+      item.dayOfMonth
+        ? String(item.dayOfMonth)
+        : item.nextDueAt
+          ? String(new Date(item.nextDueAt).getUTCDate())
+          : "1",
+    );
     setTaskNextDue(
       item.nextDueAt
         ? new Date(item.nextDueAt).toISOString().slice(0, 10)
@@ -457,7 +477,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
       body.frequency = taskFrequency;
       body.interval = taskInterval ? Number(taskInterval) : undefined;
       body.weekdays = taskWeekdays;
-      body.dayOfMonth = ["monthly", "every_x_months"].includes(taskFrequency) ? Number(taskDayOfMonth) : undefined;
+      body.dayOfMonth = ["monthly", "every_x_months"].includes(taskFrequency)
+        ? Number(taskDayOfMonth)
+        : undefined;
       body.nextDueAt = new Date(taskNextDue + "T12:00:00").getTime();
       body.fields = taskFields;
     }
@@ -557,6 +579,90 @@ export default function OrganisationAdmin({ onBack }: Props) {
         Loading organisation controls…
       </div>
     );
+
+  const recentChanges = (
+    <section className="rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_4px_16px_rgba(23,25,24,0.04)]">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
+        Recent organisation changes
+      </p>
+      <div className="mt-3 space-y-2">
+        {data.recentChanges.slice(0, 8).map((change, index) => (
+          <div
+            key={index}
+            className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-2 text-sm"
+          >
+            <span className="font-semibold">{change.change}</span>
+            <span className="text-xs text-[#89918b]">
+              {change.actor} · {new Date(change.at).toLocaleString("en-GB")}
+            </span>
+          </div>
+        ))}
+        {!data.recentChanges.length && (
+          <p className="mt-3 text-sm text-[#89918b]">
+            No organisation changes recorded.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+  const page = (title: string, content: ReactNode) => (
+    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+      <header className="border-b border-black/[0.07] bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
+          <div>
+            <p className="text-[15px] font-semibold">Organisation Admin</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74]">
+              {title}
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setSection("home")}>
+            <ArrowLeft className="mr-2 size-4" /> Back to Organisation Admin
+          </Button>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-7 sm:px-8">
+        {content}
+      </main>
+    </div>
+  );
+
+  if (section === "home")
+    return (
+      <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+        <header className="border-b border-black/[0.07] bg-white">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
+            <div>
+              <p className="text-[15px] font-semibold">Organisation Admin</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74]">
+                Central control
+              </p>
+            </div>
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="mr-2 size-4" /> Back to Admin
+            </Button>
+          </div>
+        </header>
+        <main className="mx-auto max-w-6xl px-4 py-7 sm:px-8">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
+            Organisation-wide controls
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold">Organisation Admin</h1>
+          <p className="mt-2 max-w-2xl text-sm text-[#727a74]">
+            Publish standards, manage access and review organisation activity
+            across all stores.
+          </p>
+          <div className="mt-7">
+            <OrganisationFeatureCards onSelect={setSection} />
+          </div>
+        </main>
+      </div>
+    );
+
+  if (section === "access") return page("User Access", <UserAccessAdmin />);
+  if (section === "library")
+    return page("Document Library", <OrganisationLibraryAdmin />);
+  if (section === "activity")
+    return page("Organisation Activity", recentChanges);
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
@@ -567,484 +673,821 @@ export default function OrganisationAdmin({ onBack }: Props) {
               Central control
             </p>
           </div>
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="mr-2 size-4" /> Back to Admin
+          <Button variant="outline" onClick={() => setSection("home")}>
+            <ArrowLeft className="mr-2 size-4" /> Back to Organisation Admin
           </Button>
         </div>
       </header>
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-7 sm:px-8">
-        <UserAccessAdmin />
-        <OrganisationLibraryAdmin />
-        <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-            Recent organisation changes
-          </p>
-          <div className="mt-3 space-y-2">
-            {data.recentChanges.slice(0, 8).map((change, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-2 text-sm"
-              >
-                <span className="font-semibold">{change.change}</span>
-                <span className="text-xs text-[#89918b]">
-                  {change.actor} · {new Date(change.at).toLocaleString("en-GB")}
-                </span>
+        {section === "training" && (
+          <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
+                  Training &amp; Documents
+                </p>
+                <h1 className="mt-1 text-xl font-semibold">
+                  {trainingEdit ? "Edit central training" : "Add training"}
+                </h1>
+                <p className="mt-1 text-sm text-[#727a74]">
+                  Briefings and documents keep separate, store-level
+                  acknowledgement history.
+                </p>
               </div>
-            ))}
-            {!data.recentChanges.length && (
-              <p className="mt-3 text-sm text-[#89918b]">
-                No organisation changes recorded.
-              </p>
-            )}
-          </div>
-        </section>
-        <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-                Training &amp; Documents
-              </p>
-              <h1 className="mt-1 text-xl font-semibold">
-                {trainingEdit ? "Edit central training" : "Add training"}
-              </h1>
-              <p className="mt-1 text-sm text-[#727a74]">
-                Briefings and documents keep separate, store-level
-                acknowledgement history.
-              </p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={resetTraining}>
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-semibold">
-              Training format
-              <select
-                value={trainingFormat}
-                onChange={(event) =>
-                  setTrainingFormat(
-                    event.target.value as "briefing" | "document",
-                  )
-                }
-                className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-              >
-                <option value="briefing">Briefing / instruction</option>
-                <option value="document">Document / PDF</option>
-              </select>
-            </label>
-            <label className="text-sm font-semibold">
-              Title
-              <Input
-                value={trainingTitle}
-                onChange={(event) => setTrainingTitle(event.target.value)}
-                className="mt-2 h-11"
-              />
-            </label>
-            <label className="text-sm font-semibold md:col-span-2">
-              Description / training instructions
-              <textarea
-                value={trainingDescription}
-                onChange={(event) => setTrainingDescription(event.target.value)}
-                className="mt-2 min-h-28 w-full rounded-xl border border-black/[0.1] p-3"
-              />
-            </label>
-            <label className="text-sm font-semibold">
-              Category
-              <select
-                value={trainingCategory}
-                onChange={(event) => setTrainingCategory(event.target.value)}
-                className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-              >
-                <option value="other">Other</option>
-                <option value="food_safety">Food safety</option>
-                <option value="security">Security</option>
-                <option value="equipment">Equipment</option>
-                <option value="company_procedure">Company procedure</option>
-              </select>
-            </label>
-            <label className="text-sm font-semibold">
-              Audience
-              <select
-                value={trainingAudience}
-                onChange={(event) => setTrainingAudience(event.target.value)}
-                className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-              >
-                <option value="all_team">All team</option>
-                <option value="managers_only">Managers only</option>
-              </select>
-            </label>
-            {trainingFormat === "document" && (
-              <label className="text-sm font-semibold">
-                PDF upload
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(event) =>
-                    setTrainingFile(event.target.files?.[0] ?? null)
-                  }
-                  className="mt-2 block w-full text-sm"
-                />
-                <span className="mt-1 block text-xs font-normal text-[#89918b]">
-                  Required for Document / PDF training
-                </span>
-              </label>
-            )}
-            <div className="md:col-span-2">
-              {storePicker(
-                trainingAllStores,
-                setTrainingAllStores,
-                trainingStores,
-                setTrainingStores,
-              )}
-            </div>
-            {trainingEdit && trainingFormat === "briefing" && (
-              <label className="flex items-center gap-2 text-sm md:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={trainingReacknowledge}
-                  onChange={(event) =>
-                    setTrainingReacknowledge(event.target.checked)
-                  }
-                />{" "}
-                Require staff to acknowledge this updated briefing again
-              </label>
-            )}
-          </div>
-          <div className="mt-5 flex gap-2">
-            <Button
-              className="bg-[#202522] text-white"
-              disabled={saving || !trainingTitle.trim()}
-              onClick={saveTraining}
-            >
-              {trainingEdit ? "Save training" : "Publish training"}
-            </Button>
-            {trainingEdit && (
-              <Button variant="outline" onClick={resetTraining}>
-                Cancel edit
+              <Button variant="ghost" size="icon" onClick={resetTraining}>
+                <X className="size-4" />
               </Button>
-            )}
-          </div>
-          <div className="mt-6 space-y-2">
-            {data.training.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
-              >
-                <div>
-                  <p className="font-semibold">
-                    {item.title}{" "}
-                    <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
-                      {item.trainingFormat === "document"
-                        ? "Document"
-                        : "Briefing"}
-                    </span>
-                  </p>
-                  <p className="text-xs text-[#727a74]">
-                    {item.stores.join(", ")} · Version {item.version}
-                  </p>
-                  {item.trainingFormat === "document" && (
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      {(item.attachmentStatus ?? []).map((attachment) => (
-                        <span
-                          key={attachment.locationId}
-                          className={
-                            attachment.status === "attached"
-                              ? "rounded-full bg-[#e9f5ec] px-2 py-1 text-[#2d7951]"
-                              : "rounded-full bg-[#fff2df] px-2 py-1 text-[#9a5b16]"
-                          }
-                        >
-                          {attachment.store} — {attachment.status === "attached" ? "PDF attached" : "Missing PDF"}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={"Edit " + item.title}
-                    onClick={() => startTrainingEdit(item)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  {item.trainingFormat === "document" && (
-                    <label className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium hover:bg-black/[0.04]">
-                      {item.attachmentStatus?.some((status) => status.status === "missing") ? "Attach missing PDF" : "Replace PDF"}
-                    <input
-                      className="hidden"
-                      type="file"
-                      accept="application/pdf"
-                      disabled={saving}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void replaceTrainingDocument(item, file);
-                        event.target.value = "";
-                      }}
-                    />
-                    </label>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-[#b64738]"
-                    aria-label={"Retire " + item.title}
-                    onClick={() => void retire("training", item.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-                Operational Tasks
-              </p>
-              <h2 className="mt-1 text-xl font-semibold">
-                {taskEdit
-                  ? "Edit organisation standard"
-                  : "Publish an organisation standard"}
-              </h2>
-              <p className="mt-1 text-sm text-[#727a74]">
-                One controlled publisher for checklists, cleaning, security and
-                recurring checks.
-              </p>
             </div>
-            <Button variant="ghost" size="icon" onClick={resetTask}>
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-semibold md:col-span-2">
-              Task type
-              <select
-                value={taskType}
-                disabled={Boolean(taskEdit)}
-                onChange={(event) => setTaskType(event.target.value)}
-                className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-              >
-                <option value="opening">Opening checklist item</option>
-                <option value="closing">Closing checklist item</option>
-                <option value="cleaning">Cleaning task</option>
-                <option value="security_am">AM Security check</option>
-                <option value="security_pm">PM Security check</option>
-                <option value="additional">Additional / recurring check</option>
-              </select>
-            </label>
-            {(taskType === "opening" ||
-              taskType === "closing" ||
-              taskType.startsWith("security_")) && (
-              <>
-                <label className="text-sm font-semibold md:col-span-2">Question<Input value={taskQuestion} onChange={(event) => setTaskQuestion(event.target.value)} className="mt-2 h-11" /></label>
-                <label className="text-sm font-semibold md:col-span-2">Description / instructions<textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" /></label>
-                <label className="text-sm font-semibold">Item type<select value={taskTaskType} onChange={(event) => { const next = event.target.value as "simple" | "with_steps"; setTaskTaskType(next); if (next === "with_steps" && !taskSteps.length) setTaskSteps([{ id: "step_1", label: "New step", responseType: "confirm", required: true }]); }} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="simple">Simple check</option><option value="with_steps">Task with steps</option></select></label>
-                {taskTaskType === "with_steps" && <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Child steps</p><Button size="sm" variant="outline" onClick={() => setTaskSteps(current => [...current, { id: `step_${current.length + 1}`, label: "New step", responseType: "confirm", required: true }])}>Add step</Button></div><div className="mt-3 space-y-2">{taskSteps.map((step, index) => <div key={step.id} className="rounded-xl bg-[#fafbf9] p-3"><div className="flex gap-2"><Input value={step.label} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} placeholder="Step label" /><select value={step.responseType} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, responseType: event.target.value as TaskStep["responseType"] } : item))} className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"><option value="confirm">Confirm</option><option value="yes_no">Yes / No</option><option value="number">Number</option><option value="short_text">Short text</option></select><Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button><Button variant="ghost" size="sm" disabled={index === taskSteps.length - 1} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button><Button variant="ghost" size="sm" className="text-[#b64738]" onClick={() => setTaskSteps(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button></div><textarea value={step.description ?? ""} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="Step instructions" /></div>)}</div></div>}
-              </>
-            )}
-            {taskType === "cleaning" && (
-              <>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="text-sm font-semibold">
+                Training format
+                <select
+                  value={trainingFormat}
+                  onChange={(event) =>
+                    setTrainingFormat(
+                      event.target.value as "briefing" | "document",
+                    )
+                  }
+                  className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                >
+                  <option value="briefing">Briefing / instruction</option>
+                  <option value="document">Document / PDF</option>
+                </select>
+              </label>
+              <label className="text-sm font-semibold">
+                Title
+                <Input
+                  value={trainingTitle}
+                  onChange={(event) => setTrainingTitle(event.target.value)}
+                  className="mt-2 h-11"
+                />
+              </label>
+              <label className="text-sm font-semibold md:col-span-2">
+                Description / training instructions
+                <textarea
+                  value={trainingDescription}
+                  onChange={(event) =>
+                    setTrainingDescription(event.target.value)
+                  }
+                  className="mt-2 min-h-28 w-full rounded-xl border border-black/[0.1] p-3"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Category
+                <select
+                  value={trainingCategory}
+                  onChange={(event) => setTrainingCategory(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                >
+                  <option value="other">Other</option>
+                  <option value="food_safety">Food safety</option>
+                  <option value="security">Security</option>
+                  <option value="equipment">Equipment</option>
+                  <option value="company_procedure">Company procedure</option>
+                </select>
+              </label>
+              <label className="text-sm font-semibold">
+                Audience
+                <select
+                  value={trainingAudience}
+                  onChange={(event) => setTrainingAudience(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                >
+                  <option value="all_team">All team</option>
+                  <option value="managers_only">Managers only</option>
+                </select>
+              </label>
+              {trainingFormat === "document" && (
                 <label className="text-sm font-semibold">
-                  Task name
-                  <Input
-                    value={taskName}
-                    onChange={(event) => setTaskName(event.target.value)}
-                    className="mt-2 h-11"
-                  />
-                </label>
-                <label className="text-sm font-semibold md:col-span-2">
-                  Description / instructions
-                  <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" />
-                </label>
-                <label className="text-sm font-semibold">
-                  Task format
-                  <select value={taskTaskType} onChange={(event) => { const next = event.target.value as "simple" | "with_steps"; setTaskTaskType(next); if (next === "with_steps" && !taskSteps.length) setTaskSteps([{ id: "step_1", label: "New step", responseType: "confirm", required: true }]); }} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
-                    <option value="simple">Simple check</option>
-                    <option value="with_steps">Task with steps</option>
-                  </select>
-                </label>
-                {taskTaskType === "with_steps" && <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Child steps</p><Button size="sm" variant="outline" onClick={() => setTaskSteps(current => [...current, { id: `step_${current.length + 1}`, label: "New step", responseType: "confirm", required: true }])}>Add step</Button></div><div className="mt-3 space-y-2">{taskSteps.map((step, index) => <div key={step.id} className="rounded-xl bg-[#fafbf9] p-3"><div className="flex gap-2"><Input value={step.label} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} placeholder="Step label" /><select value={step.responseType} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, responseType: event.target.value as TaskStep["responseType"] } : item))} className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"><option value="confirm">Confirm</option><option value="yes_no">Yes / No</option><option value="number">Number</option><option value="short_text">Short text</option></select><Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button><Button variant="ghost" size="sm" disabled={index === taskSteps.length - 1} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button><Button variant="ghost" size="sm" className="text-[#b64738]" onClick={() => setTaskSteps(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button></div><textarea value={step.description ?? ""} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="Step instructions" /></div>)}</div></div>}
-                <label className="text-sm font-semibold">
-                  Frequency
-                  <select
-                    value={taskFrequency}
-                    onChange={(event) => setTaskFrequency(event.target.value)}
-                    className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                  >
-                    <option value="after_use">After use</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="specific_days">Specific days</option>
-                  </select>
-                </label>
-                {taskFrequency === "specific_days" && (
-                  <div className="md:col-span-2">
-                    <p className="text-sm font-semibold">Weekdays</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                        (day, index) => (
-                          <label
-                            key={day}
-                            className="rounded-xl border px-3 py-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={taskWeekdays.includes(index)}
-                              onChange={() =>
-                                setTaskWeekdays(
-                                  taskWeekdays.includes(index)
-                                    ? taskWeekdays.filter(
-                                        (value) => value !== index,
-                                      )
-                                    : [...taskWeekdays, index],
-                                )
-                              }
-                            />{" "}
-                            <span className="ml-1">{day}</span>
-                          </label>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            {taskType === "additional" && (
-              <>
-                <label className="text-sm font-semibold">
-                  Title
-                  <Input
-                    value={taskTitle}
-                    onChange={(event) => setTaskTitle(event.target.value)}
-                    className="mt-2 h-11"
-                  />
-                </label>
-                <label className="text-sm font-semibold md:col-span-2">
-                  Description
-                  <textarea
-                    value={taskDescription}
-                    onChange={(event) => setTaskDescription(event.target.value)}
-                    className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3"
-                  />
-                </label>
-                <div className="md:col-span-2"><AdditionalScheduleFields frequency={taskFrequency} interval={taskInterval} weekdays={taskWeekdays} dayOfMonth={taskDayOfMonth} nextDue={taskNextDue} onFrequencyChange={setTaskFrequency} onIntervalChange={setTaskInterval} onWeekdaysChange={setTaskWeekdays} onDayOfMonthChange={setTaskDayOfMonth} onNextDueChange={setTaskNextDue} /></div>
-                <label className="text-sm font-semibold md:col-span-2">
-                  Field definitions (JSON)
-                  <textarea
-                    value={JSON.stringify(taskFields, null, 2)}
-                    onChange={(event) => {
-                      try {
-                        const parsed = JSON.parse(event.target.value);
-                        if (Array.isArray(parsed)) setTaskFields(parsed);
-                      } catch {
-                        /* keep last valid field definition */
-                      }
-                    }}
-                    className="mt-2 min-h-36 w-full rounded-xl border border-black/[0.1] p-3 font-mono text-xs"
+                  PDF upload
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(event) =>
+                      setTrainingFile(event.target.files?.[0] ?? null)
+                    }
+                    className="mt-2 block w-full text-sm"
                   />
                   <span className="mt-1 block text-xs font-normal text-[#89918b]">
-                    Supports temperature, number, yes/no, completed, date, text,
-                    actions and PDF fields.
+                    Required for Document / PDF training
                   </span>
                 </label>
-              </>
-            )}
-          </div>
-          <div className="mt-5 flex gap-2">
-            <Button
-              className="bg-[#202522] text-white"
-              disabled={saving}
-              onClick={saveTask}
-            >
-              {taskEdit
-                ? "Save organisation standard"
-                : "Publish operational task"}
-            </Button>
-            {taskEdit && (
-              <Button variant="outline" onClick={resetTask}>
-                Cancel edit
-              </Button>
-            )}
-          </div>
-          <div className="mt-6 space-y-2">
-            {data.checklists.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
-              >
-                <div>
-                  <p className="font-semibold">{item.question}</p>
-                  <p className="text-xs text-[#727a74]">
-                    {item.checklist === "opening" ? "Opening" : "Closing"} ·{" "}
-                    {item.stores.join(", ")}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      startTaskEdit({
-                        ...item,
-                        id: item.id,
-                        kind: item.checklist,
-                        allocationMode: item.allocationMode,
-                        stores: item.stores,
-                        locationIds: item.locationIds,
-                        question: item.question,
-                      })
+              )}
+              <div className="md:col-span-2">
+                {storePicker(
+                  trainingAllStores,
+                  setTrainingAllStores,
+                  trainingStores,
+                  setTrainingStores,
+                )}
+              </div>
+              {trainingEdit && trainingFormat === "briefing" && (
+                <label className="flex items-center gap-2 text-sm md:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={trainingReacknowledge}
+                    onChange={(event) =>
+                      setTrainingReacknowledge(event.target.checked)
                     }
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-[#b64738]"
-                    onClick={() => void retire("checklist", item.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {data.operationalTasks.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                  />{" "}
+                  Require staff to acknowledge this updated briefing again
+                </label>
+              )}
+            </div>
+            <div className="mt-5 flex gap-2">
+              <Button
+                className="bg-[#202522] text-white"
+                disabled={saving || !trainingTitle.trim()}
+                onClick={saveTraining}
               >
-                <div>
-                  <p className="font-semibold">
-                    {item.name ?? item.title ?? item.question}
-                  </p>
-                  <p className="text-xs text-[#727a74]">
-                    {taskLabel(item.kind)} · {item.stores.join(", ")}
-                  </p>
+                {trainingEdit ? "Save training" : "Publish training"}
+              </Button>
+              {trainingEdit && (
+                <Button variant="outline" onClick={resetTraining}>
+                  Cancel edit
+                </Button>
+              )}
+            </div>
+            <div className="mt-6 space-y-2">
+              {data.training.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-semibold">
+                      {item.title}{" "}
+                      <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
+                        {item.trainingFormat === "document"
+                          ? "Document"
+                          : "Briefing"}
+                      </span>
+                    </p>
+                    <p className="text-xs text-[#727a74]">
+                      {item.stores.join(", ")} · Version {item.version}
+                    </p>
+                    {item.trainingFormat === "document" && (
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        {(item.attachmentStatus ?? []).map((attachment) => (
+                          <span
+                            key={attachment.locationId}
+                            className={
+                              attachment.status === "attached"
+                                ? "rounded-full bg-[#e9f5ec] px-2 py-1 text-[#2d7951]"
+                                : "rounded-full bg-[#fff2df] px-2 py-1 text-[#9a5b16]"
+                            }
+                          >
+                            {attachment.store} —{" "}
+                            {attachment.status === "attached"
+                              ? "PDF attached"
+                              : "Missing PDF"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={"Edit " + item.title}
+                      onClick={() => startTrainingEdit(item)}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    {item.trainingFormat === "document" && (
+                      <label className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium hover:bg-black/[0.04]">
+                        {item.attachmentStatus?.some(
+                          (status) => status.status === "missing",
+                        )
+                          ? "Attach missing PDF"
+                          : "Replace PDF"}
+                        <input
+                          className="hidden"
+                          type="file"
+                          accept="application/pdf"
+                          disabled={saving}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void replaceTrainingDocument(item, file);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-[#b64738]"
+                      aria-label={"Retire " + item.title}
+                      onClick={() => void retire("training", item.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => startTaskEdit(item)}
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-[#b64738]"
-                    onClick={() => void retire("operational", item.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {section === "operational" && (
+          <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
+                  Operational Tasks
+                </p>
+                <h2 className="mt-1 text-xl font-semibold">
+                  {taskEdit
+                    ? "Edit organisation standard"
+                    : "Publish an organisation standard"}
+                </h2>
+                <p className="mt-1 text-sm text-[#727a74]">
+                  One controlled publisher for checklists, cleaning, security
+                  and recurring checks.
+                </p>
               </div>
-            ))}
-          </div>
-        </section>
+              <Button variant="ghost" size="icon" onClick={resetTask}>
+                <X className="size-4" />
+              </Button>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="text-sm font-semibold md:col-span-2">
+                Task type
+                <select
+                  value={taskType}
+                  disabled={Boolean(taskEdit)}
+                  onChange={(event) => setTaskType(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                >
+                  <option value="opening">Opening checklist item</option>
+                  <option value="closing">Closing checklist item</option>
+                  <option value="cleaning">Cleaning task</option>
+                  <option value="security_am">AM Security check</option>
+                  <option value="security_pm">PM Security check</option>
+                  <option value="additional">
+                    Additional / recurring check
+                  </option>
+                </select>
+              </label>
+              {(taskType === "opening" ||
+                taskType === "closing" ||
+                taskType.startsWith("security_")) && (
+                <>
+                  <label className="text-sm font-semibold md:col-span-2">
+                    Question
+                    <Input
+                      value={taskQuestion}
+                      onChange={(event) => setTaskQuestion(event.target.value)}
+                      className="mt-2 h-11"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold md:col-span-2">
+                    Description / instructions
+                    <textarea
+                      value={taskDescription}
+                      onChange={(event) =>
+                        setTaskDescription(event.target.value)
+                      }
+                      className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold">
+                    Item type
+                    <select
+                      value={taskTaskType}
+                      onChange={(event) => {
+                        const next = event.target.value as
+                          | "simple"
+                          | "with_steps";
+                        setTaskTaskType(next);
+                        if (next === "with_steps" && !taskSteps.length)
+                          setTaskSteps([
+                            {
+                              id: "step_1",
+                              label: "New step",
+                              responseType: "confirm",
+                              required: true,
+                            },
+                          ]);
+                      }}
+                      className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                    >
+                      <option value="simple">Simple check</option>
+                      <option value="with_steps">Task with steps</option>
+                    </select>
+                  </label>
+                  {taskTaskType === "with_steps" && (
+                    <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">Child steps</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setTaskSteps((current) => [
+                              ...current,
+                              {
+                                id: `step_${current.length + 1}`,
+                                label: "New step",
+                                responseType: "confirm",
+                                required: true,
+                              },
+                            ])
+                          }
+                        >
+                          Add step
+                        </Button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {taskSteps.map((step, index) => (
+                          <div
+                            key={step.id}
+                            className="rounded-xl bg-[#fafbf9] p-3"
+                          >
+                            <div className="flex gap-2">
+                              <Input
+                                value={step.label}
+                                onChange={(event) =>
+                                  setTaskSteps((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, label: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                                placeholder="Step label"
+                              />
+                              <select
+                                value={step.responseType}
+                                onChange={(event) =>
+                                  setTaskSteps((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? {
+                                            ...item,
+                                            responseType: event.target
+                                              .value as TaskStep["responseType"],
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                                className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"
+                              >
+                                <option value="confirm">Confirm</option>
+                                <option value="yes_no">Yes / No</option>
+                                <option value="number">Number</option>
+                                <option value="short_text">Short text</option>
+                              </select>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === 0}
+                                onClick={() =>
+                                  setTaskSteps((current) => {
+                                    const next = [...current];
+                                    [next[index - 1], next[index]] = [
+                                      next[index],
+                                      next[index - 1],
+                                    ];
+                                    return next;
+                                  })
+                                }
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === taskSteps.length - 1}
+                                onClick={() =>
+                                  setTaskSteps((current) => {
+                                    const next = [...current];
+                                    [next[index], next[index + 1]] = [
+                                      next[index + 1],
+                                      next[index],
+                                    ];
+                                    return next;
+                                  })
+                                }
+                              >
+                                ↓
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#b64738]"
+                                onClick={() =>
+                                  setTaskSteps((current) =>
+                                    current.filter(
+                                      (_, itemIndex) => itemIndex !== index,
+                                    ),
+                                  )
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            <textarea
+                              value={step.description ?? ""}
+                              onChange={(event) =>
+                                setTaskSteps((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...item,
+                                          description: event.target.value,
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm"
+                              placeholder="Step instructions"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {taskType === "cleaning" && (
+                <>
+                  <label className="text-sm font-semibold">
+                    Task name
+                    <Input
+                      value={taskName}
+                      onChange={(event) => setTaskName(event.target.value)}
+                      className="mt-2 h-11"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold md:col-span-2">
+                    Description / instructions
+                    <textarea
+                      value={taskDescription}
+                      onChange={(event) =>
+                        setTaskDescription(event.target.value)
+                      }
+                      className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold">
+                    Task format
+                    <select
+                      value={taskTaskType}
+                      onChange={(event) => {
+                        const next = event.target.value as
+                          | "simple"
+                          | "with_steps";
+                        setTaskTaskType(next);
+                        if (next === "with_steps" && !taskSteps.length)
+                          setTaskSteps([
+                            {
+                              id: "step_1",
+                              label: "New step",
+                              responseType: "confirm",
+                              required: true,
+                            },
+                          ]);
+                      }}
+                      className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                    >
+                      <option value="simple">Simple check</option>
+                      <option value="with_steps">Task with steps</option>
+                    </select>
+                  </label>
+                  {taskTaskType === "with_steps" && (
+                    <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">Child steps</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setTaskSteps((current) => [
+                              ...current,
+                              {
+                                id: `step_${current.length + 1}`,
+                                label: "New step",
+                                responseType: "confirm",
+                                required: true,
+                              },
+                            ])
+                          }
+                        >
+                          Add step
+                        </Button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {taskSteps.map((step, index) => (
+                          <div
+                            key={step.id}
+                            className="rounded-xl bg-[#fafbf9] p-3"
+                          >
+                            <div className="flex gap-2">
+                              <Input
+                                value={step.label}
+                                onChange={(event) =>
+                                  setTaskSteps((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, label: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                                placeholder="Step label"
+                              />
+                              <select
+                                value={step.responseType}
+                                onChange={(event) =>
+                                  setTaskSteps((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? {
+                                            ...item,
+                                            responseType: event.target
+                                              .value as TaskStep["responseType"],
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                                className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"
+                              >
+                                <option value="confirm">Confirm</option>
+                                <option value="yes_no">Yes / No</option>
+                                <option value="number">Number</option>
+                                <option value="short_text">Short text</option>
+                              </select>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === 0}
+                                onClick={() =>
+                                  setTaskSteps((current) => {
+                                    const next = [...current];
+                                    [next[index - 1], next[index]] = [
+                                      next[index],
+                                      next[index - 1],
+                                    ];
+                                    return next;
+                                  })
+                                }
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === taskSteps.length - 1}
+                                onClick={() =>
+                                  setTaskSteps((current) => {
+                                    const next = [...current];
+                                    [next[index], next[index + 1]] = [
+                                      next[index + 1],
+                                      next[index],
+                                    ];
+                                    return next;
+                                  })
+                                }
+                              >
+                                ↓
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#b64738]"
+                                onClick={() =>
+                                  setTaskSteps((current) =>
+                                    current.filter(
+                                      (_, itemIndex) => itemIndex !== index,
+                                    ),
+                                  )
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            <textarea
+                              value={step.description ?? ""}
+                              onChange={(event) =>
+                                setTaskSteps((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...item,
+                                          description: event.target.value,
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm"
+                              placeholder="Step instructions"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <label className="text-sm font-semibold">
+                    Frequency
+                    <select
+                      value={taskFrequency}
+                      onChange={(event) => setTaskFrequency(event.target.value)}
+                      className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
+                    >
+                      <option value="after_use">After use</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="specific_days">Specific days</option>
+                    </select>
+                  </label>
+                  {taskFrequency === "specific_days" && (
+                    <div className="md:col-span-2">
+                      <p className="text-sm font-semibold">Weekdays</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                          (day, index) => (
+                            <label
+                              key={day}
+                              className="rounded-xl border px-3 py-2 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={taskWeekdays.includes(index)}
+                                onChange={() =>
+                                  setTaskWeekdays(
+                                    taskWeekdays.includes(index)
+                                      ? taskWeekdays.filter(
+                                          (value) => value !== index,
+                                        )
+                                      : [...taskWeekdays, index],
+                                  )
+                                }
+                              />{" "}
+                              <span className="ml-1">{day}</span>
+                            </label>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {taskType === "additional" && (
+                <>
+                  <label className="text-sm font-semibold">
+                    Title
+                    <Input
+                      value={taskTitle}
+                      onChange={(event) => setTaskTitle(event.target.value)}
+                      className="mt-2 h-11"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold md:col-span-2">
+                    Description
+                    <textarea
+                      value={taskDescription}
+                      onChange={(event) =>
+                        setTaskDescription(event.target.value)
+                      }
+                      className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3"
+                    />
+                  </label>
+                  <div className="md:col-span-2">
+                    <AdditionalScheduleFields
+                      frequency={taskFrequency}
+                      interval={taskInterval}
+                      weekdays={taskWeekdays}
+                      dayOfMonth={taskDayOfMonth}
+                      nextDue={taskNextDue}
+                      onFrequencyChange={setTaskFrequency}
+                      onIntervalChange={setTaskInterval}
+                      onWeekdaysChange={setTaskWeekdays}
+                      onDayOfMonthChange={setTaskDayOfMonth}
+                      onNextDueChange={setTaskNextDue}
+                    />
+                  </div>
+                  <label className="text-sm font-semibold md:col-span-2">
+                    Field definitions (JSON)
+                    <textarea
+                      value={JSON.stringify(taskFields, null, 2)}
+                      onChange={(event) => {
+                        try {
+                          const parsed = JSON.parse(event.target.value);
+                          if (Array.isArray(parsed)) setTaskFields(parsed);
+                        } catch {
+                          /* keep last valid field definition */
+                        }
+                      }}
+                      className="mt-2 min-h-36 w-full rounded-xl border border-black/[0.1] p-3 font-mono text-xs"
+                    />
+                    <span className="mt-1 block text-xs font-normal text-[#89918b]">
+                      Supports temperature, number, yes/no, completed, date,
+                      text, actions and PDF fields.
+                    </span>
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="mt-5 flex gap-2">
+              <Button
+                className="bg-[#202522] text-white"
+                disabled={saving}
+                onClick={saveTask}
+              >
+                {taskEdit
+                  ? "Save organisation standard"
+                  : "Publish operational task"}
+              </Button>
+              {taskEdit && (
+                <Button variant="outline" onClick={resetTask}>
+                  Cancel edit
+                </Button>
+              )}
+            </div>
+            <div className="mt-6 space-y-2">
+              {data.checklists.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-semibold">{item.question}</p>
+                    <p className="text-xs text-[#727a74]">
+                      {item.checklist === "opening" ? "Opening" : "Closing"} ·{" "}
+                      {item.stores.join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        startTaskEdit({
+                          ...item,
+                          id: item.id,
+                          kind: item.checklist,
+                          allocationMode: item.allocationMode,
+                          stores: item.stores,
+                          locationIds: item.locationIds,
+                          question: item.question,
+                        })
+                      }
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-[#b64738]"
+                      onClick={() => void retire("checklist", item.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {data.operationalTasks.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-semibold">
+                      {item.name ?? item.title ?? item.question}
+                    </p>
+                    <p className="text-xs text-[#727a74]">
+                      {taskLabel(item.kind)} · {item.stores.join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => startTaskEdit(item)}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-[#b64738]"
+                      onClick={() => void retire("operational", item.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
