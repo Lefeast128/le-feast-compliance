@@ -5,6 +5,7 @@ import { requireEnum, requireString, requireUuid } from "../compliance/validatio
 import { additionalRequirements, auditEvents, centralChecklistItems, centralOperationalItems, centralTrainingPublications, checklistQuestions, cleaningTasks, locations, securityQuestions, trainingContentVersions, trainingDocumentVersions, trainingRequirements, users } from "../db/schema.js";
 import { audit, db, type Transaction } from "./shared.js";
 import { validateStructuredSteps } from "../compliance/structured-task-service.js";
+import { validateAdditionalSchedule } from "../additional/scheduling.js";
 
 const trainingCategories = ["northern_rail", "food_safety", "security", "equipment", "alcohol", "company_procedure", "other"] as const;
 const trainingAudiences = ["all_team", "managers_only", "selected_people"] as const;
@@ -120,6 +121,7 @@ function operationalDto(row: typeof centralOperationalItems.$inferSelect, storeN
     frequency: row.frequency,
     interval: row.interval,
     weekdays: row.weekdays,
+    dayOfMonth: row.dayOfMonth,
     nextDueAt: row.nextDueAt,
     fields: row.fields,
     active: row.active,
@@ -373,14 +375,11 @@ function operationalValues(input: Record<string, unknown>, kind: OperationalKind
   const frequency = requireEnum(input.frequency, "frequency", additionalFrequencies);
   const nextDueAt = new Date(typeof input.nextDueAt === "string" || typeof input.nextDueAt === "number" ? input.nextDueAt : NaN);
   if (Number.isNaN(nextDueAt.getTime())) throw new ApiError(400, "Next due date must be valid");
-  const interval = input.interval === undefined || input.interval === null || input.interval === "" ? null : Number(input.interval);
-  if ((frequency === "every_x_weeks" || frequency === "every_x_months") && (interval === null || !Number.isInteger(interval) || interval < 1)) throw new ApiError(422, "Interval must be a whole number of at least 1");
+  const schedule = validateAdditionalSchedule({ frequency, interval: input.interval, weekdays: input.weekdays, nextDueAt, dayOfMonth: input.dayOfMonth });
   return {
     title: requireString(input.title, "Title"),
     description: textOrNull(input.description, "Description"),
-    frequency,
-    interval,
-    nextDueAt,
+    ...schedule,
     fields: fieldDefinitions(input.fields),
   };
 }
@@ -400,13 +399,13 @@ async function insertOperationalRow(tx: Transaction, kind: OperationalKind, loca
   if (kind === "security_am" || kind === "security_pm") {
     return tx.insert(securityQuestions).values({ locationId, session: values.session, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order, versionRootId, active: true, centralItemId: sourceId } as typeof securityQuestions.$inferInsert).returning();
   }
-  return tx.insert(additionalRequirements).values({ locationId, title: values.title, description: values.description, frequency: values.frequency, interval: values.interval, nextDueAt: values.nextDueAt, fields: values.fields, order, versionRootId, active: true, centralItemId: sourceId } as typeof additionalRequirements.$inferInsert).returning();
+  return tx.insert(additionalRequirements).values({ locationId, title: values.title, description: values.description, frequency: values.frequency, interval: values.interval, weekdays: values.weekdays, dayOfMonth: values.dayOfMonth, nextDueAt: values.nextDueAt, fields: values.fields, order, versionRootId, active: true, centralItemId: sourceId } as typeof additionalRequirements.$inferInsert).returning();
 }
 
 function operationalChanged(kind: OperationalKind, row: Record<string, unknown>, values: Record<string, unknown>) {
   if (kind === "cleaning") return row.name !== values.name || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.frequency !== values.frequency || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays);
   if (kind === "security_am" || kind === "security_pm") return row.question !== values.question || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.session !== values.session;
-  return row.title !== values.title || row.description !== values.description || row.frequency !== values.frequency || row.interval !== values.interval || String(row.nextDueAt) !== String(values.nextDueAt) || JSON.stringify(row.fields) !== JSON.stringify(values.fields);
+  return row.title !== values.title || row.description !== values.description || row.frequency !== values.frequency || row.interval !== values.interval || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays) || row.dayOfMonth !== values.dayOfMonth || String(row.nextDueAt) !== String(values.nextDueAt) || JSON.stringify(row.fields) !== JSON.stringify(values.fields);
 }
 
 async function centralOperationalRows(kind: OperationalKind, sourceId: string, executor: Transaction | ReturnType<typeof db> = db()) {
@@ -433,7 +432,8 @@ export async function publishCentralOperationalTask(context: AuthContext, input:
       const [row] = await insertOperationalRow(tx, kind, store.id, source.id, values, existing.length);
       rows.push(row);
     }
-    await audit(tx, null, context.user.id, "central_operational_created", JSON.stringify({ centralItemId: source.id, kind, locationIds: stores.map(store => store.id), title: values.name ?? values.question ?? values.title }));
+    const auditTitle = "name" in values ? values.name : "question" in values ? values.question : "title" in values ? values.title : undefined;
+    await audit(tx, null, context.user.id, "central_operational_created", JSON.stringify({ centralItemId: source.id, kind, locationIds: stores.map(store => store.id), title: auditTitle }));
     return { source, rows };
   });
 }

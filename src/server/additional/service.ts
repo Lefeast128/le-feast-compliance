@@ -4,10 +4,10 @@ import { getDb } from "../db/client.js";
 import { additionalCompletions, additionalRequirements, documents, issueUpdates, issues, locations, teamMembers } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
-import { requireEnum, requireFiniteNumber, requireString, requireUuid } from "../compliance/validation.js";
+import { requireString, requireUuid } from "../compliance/validation.js";
 import { localDateKey } from "../dashboard/time.js";
+import { additionalFrequencies, nextAdditionalDue, validateAdditionalSchedule } from "./scheduling.js";
 
-const frequencies = ["weekly", "monthly", "every_x_weeks", "every_x_months", "annual", "one_off"] as const;
 const fieldTypes = ["temperature", "number", "yes_no", "completed", "date", "text", "actions", "pdf"] as const;
 type Field = { key: string; label: string; type: string; minimum?: number; maximum?: number; options?: string[] };
 
@@ -31,18 +31,6 @@ function validateFields(fields: Field[]) {
   }
   const canFail = fields.some(field => field.type === "yes_no" || ((field.type === "number" || field.type === "temperature") && (field.minimum !== undefined || field.maximum !== undefined)));
   if (canFail && !fields.some(field => field.type === "actions")) throw new ApiError(422, "A corrective action field is required for checks that can fail");
-}
-
-function validateInterval(frequency: string, interval: unknown) {
-  if ((frequency === "every_x_weeks" || frequency === "every_x_months") && (typeof interval !== "number" || !Number.isInteger(interval) || interval < 1)) throw new ApiError(422, "Interval must be a whole number of at least 1");
-}
-function nextDue(frequency: string, interval: number | null, timestamp: Date) {
-  const date = new Date(timestamp.getTime());
-  if (frequency === "one_off") return date;
-  if (frequency === "weekly") { date.setUTCDate(date.getUTCDate() + 7); return date; }
-  if (frequency === "annual") { const day = date.getUTCDate(); const month = date.getUTCMonth(); date.setUTCDate(1); date.setUTCFullYear(date.getUTCFullYear() + 1); date.setUTCMonth(month); date.setUTCDate(Math.min(day, new Date(Date.UTC(date.getUTCFullYear(), month + 1, 0)).getUTCDate())); return date; }
-  if (frequency === "monthly" || frequency === "every_x_months") { const months = frequency === "monthly" ? 1 : interval ?? 1; const day = date.getUTCDate(); date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth() + months); date.setUTCDate(Math.min(day, new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate())); return date; }
-  date.setUTCDate(date.getUTCDate() + 7 * (frequency === "every_x_weeks" ? interval ?? 1 : 1)); return date;
 }
 
 async function locationFor(context: AuthContext, locationId: string, manager = false) {
@@ -77,7 +65,7 @@ export async function additionalHistory(context: AuthContext, locationId: string
 export async function listAdditional(context: AuthContext, locationId: string) { const location = await locationFor(context, locationId, true); return getDb().select().from(additionalRequirements).where(and(eq(additionalRequirements.locationId, location.id), eq(additionalRequirements.active, true))).orderBy(asc(additionalRequirements.order)); }
 
 function config(input: Record<string, unknown>) {
-  const title = requireString(input.title, "Title"); const frequency = requireEnum(input.frequency, "frequency", frequencies); const nextDueAt = new Date(typeof input.nextDueAt === "string" || typeof input.nextDueAt === "number" ? input.nextDueAt : NaN); if (Number.isNaN(nextDueAt.getTime())) throw new ApiError(400, "Next due date must be valid"); const fields = input.fields as Field[]; validateFields(fields); validateInterval(frequency, input.interval); return { title, description: typeof input.description === "string" ? input.description.trim() : null, frequency, interval: input.interval === undefined ? null : requireFiniteNumber(input.interval, "interval"), nextDueAt, fields };
+  const title = requireString(input.title, "Title"); const nextDueAt = new Date(typeof input.nextDueAt === "string" || typeof input.nextDueAt === "number" ? input.nextDueAt : NaN); if (Number.isNaN(nextDueAt.getTime())) throw new ApiError(400, "Next due date must be valid"); const fields = input.fields as Field[]; validateFields(fields); const schedule = validateAdditionalSchedule({ frequency: input.frequency, interval: input.interval, weekdays: input.weekdays, nextDueAt, dayOfMonth: input.dayOfMonth }); return { title, description: typeof input.description === "string" ? input.description.trim() : null, ...schedule, fields };
 }
 export async function addAdditional(context: AuthContext, input: Record<string, unknown>) { const location = await locationFor(context, requireString(input.locationId, "locationId"), true); const values = config(input); const rows = await getDb().select({ id: additionalRequirements.id }).from(additionalRequirements).where(eq(additionalRequirements.locationId, location.id)); const [row] = await getDb().insert(additionalRequirements).values({ locationId: location.id, ...values, order: rows.length, active: true }).returning(); return row; }
 export async function updateAdditional(context: AuthContext, requirementId: string, input: Record<string, unknown>) { const old = await requirementFor(context, requirementId, true); if (!old.active) throw new ApiError(409, "This configuration version is no longer active"); const values = config(input); return getDb().transaction(async tx => { const [deactivated] = await tx.update(additionalRequirements).set({ active: false, deactivatedAt: new Date() }).where(eq(additionalRequirements.id, old.id)).returning(); const [row] = await tx.insert(additionalRequirements).values({ locationId: old.locationId, ...values, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id }).returning(); return { previous: deactivated, requirement: row }; }); }
@@ -93,7 +81,7 @@ export async function completeAdditional(context: AuthContext, input: Record<str
   if (fields.some(field => field.type === "yes_no" && answerMap.get(field.key) === "no")) failed.push(...fields.filter(field => field.type === "yes_no" && answerMap.get(field.key) === "no").map(field => ({ label: field.label, value: "no" })));
   const pdfField = fields.some(field => field.type === "pdf"); const documentId = pdfField ? requireUuid(input.documentId, "documentId") : undefined; if (pdfField && documentId) { const [document] = await getDb().select().from(documents).where(and(eq(documents.id, documentId), eq(documents.locationId, location.id), eq(documents.purpose, "additional_check_certificate"), eq(documents.status, "active"))).limit(1); if (!document) throw new ApiError(422, "PDF document is required"); }
   if (failed.length && !correctiveAction) throw new ApiError(422, "Corrective action is required for a failed additional check");
-  const now = new Date(); if (localDateKey(requirement.nextDueAt.getTime(), location.timezone) > localDateKey(now.getTime(), location.timezone)) throw new ApiError(422, "This additional check is not due yet"); const due = nextDue(requirement.frequency, requirement.interval, requirement.nextDueAt); const storedAnswers = (answers as any[]).map(answer => ({ key: answer.key, value: answer.value.trim() }));
+  const now = new Date(); if (localDateKey(requirement.nextDueAt.getTime(), location.timezone) > localDateKey(now.getTime(), location.timezone)) throw new ApiError(422, "This additional check is not due yet"); const due = nextAdditionalDue({ frequency: requirement.frequency as typeof additionalFrequencies[number], interval: requirement.interval, weekdays: requirement.weekdays ?? [], dayOfMonth: requirement.dayOfMonth }, requirement.nextDueAt); const storedAnswers = (answers as any[]).map(answer => ({ key: answer.key, value: answer.value.trim() }));
   return getDb().transaction(async tx => { const [completion] = await tx.insert(additionalCompletions).values({ locationId: location.id, requirementId: requirement.id, completedAt: now, nextDueAt: due, scheduledDueAt: requirement.nextDueAt, answers: storedAnswers, certificateReference: typeof input.certificateReference === "string" ? input.certificateReference.trim() : null, documentId: documentId ?? null, teamMemberId: member.id, completedBy: context.user.id }).returning(); let issue; if (failed.length) { const summary = failed.map(field => `${field.label}: ${field.value}${field.minimum !== undefined || field.maximum !== undefined ? ` (${[field.minimum !== undefined ? `minimum ${field.minimum}` : "", field.maximum !== undefined ? `maximum ${field.maximum}` : ""].filter(Boolean).join(", ")})` : ""}`).join("; "); [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Additional check", title: `${requirement.title} requires action`, description: summary, originalReading: summary, sourceAdditionalCompletionId: completion.id, status: "monitoring", action: correctiveAction!, createdAt: now, createdBy: context.user.id, teamMemberId: member.id }).returning(); await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: correctiveAction!, status: "monitoring", createdAt: now, createdBy: context.user.id, teamMemberId: member.id }); }
     if (requirement.frequency === "one_off") await tx.update(additionalRequirements).set({ active: false, deactivatedAt: now }).where(eq(additionalRequirements.id, requirement.id)); else await tx.update(additionalRequirements).set({ nextDueAt: due }).where(eq(additionalRequirements.id, requirement.id)); return { completion, issue };
   });

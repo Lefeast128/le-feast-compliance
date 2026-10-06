@@ -85,6 +85,13 @@
       "when": 1791195000000,
       "tag": "0013_structured_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791195600000,
+      "tag": "0014_additional_schedule",
+      "breakpoints": true
     }
   ]
 }

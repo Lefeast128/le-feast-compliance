@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const structured = await readFile("src/components/StructuredTaskWorkflow.tsx", "utf8");
+const checklist = await readFile("src/components/InlineChecklist.tsx", "utf8");
+const cleaning = await readFile("src/components/InlineCleaning.tsx", "utf8");
+const security = await readFile("src/components/dashboard/DashboardWorkflowScreens.tsx", "utf8");
+assert.match(structured, /aria-label="Mark complete"/);
+assert.match(structured, /Report issue/);
+assert.match(structured, /saveStep\(task, step, "yes"\)/);
+assert.match(structured, /saveStep\(task, step, "no"\)/);
+assert.doesNotMatch(structured, />Confirm<|>Save<\/Button>/);
+assert.match(checklist, /aria-label="Mark complete"/);
+assert.match(cleaning, /aria-label="Mark complete"/);
+assert.match(cleaning, /onIssue/);
+assert.match(security, /aria-label="Mark complete"/);
+console.log("Completion UX tests passed");

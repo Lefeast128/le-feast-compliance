@@ -228,6 +228,12 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     toast.success("Cleaning job completed");
   }
 
+  async function reportCleaningIssue(description: string, teamMemberId: string) {
+    if (!dashboard || !teamMemberId) return;
+    await createManualIssue({ locationId: dashboard.location._id, description, teamMemberId });
+    toast.success("Issue reported");
+  }
+
   async function completeTraining(requirementId: string, teamMemberId: string) {
     if (!dashboard) return;
     await completeTrainingRequirement({ locationId: dashboard.location._id, requirementId, teamMemberId });
@@ -261,6 +267,6 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
     issueOpen, setIssueOpen, issueSelected, setIssueSelected,
-    beginRound, completeTemperatureRound, saveTemperatureActions, saveTemperatureRecheck, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
+    beginRound, completeTemperatureRound, saveTemperatureActions, saveTemperatureRecheck, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
   };
 }

@@ -1,4 +1,5 @@
 import UserAccessAdmin from "@/components/UserAccessAdmin";
+import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +34,7 @@ type OperationalTask = {
   frequency?: string | null;
   interval?: number | null;
   weekdays?: number[] | null;
+  dayOfMonth?: number | null;
   nextDueAt?: string | null;
   fields?: FieldDefinition[] | null;
   taskType?: "simple" | "with_steps";
@@ -188,6 +190,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskInterval, setTaskInterval] = useState("");
+  const [taskDayOfMonth, setTaskDayOfMonth] = useState("1");
   const [taskNextDue, setTaskNextDue] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -220,6 +223,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskTitle("");
     setTaskDescription("");
     setTaskInterval("");
+    setTaskDayOfMonth("1");
     setTaskNextDue(new Date().toISOString().slice(0, 10));
     setTaskFields(emptyFields());
     setTaskTaskType("simple");
@@ -247,10 +251,17 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskQuestion(item.question ?? "");
     setTaskName(item.name ?? "");
     setTaskFrequency(item.frequency ?? "daily");
-    setTaskWeekdays(item.weekdays ?? []);
+    setTaskWeekdays(
+      item.weekdays?.length
+        ? item.weekdays
+        : item.kind === "additional" && item.nextDueAt
+          ? [new Date(item.nextDueAt).getUTCDay() || 7]
+          : [],
+    );
     setTaskTitle(item.title ?? "");
     setTaskDescription(item.description ?? "");
     setTaskInterval(item.interval ? String(item.interval) : "");
+    setTaskDayOfMonth(item.dayOfMonth ? String(item.dayOfMonth) : item.nextDueAt ? String(new Date(item.nextDueAt).getUTCDate()) : "1");
     setTaskNextDue(
       item.nextDueAt
         ? new Date(item.nextDueAt).toISOString().slice(0, 10)
@@ -444,6 +455,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
       body.description = taskDescription;
       body.frequency = taskFrequency;
       body.interval = taskInterval ? Number(taskInterval) : undefined;
+      body.weekdays = taskWeekdays;
+      body.dayOfMonth = ["monthly", "every_x_months"].includes(taskFrequency) ? Number(taskDayOfMonth) : undefined;
       body.nextDueAt = new Date(taskNextDue + "T12:00:00").getTime();
       body.fields = taskFields;
     }
@@ -907,21 +920,6 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     className="mt-2 h-11"
                   />
                 </label>
-                <label className="text-sm font-semibold">
-                  Frequency
-                  <select
-                    value={taskFrequency}
-                    onChange={(event) => setTaskFrequency(event.target.value)}
-                    className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                  >
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="every_x_weeks">Every X weeks</option>
-                    <option value="every_x_months">Every X months</option>
-                    <option value="annual">Annual</option>
-                    <option value="one_off">One-off</option>
-                  </select>
-                </label>
                 <label className="text-sm font-semibold md:col-span-2">
                   Description
                   <textarea
@@ -930,28 +928,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3"
                   />
                 </label>
-                {(taskFrequency === "every_x_weeks" ||
-                  taskFrequency === "every_x_months") && (
-                  <label className="text-sm font-semibold">
-                    Interval
-                    <Input
-                      type="number"
-                      min="1"
-                      value={taskInterval}
-                      onChange={(event) => setTaskInterval(event.target.value)}
-                      className="mt-2 h-11"
-                    />
-                  </label>
-                )}
-                <label className="text-sm font-semibold">
-                  Next due date
-                  <Input
-                    type="date"
-                    value={taskNextDue}
-                    onChange={(event) => setTaskNextDue(event.target.value)}
-                    className="mt-2 h-11"
-                  />
-                </label>
+                <div className="md:col-span-2"><AdditionalScheduleFields frequency={taskFrequency} interval={taskInterval} weekdays={taskWeekdays} dayOfMonth={taskDayOfMonth} nextDue={taskNextDue} onFrequencyChange={setTaskFrequency} onIntervalChange={setTaskInterval} onWeekdaysChange={setTaskWeekdays} onDayOfMonthChange={setTaskDayOfMonth} onNextDueChange={setTaskNextDue} /></div>
                 <label className="text-sm font-semibold md:col-span-2">
                   Field definitions (JSON)
                   <textarea
