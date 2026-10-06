@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { createPasswordCredential, loginWithPassword, setPassword, verifyPassword, validatePassword } from "../src/server/auth/core.ts";
+import { authenticateSession, createPasswordCredential, loginWithPassword, setPassword, verifyPassword, validatePassword } from "../src/server/auth/core.ts";
 
 process.env.AUTH_SESSION_SECRET = "test-password-session-secret";
 
 class MemoryRepository {
-  users = [{ id: "admin", organisationId: "org-1", email: "admin@example.test", name: "Admin", role: "admin", hasPassword: false, passwordHash: null, passwordSalt: null }];
+  users = [{ id: "admin", organisationId: "org-1", email: "admin@example.test", name: "Admin", role: "admin", active: true, hasPassword: false, passwordHash: null, passwordSalt: null }];
   sessions = [];
   async findUserByEmail(email) { return this.users.find(user => user.email === email) ?? null; }
   async findUserById(id) { return this.users.find(user => user.id === id) ?? null; }
@@ -42,6 +42,11 @@ const replacement = await setPassword(repository, "admin", "new correct horse ba
 assert.ok(replacement?.sessionToken);
 assert.equal(repository.sessions[0].revokedAt, 4000);
 assert.equal(await loginWithPassword(repository, { email: "admin@example.test", password: "correct horse battery staple", now: 5000, rateLimitKey: "test-login-4" }), null);
-assert.ok(await loginWithPassword(repository, { email: "admin@example.test", password: "new correct horse battery", now: 6000, rateLimitKey: "test-login-5" }));
+const activeSession = await loginWithPassword(repository, { email: "admin@example.test", password: "new correct horse battery", now: 6000, rateLimitKey: "test-login-5" });
+assert.ok(activeSession?.sessionToken);
+repository.users[0].active = false;
+assert.equal(await loginWithPassword(repository, { email: "admin@example.test", password: "new correct horse battery", now: 7000, rateLimitKey: "test-login-6" }), null);
+assert.equal(await authenticateSession(repository, activeSession.sessionToken, { now: 7000 }), null);
+assert.equal(repository.sessions.filter(session => session.userId === "admin").at(-1)?.revokedAt, 7000);
 
-console.log("Password authentication tests passed: 18/18");
+console.log("Password authentication tests passed: 21/21");

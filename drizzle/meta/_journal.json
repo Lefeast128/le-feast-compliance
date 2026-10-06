@@ -92,6 +92,13 @@
       "when": 1791195600000,
       "tag": "0014_additional_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791273600000,
+      "tag": "0015_user_access_deactivation",
+      "breakpoints": true
     }
   ]
 }

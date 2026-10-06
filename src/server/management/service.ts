@@ -55,5 +55,6 @@ export {
   listUserAccess,
   inviteUser,
   updateUserAccess,
+  removeUserAccess,
   resendUserInvitation,
 } from "./user-access-service.js";

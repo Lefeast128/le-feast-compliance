@@ -2,7 +2,7 @@ import type { UserAccessResponse, UserAccessRole, UserAccessUser } from "@/lib/r
 import { restApi, useRestMutation, useRestQuery } from "@/lib/rest-domain";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pencil, Plus, RefreshCw, X } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,13 +18,14 @@ const accessRoleLabel = (user: UserAccessUser) => {
 };
 
 function selectionsFor(user: UserAccessUser): SelectedStores {
-  return Object.fromEntries(user.memberships.map(membership => [membership.id, membership.role]));
+  return Object.fromEntries(user.memberships.map(membership => [membership.locationId, membership.role]));
 }
 
 export default function UserAccessAdmin({ visible = true }: { visible?: boolean }) {
   const data = useRestQuery<UserAccessResponse>(visible ? "user-access" : null, restApi.admin.userAccess.list, visible);
   const invite = useRestMutation(restApi.admin.userAccess.invite);
   const update = useRestMutation(restApi.admin.userAccess.update);
+  const remove = useRestMutation(restApi.admin.userAccess.remove);
   const resend = useRestMutation(restApi.admin.userAccess.resend);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState("");
@@ -96,6 +97,18 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
       toast.success("Invitation resent");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to resend invitation");
+    }
+  }
+
+  async function removeUser(user: UserAccessUser) {
+    const label = user.isPendingInvite ? "Remove this invited user?" : "Remove this user?";
+    if (!window.confirm(`${label}\n\nThis will remove their login access and store assignments.`)) return;
+    try {
+      await remove({ userId: user.id });
+      toast.success("User access removed");
+      if (editor?.user?.id === user.id) closeEditor();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to remove user access");
     }
   }
 
@@ -180,6 +193,7 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
                 </div>
               </div>
               <label className="block text-sm font-semibold">Role for selected stores<select value={role} onChange={event => changeRole(event.target.value as UserAccessRole)} className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="staff">Staff</option><option value="manager">Manager</option></select></label>
+              {editor.mode === "edit" && editor.user && <div className="rounded-xl border border-[#e8c1b9] bg-[#fff8f6] p-4"><p className="font-semibold text-[#7f3026]">Remove user access</p><p className="mt-1 text-sm text-[#7f625d]">Removes this user’s login and store access. Historical compliance records are preserved.</p><Button type="button" variant="outline" className="mt-3 border-[#c8796d] text-[#7f3026]" onClick={() => void removeUser(editor.user!)}><Trash2 className="mr-1 size-4" /> Remove user</Button></div>}
               <div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={closeEditor}>Cancel</Button><Button className="bg-[#202522] text-white" disabled={saving || !name.trim() || !email.trim()} onClick={save}>{saving ? "Saving…" : editor.mode === "invite" ? "Invite user" : "Save access"}</Button></div>
             </div>
           </div>

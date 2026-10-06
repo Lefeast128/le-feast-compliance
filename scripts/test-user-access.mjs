@@ -41,6 +41,11 @@ contains(service, "allOrganisationLocations: user.role === \"admin\"", "all-stor
 contains(service, "Brenden Wilkinson", "existing organisation administrator display name");
 contains(service, "user.id === context.user.id", "admin self-protection");
 contains(service, "UserAccessDeliveryError", "safe delivery failure");
+contains(service, "locationId: row.location.id", "membership DTO location id");
+contains(service, "active: false", "safe login deactivation");
+contains(service, "user_login_removed", "login removal audit");
+contains(service, "authSessions", "session revocation");
+contains(service, "isPendingInvite", "pending invitation state");
 assert.doesNotMatch(service, /teamMembers/, "user access must stay separate from Team Members");
 
 contains(resend, "sendInvitationEmail", "invitation sender");
@@ -53,6 +58,8 @@ contains(httpRoute, "requireContext", "authenticated mutation endpoint");
 contains(httpRoute, "inviteUser", "invite endpoint");
 contains(updateRoute, '"PATCH"', "update endpoint");
 contains(updateRoute, "updateUserAccess", "edit access endpoint");
+contains(updateRoute, '"DELETE"', "remove endpoint");
+contains(updateRoute, "removeUserAccess", "remove user access endpoint");
 contains(resendRoute, '"POST"', "resend endpoint");
 contains(resendRoute, "resendUserInvitation", "resend invitation endpoint");
 
@@ -64,8 +71,11 @@ contains(ui, "Invite user", "invite UI");
 contains(ui, "Store access", "store access UI");
 contains(ui, "Team Members", "team-member separation copy");
 contains(ui, "selectedStores", "transient store selection");
+contains(ui, "membership.locationId", "store-keyed membership selection");
 contains(ui, "role", "role selection");
 contains(ui, "Resend invitation", "resend control");
+contains(ui, "Remove user", "remove user control");
+contains(ui, "Remove this invited user?", "pending removal confirmation");
 contains(organisationAdmin, "UserAccessAdmin", "organisation admin entry point");
 
 contains(otp, "genericOtpResponse", "existing generic OTP behaviour");

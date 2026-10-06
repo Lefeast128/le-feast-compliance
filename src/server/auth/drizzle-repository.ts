@@ -9,6 +9,7 @@ const toUser = (row: typeof users.$inferSelect): AuthUser => ({
   email: row.email,
   name: row.name,
   role: row.role,
+  active: row.active,
   hasPassword: Boolean(row.passwordHash),
   passwordHash: row.passwordHash,
   passwordSalt: row.passwordSalt,

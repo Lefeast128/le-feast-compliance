@@ -15,6 +15,7 @@ export type AuthUser = {
   name: string | null;
   role: "user" | "admin";
   hasPassword: boolean;
+  active: boolean;
   passwordHash?: string | null;
   passwordSalt?: string | null;
 };
@@ -183,7 +184,7 @@ export async function requestOtp(
   const now = input.now ?? Date.now();
   const user = await repository.findUserByEmail(normalizedEmail);
 
-  if (!user) return genericOtpResponse();
+  if (!user || user.active === false) return genericOtpResponse();
 
   const latest = await repository.getLatestChallenge(normalizedEmail);
   if (
@@ -250,7 +251,7 @@ export async function verifyOtp(
   }
 
   const user = await repository.findUserByEmail(normalizedEmail);
-  if (!user) return null;
+  if (!user || user.active === false) return null;
   await repository.updateChallenge(challenge.id, { consumedAt: now });
   const created = newSession(user.id, now, input.sessionSecret);
   await repository.insertSession(created.session);
@@ -266,7 +267,7 @@ export async function loginWithPassword(
   const key = loginKey(normalizedEmail, input.rateLimitKey);
   checkLoginRateLimit(key, now);
   const user = await repository.findUserByEmail(normalizedEmail);
-  if (!user || !verifyPassword(input.password, user)) {
+  if (!user || user.active === false || !verifyPassword(input.password, user)) {
     recordLoginFailure(key, now);
     return null;
   }
@@ -286,10 +287,10 @@ export async function setPassword(
   const credential = createPasswordCredential(password);
   await repository.setPassword(userId, credential, now);
   await repository.revokeUserSessions(userId, now);
+  const user = await repository.findUserById(userId);
+  if (!user || user.active === false) return null;
   const created = newSession(userId, now, input.sessionSecret);
   await repository.insertSession(created.session);
-  const user = await repository.findUserById(userId);
-  if (!user) return null;
   return { sessionToken: created.sessionToken, user };
 }
 
@@ -302,7 +303,10 @@ export async function authenticateSession(
   const session = await repository.getSessionByHash(hashSessionToken(token, input.sessionSecret));
   if (!session || session.revokedAt !== null || session.expiresAt <= now) return null;
   const user = await repository.findUserById(session.userId);
-  if (!user) return null;
+  if (!user || user.active === false) {
+    await repository.revokeSession(session.id, now);
+    return null;
+  }
   await repository.touchSession(session.id, now);
   return user;
 }

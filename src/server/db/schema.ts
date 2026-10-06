@@ -52,6 +52,8 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   passwordSalt: text("password_salt"),
   passwordSetAt: timestampColumn("password_set_at"),
+  active: boolean("active").notNull().default(true),
+  deactivatedAt: timestampColumn("deactivated_at"),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
   createdAt: createdAt(),
 }, table => ({ normalizedEmail: uniqueIndex("users_normalized_email_idx").on(table.normalizedEmail) }));

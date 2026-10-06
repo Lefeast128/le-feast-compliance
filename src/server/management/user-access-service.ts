@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { normalizeEmail, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
 import { sendInvitationEmail, toResendDeliveryError } from "../auth/resend.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
-import { auditEvents, locations, memberships, users } from "../db/schema.js";
+import { auditEvents, authSessions, locations, memberships, users } from "../db/schema.js";
 import { db, id, type Transaction } from "./shared.js";
 
 export type UserAccessRole = "staff" | "manager";
@@ -15,6 +15,7 @@ export type UserAccessLocation = {
 };
 
 export type UserAccessMembership = UserAccessLocation & {
+  locationId: string;
   membershipId: string;
   role: UserAccessRole;
 };
@@ -24,6 +25,7 @@ export type UserAccessUser = {
   name: string | null;
   email: string;
   role: "user" | "admin";
+  isPendingInvite: boolean;
   isSelf: boolean;
   allOrganisationLocations: boolean;
   memberships: UserAccessMembership[];
@@ -62,6 +64,7 @@ const ACCESS_AUDIT_TYPES = [
   "user_access_removed",
   "user_access_role_changed",
   "user_access_updated",
+  "user_login_removed",
 ] as const;
 
 export class UserAccessDeliveryError extends Error {
@@ -135,6 +138,7 @@ async function ensureOrdinaryUser(context: AuthContext, userId: string, organisa
   const [user] = await db().select().from(users).where(and(eq(users.id, userId), eq(users.organisationId, organisationId))).limit(1);
   if (!user) throw new ApiError(404, "User not found");
   if (user.role === "admin" || user.id === context.user.id) throw new ApiError(409, "Organisation administrator access cannot be modified here");
+  if (!user.active) throw new ApiError(404, "User not found");
   return user;
 }
 
@@ -196,6 +200,7 @@ function mapUserAccessUser(
     name: displayName(user),
     email: user.email,
     role: user.role,
+    isPendingInvite: user.role === "user" && !user.emailVerifiedAt && !user.passwordHash,
     isSelf: user.id === currentUserId,
     allOrganisationLocations: user.role === "admin",
     memberships: rows
@@ -203,6 +208,7 @@ function mapUserAccessUser(
       .sort((left, right) => left.location.name.localeCompare(right.location.name))
       .map(row => ({
         membershipId: row.membership.id,
+        locationId: row.location.id,
         id: row.location.id,
         name: row.location.name,
         shortName: row.location.shortName,
@@ -288,7 +294,7 @@ export async function listUserAccess(context: AuthContext): Promise<UserAccessRe
       .from(locations)
       .where(and(eq(locations.organisationId, organisationId), eq(locations.active, true)))
       .orderBy(asc(locations.name)),
-    db().select().from(users).where(eq(users.organisationId, organisationId)).orderBy(asc(users.email)),
+    db().select().from(users).where(and(eq(users.organisationId, organisationId), eq(users.active, true))).orderBy(asc(users.email)),
   ]);
   const rows = await membershipRowsForUsers(organisationId, userRows.map(user => user.id));
   const historyRows = await db().select({ event: auditEvents, admin: users, location: locations })
@@ -307,9 +313,11 @@ export async function listUserAccess(context: AuthContext): Promise<UserAccessRe
         ? `${detail.storeName ?? row.location?.name ?? "Store"} access added${detail.newRole ? ` (${detail.newRole === "manager" ? "Manager" : "Staff"})` : ""}`
         : row.event.type === "user_access_removed"
           ? `${detail.storeName ?? row.location?.name ?? "Store"} access removed`
-          : row.event.type === "user_access_role_changed"
-            ? `${detail.storeName ?? row.location?.name ?? "Store"} access changed: ${roleChange ?? "role updated"}`
-            : "User access updated";
+      : row.event.type === "user_access_role_changed"
+        ? `${detail.storeName ?? row.location?.name ?? "Store"} access changed: ${roleChange ?? "role updated"}`
+        : row.event.type === "user_login_removed"
+          ? "Login access removed; historical records preserved"
+        : "User access updated";
     return {
       occurredAt: row.event.createdAt.toISOString(),
       adminName: row.admin.name ?? row.admin.email,
@@ -343,7 +351,7 @@ export async function inviteUser(context: AuthContext, input: Record<string, unk
 
   const user = await db().transaction(async tx => {
     if (existing) {
-      await tx.update(users).set({ name, isAnonymous: false }).where(eq(users.id, existing.id));
+      await tx.update(users).set({ name, isAnonymous: false, active: true, deactivatedAt: null }).where(eq(users.id, existing.id));
       const changes = await syncMemberships(tx, existing.id, desired);
       await recordMembershipAudits(tx, context, { name, email: existing.email }, changes, locationNameMap(availableLocations));
       if (existing.name !== name) {
@@ -401,4 +409,32 @@ export async function resendUserInvitation(context: AuthContext, userId: string)
   if (!invitedLocations.length) throw new ApiError(400, "User has no store access");
   await sendInvite({ email: user.email, name: user.name ?? user.email, inviterName: context.user.name, locations: invitedLocations, accessCreated: false });
   return { userId: user.id, sent: true };
+}
+
+export async function removeUserAccess(context: AuthContext, userId: string) {
+  const organisationId = organisationIdFor(context);
+  const current = await ensureOrdinaryUser(context, id(userId, "userId"), organisationId);
+  const rows = await membershipRowsForUsers(organisationId, [current.id]);
+  const stores = rows.map(row => row.location.name);
+  const detail = accessAuditDetail({
+    userName: current.name ?? current.email,
+    userEmail: current.email,
+    oldStores: stores,
+  });
+
+  await db().transaction(async tx => {
+    for (const row of rows) {
+      await tx.delete(memberships).where(eq(memberships.id, row.membership.id));
+      await recordAccessAudit(tx, context, "user_access_removed", row.location.id, detail);
+    }
+    await tx.update(authSessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(authSessions.userId, current.id), isNull(authSessions.revokedAt)));
+    await tx.update(users)
+      .set({ active: false, deactivatedAt: new Date() })
+      .where(eq(users.id, current.id));
+    await recordAccessAudit(tx, context, "user_login_removed", null, detail);
+  });
+
+  return { userId: current.id, removed: true, membershipsRemoved: rows.length };
 }

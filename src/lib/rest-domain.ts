@@ -7,12 +7,13 @@ type AnyRecord = Record<string, any>;
 
 export type UserAccessLocation = { id: string; name: string; shortName: string };
 export type UserAccessRole = "staff" | "manager";
-export type UserAccessMembership = UserAccessLocation & { membershipId: string; role: "staff" | "manager" };
+export type UserAccessMembership = UserAccessLocation & { locationId: string; membershipId: string; role: "staff" | "manager" };
 export type UserAccessUser = {
   id: string;
   name: string | null;
   email: string;
   role: "user" | "admin";
+  isPendingInvite: boolean;
   isSelf: boolean;
   allOrganisationLocations: boolean;
   memberships: UserAccessMembership[];
@@ -155,6 +156,7 @@ export const restApi = {
       list: async (): Promise<UserAccessResponse> => compat(await query("/api/admin/user-access")),
       invite: (body: AnyRecord) => post("/api/admin/user-access", body),
       update: ({ userId, ...body }: AnyRecord) => patch(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`, body),
+      remove: ({ userId }: AnyRecord) => remove(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`),
       resend: ({ userId }: AnyRecord) => post(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}/resend`, {}),
     },
     organisation: {
