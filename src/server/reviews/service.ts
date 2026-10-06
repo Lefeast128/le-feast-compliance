@@ -100,7 +100,7 @@ const issueIdentity = (issue: IssueRow, readings: Array<typeof temperatureReadin
   return { key: `issue:${issue.category.toLowerCase()}:${issue.title.toLowerCase()}`, label: issue.title };
 };
 
-const summaryFor = (issuesInPeriod: IssueRow[], updates: IssueUpdateRow[], readings: Array<typeof temperatureReadings.$inferSelect>, probes: Array<typeof foodChecks.$inferSelect>, start: Date, end: Date) => {
+const summaryFor = (issuesInPeriod: IssueRow[], updates: IssueUpdateRow[], rechecks: RecheckRow[], readings: Array<typeof temperatureReadings.$inferSelect>, probes: Array<typeof foodChecks.$inferSelect>, start: Date, end: Date) => {
   const raisedIssues = issuesInPeriod.filter(issue => issue.createdAt >= start && issue.createdAt <= end);
   const groups = new Map<string, { key: string; label: string; count: number }>();
   for (const issue of raisedIssues) {
@@ -111,10 +111,18 @@ const summaryFor = (issuesInPeriod: IssueRow[], updates: IssueUpdateRow[], readi
   }
   const resolved = issuesInPeriod.filter(issue => issue.resolvedAt && issue.resolvedAt >= start && issue.resolvedAt <= end).length;
   const outstanding = issuesInPeriod.filter(issue => statusAt(issue, updates.filter(update => update.issueId === issue.id), end) !== "resolved").length;
+  const periodUpdates = updates.filter(update => update.createdAt >= start && update.createdAt <= end);
+  const correctiveActions = periodUpdates.filter(update => update.updateType === "immediate_action" || update.updateType === "further_action" || update.updateType === "manager_review").length;
+  const resolutionActivity = periodUpdates.filter(update => update.updateType === "resolution" || update.status === "resolved").length;
   return {
     issuesRaised: raisedIssues.length,
     issuesResolved: resolved,
     outstandingIssues: outstanding,
+    openIssues: issuesInPeriod.filter(issue => statusAt(issue, updates.filter(update => update.issueId === issue.id), end) === "open").length,
+    monitoringIssues: issuesInPeriod.filter(issue => statusAt(issue, updates.filter(update => update.issueId === issue.id), end) === "monitoring").length,
+    correctiveActions,
+    rechecks: rechecks.filter(recheck => recheck.createdAt >= start && recheck.createdAt <= end).length,
+    resolutionActivity,
     failedTemperatureChecks: new Set(raisedIssues.filter(issue => issue.category === "Temperature").map(issue => issue.sourceTemperatureReadingId).filter(Boolean)).size,
     failedProbeChecks: new Set(raisedIssues.filter(issue => issue.category === "Probe").map(issue => issue.sourceFoodCheckId).filter(Boolean)).size,
     otherIssues: raisedIssues.filter(issue => issue.category !== "Temperature" && issue.category !== "Probe").length,
@@ -134,7 +142,7 @@ async function rowsForPeriod(locationId: string, period: ReviewPeriod, timeZone:
   const { start, end } = periodBounds(period, timeZone);
   const [issueRows, updateRows, recheckRows, readingRows, probeRows] = await Promise.all([
     db().select().from(issues).where(and(eq(issues.locationId, locationId), lte(issues.createdAt, end))),
-    db().select().from(issueUpdates).where(and(eq(issueUpdates.locationId, locationId), gte(issueUpdates.createdAt, start), lte(issueUpdates.createdAt, end))).orderBy(asc(issueUpdates.createdAt)),
+    db().select().from(issueUpdates).where(and(eq(issueUpdates.locationId, locationId), lte(issueUpdates.createdAt, end))).orderBy(asc(issueUpdates.createdAt)),
     db().select().from(rechecks).where(and(eq(rechecks.locationId, locationId), gte(rechecks.createdAt, start), lte(rechecks.createdAt, end))),
     db().select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, locationId), gte(temperatureReadings.createdAt, start), lte(temperatureReadings.createdAt, end))),
     db().select().from(foodChecks).where(and(eq(foodChecks.locationId, locationId), gte(foodChecks.createdAt, start), lte(foodChecks.createdAt, end))),
@@ -169,11 +177,14 @@ async function issuePresentation(locationId: string, issueRows: IssueRow[], upda
       title: issue.title,
       category: issue.category,
       description: issue.description,
+      originalReading: issue.originalReading,
+      action: issue.action,
       createdAt: iso(issue.createdAt),
       createdByName: names.get(issue.createdBy) ?? "Not recorded",
       teamMemberName: memberNames.get(issue.teamMemberId ?? "") ?? null,
       status,
       resolvedAt: issue.resolvedAt && issue.resolvedAt <= end ? iso(issue.resolvedAt) : null,
+      resolvedByName: names.get(issue.resolvedBy ?? "") ?? null,
       latestAction: updates.filter(update => update.updateType !== "resolution")[updates.filter(update => update.updateType !== "resolution").length - 1]?.note ?? issue.action ?? null,
       latestRecheck: rechecks.length ? { temperature: rechecks[rechecks.length - 1].temperature, result: rechecks[rechecks.length - 1].result, occurredAt: iso(rechecks[rechecks.length - 1].createdAt) } : null,
       recheckCount: rechecks.length,
@@ -204,10 +215,11 @@ const reviewDto = (row: typeof managerReviews.$inferSelect, completedByName: str
 
 export async function getManagerReviews(context: AuthContext, locationId: string) {
   const location = await managedLocation(context, locationId);
-  const [historyRows, historyUsers, currentIssues] = await Promise.all([
+  const [historyRows, historyUsers, currentIssues, locationMembers] = await Promise.all([
     db().select().from(managerReviews).where(eq(managerReviews.locationId, location.id)).orderBy(asc(managerReviews.periodStart)),
     db().select().from(users).where(eq(users.organisationId, location.organisationId)),
     db().select().from(issues).where(eq(issues.locationId, location.id)),
+    db().select({ id: teamMembers.id, name: teamMembers.name }).from(teamMembers).where(eq(teamMembers.locationId, location.id)),
   ]);
   const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly");
   const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly");
@@ -231,9 +243,10 @@ export async function getManagerReviews(context: AuthContext, locationId: string
   const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), Date.now(), "four_weekly");
   return {
     location: { id: location.id, name: location.name, timezone: location.timezone },
+    teamMembers: locationMembers.map(member => ({ _id: member.id, name: member.name })),
     periods: {
-      weekly: { ...weeklyState, completed: Boolean(weeklyRows), summary: summaryFor(weeklyScope.issueRows, weeklyScope.updateRows, weeklyScope.readingRows, weeklyScope.probeRows, weeklyScope.start, weeklyScope.end) },
-      four_weekly: { ...fourWeeklyState, completed: Boolean(fourRows), summary: summaryFor(fourScope.issueRows, fourScope.updateRows, fourScope.readingRows, fourScope.probeRows, fourScope.start, fourScope.end) },
+      weekly: { ...weeklyState, completed: Boolean(weeklyRows), summary: summaryFor(weeklyScope.issueRows, weeklyScope.updateRows, weeklyScope.recheckRows, weeklyScope.readingRows, weeklyScope.probeRows, weeklyScope.start, weeklyScope.end) },
+      four_weekly: { ...fourWeeklyState, completed: Boolean(fourRows), summary: summaryFor(fourScope.issueRows, fourScope.updateRows, fourScope.recheckRows, fourScope.readingRows, fourScope.probeRows, fourScope.start, fourScope.end) },
     },
     currentIssues: currentIssueRows,
     resolvedIssues: resolvedIssueRows,
@@ -264,7 +277,7 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   if (periodStart !== expected.start || periodEnd !== expected.end) throw new ApiError(400, "Review period is not the latest completed period");
   if (await existingReview(location.id, expected)) throw new ApiError(409, "This review has already been completed");
   const scope = await rowsForPeriod(location.id, expected, location.timezone);
-  const summary = summaryFor(scope.issueRows, scope.updateRows, scope.readingRows, scope.probeRows, scope.start, scope.end);
+  const summary = summaryFor(scope.issueRows, scope.updateRows, scope.recheckRows, scope.readingRows, scope.probeRows, scope.start, scope.end);
   const updatesInput = reviewType === "weekly" && Array.isArray(input.issueUpdates) ? input.issueUpdates : [];
   const updates = updatesInput.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError(400, `Issue update ${index + 1} is invalid`);

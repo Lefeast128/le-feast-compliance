@@ -274,7 +274,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       id: `issue-update:${update.id}`,
       eventType: "issue_update",
       occurredAt: update.createdAt,
-      title: update.updateType === "action" ? "Corrective action" : "Issue update",
+      title: update.updateType === "immediate_action" || update.updateType === "action" ? "Corrective action" : update.updateType === "further_action" ? "Further action" : update.updateType === "manager_review" ? "Manager review" : update.updateType === "resolution" ? "Resolution" : "Issue update",
       detail: text(update.note, "Update recorded"),
       result: update.status,
       sourceRecordId: update.id,
