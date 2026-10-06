@@ -15,10 +15,7 @@ type Props = {
   onOpenCatalogue: () => void;
 };
 
-type Frequency = "after_use" | "daily" | "weekly" | "specific_days";
 type IssueUpdatePayload = Record<string, unknown>;
-
-const frequencies: Frequency[] = ["after_use", "daily", "weekly", "specific_days"];
 const trainingCategoryLabels: Record<string, string> = {
   northern_rail: "Northern Rail",
   food_safety: "Food Safety",
@@ -94,34 +91,20 @@ export default function AdminStoreOverview({ store, team, onOpenCatalogue }: Pro
     toast.success("Probe product updated");
   }
 
-  async function promptAddCleaning() {
-    const name = window.prompt("Add cleaning task");
-    if (!name?.trim()) return;
-    const frequencyInput = window.prompt("Frequency: after_use, daily, weekly or specific_days", "daily") ?? "daily";
-    const frequency: Frequency = frequencies.includes(frequencyInput as Frequency) ? frequencyInput as Frequency : "daily";
-    const weekdays = frequency === "specific_days" ? (window.prompt("Weekdays as numbers, Monday=1 to Sunday=7", "1") ?? "1").split(",").map(Number).filter(Boolean) : [];
-    await addCleaning({ locationId: store.location._id, name: name.trim(), frequency, weekdays });
-    toast.success("Cleaning task added");
+  function promptAddCleaning() {
+    setEditor({ kind: "cleaning" });
   }
 
-  async function promptEditCleaning(item: AdminCleaningTask) {
-    const name = window.prompt("Edit cleaning task", item.name);
-    if (!name?.trim()) return;
-    const frequencyInput = window.prompt("Frequency: after_use, daily, weekly or specific_days", item.frequency) ?? item.frequency;
-    const frequency: Frequency = frequencies.includes(frequencyInput as Frequency) ? frequencyInput as Frequency : item.frequency as Frequency;
-    const weekdays = frequency === "specific_days" ? (window.prompt("Weekdays as numbers, Monday=1 to Sunday=7", item.weekdays.join(",")) ?? "").split(",").map(Number).filter(Boolean) : item.weekdays;
-    await updateCleaning({ taskId: item._id, name: name.trim(), frequency, weekdays });
-    toast.success("Cleaning task updated");
+  function promptEditCleaning(item: AdminCleaningTask) {
+    setEditor({ kind: "cleaning", item });
   }
 
-  async function promptAddSecurity(session: "AM" | "PM") {
-    const question = window.prompt(`Add ${session} security question`);
-    if (question?.trim()) { await addSecurity({ locationId: store.location._id, session, question: question.trim() }); toast.success("Security question added"); }
+  function promptAddSecurity(session: "AM" | "PM") {
+    setEditor({ kind: "security", session });
   }
 
-  async function promptEditSecurity(item: AdminSecurityQuestion) {
-    const question = window.prompt("Edit security question", item.question);
-    if (question?.trim()) await updateSecurity({ questionId: item._id, question: question.trim() });
+  function promptEditSecurity(item: AdminSecurityQuestion) {
+    setEditor({ kind: "security", item, session: item.session });
   }
 
   async function move(kind: "question" | "wastage", id: string, direction: "up" | "down") {
