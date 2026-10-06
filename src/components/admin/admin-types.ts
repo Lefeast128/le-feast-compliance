@@ -13,7 +13,12 @@ export type AdminQuestion = {
   question: string;
   checklist?: "opening" | "closing";
   centralItemId?: string | null;
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: AdminTaskStep[];
 };
+
+export type AdminTaskStep = { id: string; label: string; description?: string | null; responseType: "confirm" | "yes_no" | "number" | "short_text"; required?: boolean };
 
 export type AdminIssue = {
   _id: string;
@@ -28,6 +33,9 @@ export type AdminCleaningTask = {
   frequency: "after_use" | "daily" | "weekly" | "specific_days" | string;
   weekdays: number[];
   centralItemId?: string | null;
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: AdminTaskStep[];
 };
 
 export type AdminProbeProduct = {
@@ -47,6 +55,9 @@ export type AdminSecurityQuestion = {
   question: string;
   session: "AM" | "PM";
   centralItemId?: string | null;
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: AdminTaskStep[];
 };
 
 export type AdminTrainingRequirement = {
@@ -118,6 +129,8 @@ export type AdminEditorValues = {
   selectedTeamMemberIds?: string[];
   documentFile?: File | null;
   requireReacknowledgement?: boolean;
+  taskType?: "simple" | "with_steps";
+  steps?: AdminTaskStep[];
 };
 
 export type FridgeEditorValues = {

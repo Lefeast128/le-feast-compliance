@@ -31,6 +31,8 @@ export type DashboardResponse = {
   trainingCompletions: unknown[];
   additionalRequirements: unknown[];
   additionalCompletions: unknown[];
+  structuredTasks: unknown[];
+  structuredTaskResponses: unknown[];
   checklists: {
     opening: { questions: unknown[]; responses: unknown[] };
     closing: { questions: unknown[]; responses: unknown[] };

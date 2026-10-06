@@ -57,6 +57,45 @@ export type DashboardIssue = {
 export type ChecklistQuestion = {
   _id: string;
   question: string;
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: StructuredStep[];
+};
+
+export type StructuredStep = {
+  id: string;
+  label: string;
+  description?: string | null;
+  responseType: "confirm" | "yes_no" | "number" | "short_text";
+  required?: boolean;
+};
+
+export type StructuredTask = {
+  _id: string;
+  id?: string;
+  locationId?: string;
+  area: "opening" | "closing" | "cleaning" | "security_am" | "security_pm";
+  title: string;
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: StructuredStep[];
+  centralItemId?: string | null;
+  frequency?: string;
+  weekdays?: number[];
+  order?: number;
+};
+
+export type StructuredTaskResponse = {
+  _id: string;
+  taskArea: string;
+  taskId: string;
+  stepId: string;
+  responseType: string;
+  responseValue: string;
+  dateKey: string;
+  createdAt?: string;
+  teamMemberId?: string | null;
+  teamMemberName?: string | null;
 };
 
 export type ChecklistResponse = {
@@ -131,6 +170,8 @@ export type DashboardData = {
   cleaningCompletions: Array<{ _id?: string; taskId: string; completedAt?: number; teamMemberName?: string }>;
   trainingRequirements: Array<{ _id: string; title: string }>;
   trainingCompletions: Array<{ _id?: string; requirementId: string; completedAt?: number; teamMemberName?: string }>;
+  structuredTasks: StructuredTask[];
+  structuredTaskResponses: StructuredTaskResponse[];
 };
 
 export type IssueProgress = {

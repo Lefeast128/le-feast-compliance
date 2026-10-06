@@ -7,6 +7,7 @@ import ManagerReviews from "@/components/ManagerReviews";
 import TrainingView from "@/components/TrainingView";
 import TemperatureActionScreen from "@/components/TemperatureActionScreen";
 import TemperatureRoundEntry from "@/components/TemperatureRoundEntry";
+import StructuredTaskWorkflow from "@/components/StructuredTaskWorkflow";
 import CalendarView from "@/components/dashboard/CalendarView";
 import DashboardToday, { type DashboardTodayProps } from "@/components/dashboard/DashboardToday";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [renderTimestamp] = useState(() => Date.now());
   const [locationId, setLocationId] = useState<string | null>(null);
   const [view, setView] = useState<DashboardView>("today");
+  const [structuredTaskArea, setStructuredTaskArea] = useState<"opening" | "closing" | "cleaning" | "security_am" | "security_pm" | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const bounds = monthBounds(calendarMonth);
@@ -45,6 +47,7 @@ export default function Dashboard() {
     setLocationId(nextLocationId);
     setView("today");
     workflows.resetForLocation();
+    setStructuredTaskArea(null);
   }
 
   function openManagementView() {
@@ -67,6 +70,7 @@ export default function Dashboard() {
 
   if (workflows.round && workflows.roundIssues.length) return <TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} onSaveActions={workflows.saveTemperatureActions} onRecheck={workflows.saveTemperatureRecheck} onBack={() => { workflows.resetForLocation(); }} />;
   if (workflows.round) return <TemperatureRoundEntry session={workflows.round} equipment={workflows.roundEquipment} teamMembers={dashboard.teamMembers} temperatures={workflows.temperatures} setTemperatures={workflows.setTemperatures} submitting={workflows.roundSubmitting} onComplete={workflows.completeTemperatureRound} onBack={() => workflows.resetForLocation()} />;
+  if (structuredTaskArea) return <StructuredTaskWorkflow key={`${dashboard.location._id}:${structuredTaskArea}`} locationId={dashboard.location._id} locationName={dashboard.location.name} area={structuredTaskArea} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === structuredTaskArea)} responses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} onBack={() => setStructuredTaskArea(null)} />;
   if (workflows.cleaningList) return <InlineCleaning key={dashboard.location._id} locationName={dashboard.location.name} tasks={workflows.active?.cleaningTasks ?? []} completions={workflows.active?.cleaningCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeCleaning} onBack={() => workflows.setCleaningList(false)} />;
   if (workflows.checklistList) return <InlineChecklist key={`${dashboard.location._id}:${workflows.checklistList}`} title={workflows.checklistList === "opening" ? "Opening checklist" : "Closing checklist"} questions={workflows.active?.checklists[workflows.checklistList].questions ?? []} responses={workflows.active?.checklists[workflows.checklistList].responses ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeChecklistQuestion} onIssue={workflows.saveChecklistIssue} onSignOff={workflows.signOffChecklistTask} onBack={() => workflows.setChecklistList(null)} />;
   if (workflows.security && workflows.currentSecurityQuestion) return <SecurityScreen session={workflows.security} question={workflows.currentSecurityQuestion.question} index={workflows.securityIndex} total={workflows.active?.security[workflows.security].length ?? 0} teamMembers={dashboard.teamMembers} teamMemberId={workflows.securityTeamMemberId} setTeamMemberId={workflows.setSecurityTeamMemberId} issue={workflows.securityIssue} setIssue={workflows.setSecurityIssue} onSave={workflows.saveSecurity} onBack={() => { workflows.setSecurity(null); workflows.setSecurityTeamMemberId(""); }} />;
@@ -101,6 +105,8 @@ export default function Dashboard() {
     viewTodayRecords,
     setView,
     additional,
+    structuredTasks: workflows.active?.structuredTasks ?? [],
+    onOpenStructuredTask: setStructuredTaskArea,
   };
   return <DashboardToday {...todayProps} />;
 }

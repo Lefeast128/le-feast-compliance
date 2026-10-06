@@ -20,6 +20,7 @@ type FieldDefinition = {
   maximum?: number;
   options?: string[];
 };
+type TaskStep = { id: string; label: string; description?: string | null; responseType: "confirm" | "yes_no" | "number" | "short_text"; required?: boolean };
 type OperationalTask = {
   id: string;
   kind: string;
@@ -34,6 +35,8 @@ type OperationalTask = {
   weekdays?: number[] | null;
   nextDueAt?: string | null;
   fields?: FieldDefinition[] | null;
+  taskType?: "simple" | "with_steps";
+  steps?: TaskStep[];
   locationIds: string[];
   stores: string[];
   allocationMode: "all" | "selected";
@@ -67,6 +70,9 @@ type OrganisationControls = {
     locationIds: string[];
     stores: string[];
     allocationMode: "all" | "selected";
+    description?: string | null;
+    taskType?: "simple" | "with_steps";
+    steps?: TaskStep[];
   }>;
   operationalTasks: OperationalTask[];
   recentChanges: Array<{ at: string | Date; actor: string; change: string }>;
@@ -186,6 +192,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
     new Date().toISOString().slice(0, 10),
   );
   const [taskFields, setTaskFields] = useState<FieldDefinition[]>(emptyFields);
+  const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">("simple");
+  const [taskSteps, setTaskSteps] = useState<TaskStep[]>([]);
   const [taskAllStores, setTaskAllStores] = useState(true);
   const [taskStores, setTaskStores] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -214,6 +222,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskInterval("");
     setTaskNextDue(new Date().toISOString().slice(0, 10));
     setTaskFields(emptyFields());
+    setTaskTaskType("simple");
+    setTaskSteps([]);
     setTaskAllStores(true);
     setTaskStores({});
   }
@@ -247,6 +257,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
         : new Date().toISOString().slice(0, 10),
     );
     setTaskFields(item.fields ?? emptyFields());
+    setTaskTaskType(item.taskType ?? "simple");
+    setTaskSteps(item.steps ?? []);
     setTaskAllStores(item.allocationMode === "all");
     setTaskStores(Object.fromEntries(item.locationIds.map((id) => [id, true])));
   }
@@ -413,10 +425,17 @@ export default function OrganisationAdmin({ onBack }: Props) {
       taskType === "opening" ||
       taskType === "closing" ||
       taskType.startsWith("security_")
-    )
+    ) {
       body.question = taskQuestion.trim();
+      body.description = taskDescription;
+      body.taskType = taskTaskType;
+      body.steps = taskTaskType === "with_steps" ? taskSteps : [];
+    }
     if (taskType === "cleaning") {
       body.name = taskName.trim();
+      body.description = taskDescription;
+      body.taskType = taskTaskType;
+      body.steps = taskTaskType === "with_steps" ? taskSteps : [];
       body.frequency = taskFrequency;
       body.weekdays = taskWeekdays;
     }
@@ -445,6 +464,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
             centralItemId: taskEdit,
             checklist: taskType,
             question: taskQuestion.trim(),
+            description: taskDescription,
+            taskType: taskTaskType,
+            steps: taskTaskType === "with_steps" ? taskSteps : [],
             allStores: taskAllStores,
             locationIds,
           });
@@ -801,14 +823,12 @@ export default function OrganisationAdmin({ onBack }: Props) {
             {(taskType === "opening" ||
               taskType === "closing" ||
               taskType.startsWith("security_")) && (
-              <label className="text-sm font-semibold md:col-span-2">
-                Question
-                <Input
-                  value={taskQuestion}
-                  onChange={(event) => setTaskQuestion(event.target.value)}
-                  className="mt-2 h-11"
-                />
-              </label>
+              <>
+                <label className="text-sm font-semibold md:col-span-2">Question<Input value={taskQuestion} onChange={(event) => setTaskQuestion(event.target.value)} className="mt-2 h-11" /></label>
+                <label className="text-sm font-semibold md:col-span-2">Description / instructions<textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" /></label>
+                <label className="text-sm font-semibold">Item type<select value={taskTaskType} onChange={(event) => { const next = event.target.value as "simple" | "with_steps"; setTaskTaskType(next); if (next === "with_steps" && !taskSteps.length) setTaskSteps([{ id: "step_1", label: "New step", responseType: "confirm", required: true }]); }} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="simple">Simple check</option><option value="with_steps">Task with steps</option></select></label>
+                {taskTaskType === "with_steps" && <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Child steps</p><Button size="sm" variant="outline" onClick={() => setTaskSteps(current => [...current, { id: `step_${current.length + 1}`, label: "New step", responseType: "confirm", required: true }])}>Add step</Button></div><div className="mt-3 space-y-2">{taskSteps.map((step, index) => <div key={step.id} className="rounded-xl bg-[#fafbf9] p-3"><div className="flex gap-2"><Input value={step.label} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} placeholder="Step label" /><select value={step.responseType} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, responseType: event.target.value as TaskStep["responseType"] } : item))} className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"><option value="confirm">Confirm</option><option value="yes_no">Yes / No</option><option value="number">Number</option><option value="short_text">Short text</option></select><Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button><Button variant="ghost" size="sm" disabled={index === taskSteps.length - 1} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button><Button variant="ghost" size="sm" className="text-[#b64738]" onClick={() => setTaskSteps(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button></div><textarea value={step.description ?? ""} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="Step instructions" /></div>)}</div></div>}
+              </>
             )}
             {taskType === "cleaning" && (
               <>
@@ -820,6 +840,18 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     className="mt-2 h-11"
                   />
                 </label>
+                <label className="text-sm font-semibold md:col-span-2">
+                  Description / instructions
+                  <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" />
+                </label>
+                <label className="text-sm font-semibold">
+                  Task format
+                  <select value={taskTaskType} onChange={(event) => { const next = event.target.value as "simple" | "with_steps"; setTaskTaskType(next); if (next === "with_steps" && !taskSteps.length) setTaskSteps([{ id: "step_1", label: "New step", responseType: "confirm", required: true }]); }} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
+                    <option value="simple">Simple check</option>
+                    <option value="with_steps">Task with steps</option>
+                  </select>
+                </label>
+                {taskTaskType === "with_steps" && <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold">Child steps</p><Button size="sm" variant="outline" onClick={() => setTaskSteps(current => [...current, { id: `step_${current.length + 1}`, label: "New step", responseType: "confirm", required: true }])}>Add step</Button></div><div className="mt-3 space-y-2">{taskSteps.map((step, index) => <div key={step.id} className="rounded-xl bg-[#fafbf9] p-3"><div className="flex gap-2"><Input value={step.label} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} placeholder="Step label" /><select value={step.responseType} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, responseType: event.target.value as TaskStep["responseType"] } : item))} className="h-10 rounded-xl border border-black/[0.1] bg-white px-2 text-xs"><option value="confirm">Confirm</option><option value="yes_no">Yes / No</option><option value="number">Number</option><option value="short_text">Short text</option></select><Button variant="ghost" size="sm" disabled={index === 0} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>↑</Button><Button variant="ghost" size="sm" disabled={index === taskSteps.length - 1} onClick={() => setTaskSteps(current => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>↓</Button><Button variant="ghost" size="sm" className="text-[#b64738]" onClick={() => setTaskSteps(current => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button></div><textarea value={step.description ?? ""} onChange={(event) => setTaskSteps(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="Step instructions" /></div>)}</div></div>}
                 <label className="text-sm font-semibold">
                   Frequency
                   <select

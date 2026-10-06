@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs && node --import=tsx/esm scripts/test-inspection-chronology.mjs",
+    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs && node --import=tsx/esm scripts/test-inspection-chronology.mjs && node --import=tsx/esm scripts/test-structured-tasks.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -43,7 +43,8 @@
     "test:password-auth": "node --import=tsx/esm scripts/test-password-auth.mjs",
     "test:organisation-admin": "node --import=tsx/esm scripts/test-organisation-admin.mjs",
     "test:training-pdf": "node scripts/test-training-pdf.mjs",
-    "test:daily-checks-ui": "node --import=tsx/esm scripts/test-daily-checks-ui.mjs"
+    "test:daily-checks-ui": "node --import=tsx/esm scripts/test-daily-checks-ui.mjs",
+    "test:structured-tasks": "node --import=tsx/esm scripts/test-structured-tasks.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

@@ -8,7 +8,7 @@ import {
   getProgressPercent,
   type DailyTaskModel,
 } from "@/components/dashboard/daily-checks-model";
-import { Header } from "@/components/dashboard/DashboardPrimitives";
+import { BottomNavigation, Header } from "@/components/dashboard/DashboardPrimitives";
 import { ProbeModal } from "@/components/dashboard/DashboardWorkflowScreens";
 import type {
   DashboardData,
@@ -18,6 +18,7 @@ import type {
   Equipment,
   ManagerReviewStatus,
   TemperatureRound,
+  StructuredTask,
 } from "@/components/dashboard/dashboard-types";
 import {
   buildWastagePayload,
@@ -88,6 +89,8 @@ export type DashboardTodayProps = {
   issueSelected: DashboardIssue | null;
   setIssueSelected: Dispatch<SetStateAction<DashboardIssue | null>>;
   addIssueUpdate: (args: Record<string, unknown>) => Promise<unknown>;
+  structuredTasks: StructuredTask[];
+  onOpenStructuredTask: (area: StructuredTask["area"]) => void;
 };
 
 export default function DashboardToday({
@@ -150,7 +153,15 @@ export default function DashboardToday({
   issueSelected,
   setIssueSelected,
   addIssueUpdate,
+  structuredTasks,
+  onOpenStructuredTask,
 }: DashboardTodayProps) {
+  const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
+  const cleaningCompleted = cleaningTasks.length
+    ? cleaningTasks.filter(task => task.taskType === "with_steps"
+      ? (task.steps ?? []).filter(step => step.required !== false).every(step => active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === step.id))
+      : active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === "simple") || active.cleaningCompletions.some(completion => completion.taskId === task._id)).length
+    : active.cleaningCompletions.length;
   const tasks = buildDailyTaskModels({
     equipmentCount: equipment.length,
     amComplete,
@@ -162,8 +173,8 @@ export default function DashboardToday({
     amSecurityComplete,
     pmSecurityComplete,
     foodProbeCount: active.foodChecks.length,
-    cleaningCompleted: active.cleaningCompletions.length,
-    cleaningDue: active.cleaningTasks.length,
+    cleaningCompleted,
+    cleaningDue: cleaningTasks.length || active.cleaningTasks.length,
     additionalCompleted: additional?.completions.length ?? 0,
     additionalDue: additional?.requirements.length ?? 0,
     wastageCount: active.wastageRecords.length,
@@ -181,19 +192,23 @@ export default function DashboardToday({
         else void beginRound("PM");
         break;
       case "opening-checklist":
-        if (openingComplete) viewTodayRecords();
+        if (structuredTasks.some(task => task.area === "opening" && task.taskType === "with_steps")) onOpenStructuredTask("opening");
+        else if (openingComplete) viewTodayRecords();
         else setChecklistList("opening");
         break;
       case "closing-checklist":
-        if (closingComplete) viewTodayRecords();
+        if (structuredTasks.some(task => task.area === "closing" && task.taskType === "with_steps")) onOpenStructuredTask("closing");
+        else if (closingComplete) viewTodayRecords();
         else setChecklistList("closing");
         break;
       case "am-security":
-        if (amSecurityComplete) viewTodayRecords();
+        if (structuredTasks.some(task => task.area === "security_am" && task.taskType === "with_steps")) onOpenStructuredTask("security_am");
+        else if (amSecurityComplete) viewTodayRecords();
         else beginSecurity("AM");
         break;
       case "pm-security":
-        if (pmSecurityComplete) viewTodayRecords();
+        if (structuredTasks.some(task => task.area === "security_pm" && task.taskType === "with_steps")) onOpenStructuredTask("security_pm");
+        else if (pmSecurityComplete) viewTodayRecords();
         else beginSecurity("PM");
         break;
       case "food-probes":
@@ -204,7 +219,8 @@ export default function DashboardToday({
         setProbeOpen(true);
         break;
       case "cleaning":
-        setCleaningList(true);
+        if (structuredTasks.some(task => task.area === "cleaning" && task.taskType === "with_steps")) onOpenStructuredTask("cleaning");
+        else setCleaningList(true);
         break;
       case "additional-checks":
         setView("additional");
@@ -218,7 +234,7 @@ export default function DashboardToday({
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen overflow-x-hidden bg-[#f6f7f5] pb-24 text-[#171918]">
       <Header
         locations={locations?.length ? locations : [dashboard.location]}
         locationId={dashboard.location._id ?? locationId}
@@ -249,6 +265,7 @@ export default function DashboardToday({
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>
       )}
+      <BottomNavigation onToday={() => setView("today")} onCalendar={onCalendar} onTraining={onTraining} onAdmin={onAdmin} canUseManagement={canUseManagement} />
       {probeOpen && (
         <ProbeModal
           products={active.probeProducts}

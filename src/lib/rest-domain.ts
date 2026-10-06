@@ -88,6 +88,13 @@ export const restApi = {
     signOffSecurity: (body: AnyRecord) => post("/api/compliance/security/signoff", body),
     recordWastage: (body: AnyRecord) => post("/api/compliance/wastage", body),
     completeCleaningTask: (body: AnyRecord) => post("/api/compliance/cleaning/completions", body),
+    structuredTasks: async ({ locationId, date }: AnyRecord) => {
+      const params = new URLSearchParams({ locationId: String(locationId) });
+      if (date) params.set("date", dateKey(date));
+      return compat(await query(`/api/structured-tasks?${params.toString()}`));
+    },
+    saveStructuredTaskResponse: (body: AnyRecord) => post("/api/compliance/structured-tasks/responses", body),
+    signOffStructuredTask: (body: AnyRecord) => post("/api/compliance/structured-tasks/signoff", body),
     createManualIssue: (body: AnyRecord) => post("/api/compliance/issues", body),
     addIssueAction: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body),
     addRecheck: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
@@ -134,6 +141,7 @@ export const restApi = {
     updateWastageItem: (body: AnyRecord) => patch(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`, body),
     deleteWastageItem: (body: AnyRecord) => remove(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`),
     reorderWastageItem: (body: AnyRecord) => post(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}/reorder`, body),
+    updateStructuredTask: (body: AnyRecord) => patch(`/api/admin/structured-tasks/${encodeURIComponent(idOf(body.taskId))}`, body),
     addTrainingRequirement: (body: AnyRecord) => post("/api/admin/training-requirements", body),
     updateTrainingRequirement: (body: AnyRecord) => patch(`/api/admin/training-requirements/${encodeURIComponent(idOf(body.requirementId))}`, body),
     deleteTrainingRequirement: (body: AnyRecord) => remove(`/api/admin/training-requirements/${encodeURIComponent(idOf(body.requirementId))}`),

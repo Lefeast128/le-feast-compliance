@@ -4,6 +4,10 @@ import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum } from "../compliance/validation.js";
 import { db, id, locationFor, text } from "./shared.js";
+import { validateStructuredSteps } from "../compliance/structured-task-service.js";
+
+const taskType = (value: unknown) => value === undefined ? "simple" : value === "with_steps" ? "with_steps" : value === "simple" ? "simple" : (() => { throw new ApiError(422, "Task type is invalid"); })();
+const description = (value: unknown) => value === undefined || value === null || value === "" ? null : text(value, "Description");
 
 async function checklistLocation(context: AuthContext, questionId: string) {
   const idValue = id(questionId, "questionId");
@@ -18,8 +22,11 @@ export async function addChecklist(context: AuthContext, input: Record<string, u
   const location = await locationFor(context, id(input.locationId, "locationId"));
   const checklist = requireEnum(input.checklist, "checklist", ["opening", "closing"] as const);
   const question = text(input.question, "Question");
+  const type = taskType(input.taskType);
+  const steps = validateStructuredSteps(input.steps, type);
+  const details = description(input.description);
   const rows = await db().select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, location.id), eq(checklistQuestions.checklist, checklist)));
-  const [row] = await db().insert(checklistQuestions).values({ locationId: location.id, checklist, question, order: rows.length, active: true }).returning();
+  const [row] = await db().insert(checklistQuestions).values({ locationId: location.id, checklist, question, description: details, taskType: type, steps, order: rows.length, active: true }).returning();
   return row;
 }
 
@@ -27,10 +34,13 @@ export async function updateChecklist(context: AuthContext, questionId: string, 
   const old = await checklistLocation(context, questionId);
   if (!old.active) throw new ApiError(409, "This configuration version is no longer active");
   const question = text(input.question, "Question");
+  const type = taskType(input.taskType ?? old.taskType);
+  const steps = validateStructuredSteps(input.steps ?? old.steps, type);
+  const details = input.description === undefined ? old.description : description(input.description);
   return db().transaction(async tx => {
     const at = new Date();
     await tx.update(checklistQuestions).set({ active: false, deactivatedAt: at }).where(eq(checklistQuestions.id, old.id));
-    const [row] = await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: old.checklist, question, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id }).returning();
+    const [row] = await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: old.checklist, question, description: details, taskType: type, steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: old.centralItemId }).returning();
     return row;
   });
 }

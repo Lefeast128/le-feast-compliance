@@ -5,7 +5,7 @@ import {
   cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates, issues, locations,
   probeProducts, securityQuestions, securityResponses, securitySignOffs, scheduledTasks, teamMembers, documents,
   temperatureReadings, temperatureRounds, trainingCompletions, trainingContentVersions, trainingDocumentVersions, trainingRequirements,
-  users, wastageItems, wastageRecords,
+  users, wastageItems, wastageRecords, structuredTaskResponses,
 } from "../db/schema.js";
 import { requireLocationAccess, type AuthContext } from "../auth/core.js";
 import { localDateKey, localDayRange, localWeekday } from "./time.js";
@@ -69,7 +69,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     checklistQuestionRows, checklistResponseRows, checklistSignOffRows, securityQuestionRows,
     securityResponseRows, securitySignOffRows, wastageItemRows, wastageRowRows, cleaningTaskRows,
     cleaningCompletionRows, teamMemberRows, trainingRequirementRows, trainingCompletionRows,
-    additionalRequirementRows, additionalCompletionRows,
+    additionalRequirementRows, additionalCompletionRows, structuredTaskResponseRows,
   ] = await Promise.all([
     db.select().from(equipment).where(and(eq(equipment.locationId, location.id), eq(equipment.active, true))).orderBy(asc(equipment.order)),
     db.select().from(scheduledTasks).where(eq(scheduledTasks.locationId, location.id)),
@@ -93,6 +93,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     db.select().from(trainingCompletions).where(eq(trainingCompletions.locationId, location.id)),
     db.select().from(additionalRequirements).where(and(eq(additionalRequirements.locationId, location.id), eq(additionalRequirements.active, true), lt(additionalRequirements.nextDueAt, new Date(now + 1)))),
     db.select().from(additionalCompletions).where(eq(additionalCompletions.locationId, location.id)),
+    db.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, location.id), eq(structuredTaskResponses.dateKey, todayKey))),
   ]);
 
   const issueIds = issueRows.map(issue => issue.id);
@@ -124,6 +125,11 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   };
   const weekday = localWeekday(now, location.timezone);
   const cleaningData = cleaningTaskRows.filter(task => dueCleaning(task, weekday));
+  const structuredTasks = [
+    ...checklistQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.checklist, title: row.question, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
+    ...cleaningData.map(row => ({ id: row.id, locationId: row.locationId, area: "cleaning" as const, title: row.name, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order, frequency: row.frequency, weekdays: row.weekdays })),
+    ...securityQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.session === "AM" ? "security_am" as const : "security_pm" as const, title: row.question, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
+  ];
   const currentVersions = trainingRequirementRows.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
   const contentVersions = trainingRequirementRows.length ? await db.select().from(trainingContentVersions).where(inArray(trainingContentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
   const versionIds = [...new Set(trainingRequirementRows.flatMap(requirement => [requirement.currentDocumentVersionId, requirement.requiredDocumentVersionId]).concat(trainingCompletionRows.map(completion => completion.documentVersionId)).filter((id): id is string => Boolean(id)))];
@@ -165,6 +171,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     cleaningTasks: serialize(cleaningData), cleaningCompletions: serialize(cleaningCompletionRows.filter(completion => cleaningData.some(task => task.id === completion.taskId)).map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") }))),
     teamMembers: serialize(activeTeamMemberRows), trainingRequirements: trainingData, trainingCompletions: trainingDataRows,
     additionalRequirements: serialize(additionalRequirementRows), additionalCompletions: additionalData,
+    structuredTasks: serialize(structuredTasks), structuredTaskResponses: serialize(structuredTaskResponseRows),
     checklists: serialize({ opening: { questions: checklists.opening.questions, responses: checklists.opening.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) }, closing: { questions: checklists.closing.questions, responses: checklists.closing.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) } }),
   };
 };

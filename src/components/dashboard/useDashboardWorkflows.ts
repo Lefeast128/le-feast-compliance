@@ -87,10 +87,19 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
-  const openingComplete = (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening");
-  const closingComplete = (active?.checklists.closing.responses.length ?? 0) >= (active?.checklists.closing.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing");
-  const amSecurityComplete = (active?.securityResponses.AM.length ?? 0) >= (active?.security.AM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "AM");
-  const pmSecurityComplete = (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM");
+  const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string }>, signedOff: boolean, legacyComplete: boolean) => {
+    const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
+    if (!tasks.some(task => task.taskType === "with_steps")) return legacyComplete;
+    const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
+    const complete = tasks.every(task => task.taskType === "with_steps"
+      ? (task.steps ?? []).filter(step => step.required !== false).every(step => responses.some(response => response.taskId === task._id && response.stepId === step.id))
+      : responses.some(response => response.taskId === task._id && response.stepId === "simple") || legacyResponses.some(response => response.questionId === task._id));
+    return complete && signedOff;
+  };
+  const openingComplete = structuredComplete("opening", active?.checklists.opening.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening")), (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening"));
+  const closingComplete = structuredComplete("closing", active?.checklists.closing.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing")), (active?.checklists.closing.responses.length ?? 0) >= (active?.checklists.closing.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing"));
+  const amSecurityComplete = structuredComplete("security_am", active?.securityResponses.AM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "AM")), (active?.securityResponses.AM.length ?? 0) >= (active?.security.AM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "AM"));
+  const pmSecurityComplete = structuredComplete("security_pm", active?.securityResponses.PM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "PM")), (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM"));
   const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
 
   function beginRound(session: "AM" | "PM") {

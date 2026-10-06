@@ -25,6 +25,7 @@ type ChronologyInput = {
   securityResponses?: any[];
   securitySignoffs?: any[];
   cleaning?: any[];
+  structuredTaskResponses?: any[];
   wastage?: any[];
   additional?: any[];
   issues?: any[];
@@ -42,6 +43,7 @@ const priority: Record<string, number> = {
   security_response: 70,
   security_signoff: 80,
   cleaning: 90,
+  structured_task_response: 95,
   wastage: 100,
   additional_check: 110,
   issue_update: 120,
@@ -195,6 +197,20 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       result: "complete",
       sourceRecordId: completion.id,
       ...member(completion),
+    });
+  }
+
+  for (const response of input.structuredTaskResponses ?? []) {
+    const answer = text(response.responseValue, "Not recorded");
+    push({
+      id: `structured-task-response:${response.id}`,
+      eventType: "structured_task_response",
+      occurredAt: response.createdAt,
+      title: `${text(response.taskArea, "Operational task")} task`,
+      detail: [text(response.taskTitle, "Task"), text(response.stepLabel, "Step"), answer].filter(Boolean).join(" · "),
+      result: answer,
+      sourceRecordId: response.id,
+      ...member(response),
     });
   }
 

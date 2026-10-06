@@ -154,20 +154,20 @@ export default function AdminStoreOverview({ store, team, onOpenCatalogue }: Pro
     if (!editor) return;
     if (editor.kind === "cleaning") {
       const item = editor.item as AdminCleaningTask | undefined;
-      if (item) await updateCleaning({ taskId: item._id, name: data.name, frequency: data.frequency, weekdays: data.weekdays });
-      else await addCleaning({ locationId: store.location._id, name: data.name, frequency: data.frequency, weekdays: data.weekdays });
+      if (item) await updateCleaning({ taskId: item._id, name: data.name, description: data.description, taskType: data.taskType, steps: data.steps, frequency: data.frequency, weekdays: data.weekdays });
+      else await addCleaning({ locationId: store.location._id, name: data.name, description: data.description, taskType: data.taskType, steps: data.steps, frequency: data.frequency, weekdays: data.weekdays });
     } else if (editor.kind === "question") {
       const item = editor.item as AdminQuestion | undefined;
-      if (item) await updateQuestion({ questionId: item._id, question: data.question });
-      else await addQuestion({ locationId: store.location._id, checklist: editor.session, question: data.question });
+      if (item) await updateQuestion({ questionId: item._id, question: data.question, description: data.description, taskType: data.taskType, steps: data.steps });
+      else await addQuestion({ locationId: store.location._id, checklist: editor.session, question: data.question, description: data.description, taskType: data.taskType, steps: data.steps });
     } else if (editor.kind === "product") {
       const item = editor.item as AdminStore["probeProducts"][number] | undefined;
       if (item) await updateProduct({ productId: item._id, name: data.name, minimumTemperature: data.minimumTemperature, holdMinutes: data.holdMinutes });
       else await addProduct({ organisationId: store.location.organisationId, name: data.name, minimumTemperature: data.minimumTemperature, holdMinutes: data.holdMinutes, locationIds: [store.location._id] });
     } else if (editor.kind === "security") {
       const item = editor.item as AdminSecurityQuestion | undefined;
-      if (item) await updateSecurity({ questionId: item._id, question: data.question });
-      else await addSecurity({ locationId: store.location._id, session: data.session, question: data.question });
+      if (item) await updateSecurity({ questionId: item._id, question: data.question, description: data.description, taskType: data.taskType, steps: data.steps });
+      else await addSecurity({ locationId: store.location._id, session: data.session, question: data.question, description: data.description, taskType: data.taskType, steps: data.steps });
     } else if (editor.kind === "training") {
       const item = editor.item as AdminTrainingRequirement | undefined;
       const trainingData = { title: data.name, description: data.description, category: data.category, audience: data.audience, selectedTeamMemberIds: data.selectedTeamMemberIds };

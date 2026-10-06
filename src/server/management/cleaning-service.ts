@@ -4,6 +4,10 @@ import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum } from "../compliance/validation.js";
 import { db, id, locationFor, text } from "./shared.js";
+import { validateStructuredSteps } from "../compliance/structured-task-service.js";
+
+const taskType = (value: unknown) => value === undefined ? "simple" : value === "with_steps" ? "with_steps" : value === "simple" ? "simple" : (() => { throw new ApiError(422, "Task type is invalid"); })();
+const description = (value: unknown) => value === undefined || value === null || value === "" ? null : text(value, "Description");
 
 async function cleaningLocation(context: AuthContext, taskId: string) {
   const idValue = id(taskId, "taskId");
@@ -25,8 +29,11 @@ export async function addCleaning(context: AuthContext, input: Record<string, un
   const name = text(input.name, "Name");
   const frequency = cleaningFrequency(input.frequency);
   const days = weekdays(input.weekdays ?? []);
+  const type = taskType(input.taskType);
+  const steps = validateStructuredSteps(input.steps, type);
+  const details = description(input.description);
   const rows = await db().select().from(cleaningTasks).where(eq(cleaningTasks.locationId, location.id));
-  const [row] = await db().insert(cleaningTasks).values({ locationId: location.id, name, frequency, weekdays: days, order: rows.length, active: true }).returning();
+  const [row] = await db().insert(cleaningTasks).values({ locationId: location.id, name, description: details, taskType: type, steps, frequency, weekdays: days, order: rows.length, active: true }).returning();
   return row;
 }
 
@@ -36,10 +43,13 @@ export async function updateCleaning(context: AuthContext, taskId: string, input
   const name = text(input.name, "Name");
   const frequency = cleaningFrequency(input.frequency);
   const days = weekdays(input.weekdays ?? []);
+  const type = taskType(input.taskType ?? old.taskType);
+  const steps = validateStructuredSteps(input.steps ?? old.steps, type);
+  const details = input.description === undefined ? old.description : description(input.description);
   return db().transaction(async tx => {
     const at = new Date();
     await tx.update(cleaningTasks).set({ active: false, deactivatedAt: at }).where(eq(cleaningTasks.id, old.id));
-    const [row] = await tx.insert(cleaningTasks).values({ locationId: old.locationId, name, frequency, weekdays: days, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id }).returning();
+    const [row] = await tx.insert(cleaningTasks).values({ locationId: old.locationId, name, description: details, taskType: type, steps, frequency, weekdays: days, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: old.centralItemId }).returning();
     return row;
   });
 }
