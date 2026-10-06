@@ -29,7 +29,7 @@ export type CalendarDay = {
   status: string;
 };
 
-export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "additional" | "managerReviews";
+export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "library" | "additional" | "managerReviews";
 
 export type ManagerReviewPeriodStatus = {
   status: "complete" | "due" | "overdue" | "up_to_date";

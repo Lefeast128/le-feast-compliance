@@ -5,6 +5,7 @@ import InlineCleaning from "@/components/InlineCleaning";
 import MobileDayView from "@/components/MobileDayView";
 import ManagerReviews from "@/components/ManagerReviews";
 import TrainingView from "@/components/TrainingView";
+import LibraryView from "@/components/LibraryView";
 import TemperatureActionScreen from "@/components/TemperatureActionScreen";
 import TemperatureRoundEntry from "@/components/TemperatureRoundEntry";
 import StructuredTaskWorkflow from "@/components/StructuredTaskWorkflow";
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
   const managerReviewStatus = useRestQuery<ManagerReviewStatus | null>(dashboard && dashboard.access?.role !== "staff" ? `manager-reviews-status:${dashboard.location._id}` : null, () => restApi.managerReviews.list({ locationId: dashboard!.location._id }), Boolean(dashboard && dashboard.access?.role !== "staff"));
   const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
+  const library = useRestQuery<{ documents: Array<{ id: string; title: string; description?: string | null; category: string; important: boolean; updatedAt?: string; documentUrl?: string | null }> }>(view === "library" && currentLocationId ? `library:${currentLocationId}` : null, () => restApi.library.list({ locationId: currentLocationId }), Boolean(view === "library" && currentLocationId));
   const calendar = useRestQuery<CalendarDay[]>(view === "calendar" && dashboard ? `calendar:${dashboard.location._id}:${bounds.start}:${bounds.end}` : null, () => restApi.compliance.calendar({ locationId: dashboard!.location._id, monthStart: bounds.start, monthEnd: bounds.end }), Boolean(view === "calendar" && dashboard));
   const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
   const workflows = useDashboardWorkflows({ dashboard, currentLocationId });
@@ -77,6 +79,7 @@ export default function Dashboard() {
   if (view === "calendar") return <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />;
   if (view === "day") return <MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => setView("calendar")} />;
   if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />;
+  if (view === "library") return <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => setView("today")} onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} />;
   if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
   if (view === "admin") return capabilities.canUseManagement
     ? <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />
@@ -98,6 +101,7 @@ export default function Dashboard() {
     managerReviewStatus,
     onCalendar: () => setView("calendar"),
     onTraining: () => setView("training"),
+    onLibrary: () => setView("library"),
     onLogout: logout,
     todayLabel: dateLabel(),
     currentUserName: user?.name || user?.email || "Current user",

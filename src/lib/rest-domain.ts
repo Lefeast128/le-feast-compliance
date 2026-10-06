@@ -105,6 +105,9 @@ export const restApi = {
   reports: {
     compliance: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
   },
+  library: {
+    list: async ({ locationId }: AnyRecord) => compat(await query(`/api/library?locationId=${encodeURIComponent(locationId)}`)),
+  },
   managerReviews: {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/manager-reviews?locationId=${encodeURIComponent(locationId)}`)),
     complete: (body: AnyRecord) => post("/api/manager-reviews", body),
@@ -161,6 +164,12 @@ export const restApi = {
     },
     organisation: {
       list: async () => compat(await query("/api/admin/organisation")),
+      library: {
+        list: async () => compat(await query("/api/admin/organisation/library")),
+        publish: (body: AnyRecord) => post("/api/admin/organisation/library", body),
+        update: ({ libraryDocumentId, ...body }: AnyRecord) => patch(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
+        replace: ({ libraryDocumentId, ...body }: AnyRecord) => post(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
+      },
       publishTraining: (body: AnyRecord) => post("/api/admin/organisation/training", body),
       updateTraining: ({ publicationId, ...body }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, body),
       publishChecklist: (body: AnyRecord) => post("/api/admin/organisation/checklist", body),

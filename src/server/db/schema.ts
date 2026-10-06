@@ -224,6 +224,33 @@ export const documents = pgTable("documents", {
   locationPurpose: index("documents_location_purpose_idx").on(table.locationId, table.purpose, table.status),
 }));
 
+export const libraryDocuments = pgTable("library_documents", {
+  id: id(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  important: boolean("important").notNull().default(false),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(),
+  updatedAt: timestampColumn("updated_at"),
+}, table => ({ organisationActive: index("library_documents_organisation_active_idx").on(table.organisationId, table.active) }));
+
+export const libraryDocumentVersions = pgTable("library_document_versions", {
+  id: id(),
+  libraryDocumentId: uuid("library_document_id").notNull().references(() => libraryDocuments.id, { onDelete: "restrict" }),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "restrict" }),
+  versionNumber: integer("version_number").notNull(),
+  createdAt: createdAt(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+}, table => ({
+  documentVersion: uniqueIndex("library_document_versions_document_version_idx").on(table.libraryDocumentId, table.versionNumber),
+  document: index("library_document_versions_document_idx").on(table.documentId),
+}));
+
 export const centralTrainingPublications = pgTable("central_training_publications", {
   id: id(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
@@ -298,7 +325,7 @@ export const foundationTables = {
   temperatureRounds, temperatureReadings, probeProducts, checklistQuestions, checklistResponses,
   checklistSignOffs, securityQuestions, securityResponses, securitySignOffs, foodChecks,
   wastageItems, wastageRecords, catalogueProducts, catalogueSyncStatus, cleaningTasks,
-  cleaningCompletions, documents, trainingRequirements, trainingDocumentVersions, trainingCompletions,
+  cleaningCompletions, documents, libraryDocuments, libraryDocumentVersions, trainingRequirements, trainingDocumentVersions, trainingCompletions,
   centralTrainingPublications, centralChecklistItems, centralOperationalItems,
   additionalRequirements, additionalCompletions, structuredTaskResponses, trainingContentVersions, rechecks, issues, issueUpdates, auditEvents, managerReviews,
   authOtpChallenges, authSessions,

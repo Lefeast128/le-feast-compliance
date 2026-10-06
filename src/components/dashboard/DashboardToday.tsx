@@ -39,6 +39,7 @@ export type DashboardTodayProps = {
   managerReviewStatus?: ManagerReviewStatus | null;
   onCalendar: () => void;
   onTraining: () => void;
+  onLibrary: () => void;
   onLogout: () => void | Promise<void>;
   todayLabel: string;
   currentUserName: string;
@@ -105,6 +106,7 @@ export default function DashboardToday({
   managerReviewStatus,
   onCalendar,
   onTraining,
+  onLibrary,
   onLogout,
   todayLabel,
   currentUserName,
@@ -265,7 +267,7 @@ export default function DashboardToday({
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>
       )}
-      <BottomNavigation onToday={() => setView("today")} onCalendar={onCalendar} onTraining={onTraining} onAdmin={onAdmin} canUseManagement={canUseManagement} />
+      <BottomNavigation onToday={() => setView("today")} onCalendar={onCalendar} onTraining={onTraining} onLibrary={onLibrary} onAdmin={onAdmin} canUseManagement={canUseManagement} active="today" />
       {probeOpen && (
         <ProbeModal
           products={active.probeProducts}

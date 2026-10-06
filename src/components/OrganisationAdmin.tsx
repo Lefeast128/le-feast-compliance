@@ -1,4 +1,5 @@
 import UserAccessAdmin from "@/components/UserAccessAdmin";
+import OrganisationLibraryAdmin from "@/components/OrganisationLibraryAdmin";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -573,6 +574,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
       </header>
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-7 sm:px-8">
         <UserAccessAdmin />
+        <OrganisationLibraryAdmin />
         <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
             Recent organisation changes

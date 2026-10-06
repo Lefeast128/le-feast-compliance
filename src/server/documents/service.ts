@@ -3,12 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
 import { documents, locations } from "../db/schema.js";
-import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
+import { requireLocationAccess, requireLocationManager, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireString, requireUuid } from "../compliance/validation.js";
 import { decodeBase64, sanitizeFilename, validatePdfBytes } from "./validation.js";
 
-export type DocumentPurpose = "training_document" | "additional_check_certificate";
+export type DocumentPurpose = "training_document" | "additional_check_certificate" | "library_document";
 
 function token() {
   const value = process.env.BLOB_READ_WRITE_TOKEN;
@@ -26,8 +26,10 @@ async function locationFor(context: AuthContext, locationId: string, manager: bo
 
 export async function uploadDocument(context: AuthContext, input: Record<string, unknown>) {
   const purpose = input.purpose;
-  if (purpose !== "training_document" && purpose !== "additional_check_certificate") throw new ApiError(400, "Document purpose is invalid");
-  const location = await locationFor(context, requireString(input.locationId, "locationId"), purpose === "training_document");
+  if (purpose !== "training_document" && purpose !== "additional_check_certificate" && purpose !== "library_document") throw new ApiError(400, "Document purpose is invalid");
+  const locationId = requireString(input.locationId, "locationId");
+  const location = await locationFor(context, locationId, purpose === "training_document");
+  if (purpose === "library_document") requireOrganisationAdmin(context, location.organisationId);
   const filename = sanitizeFilename(input.filename);
   const bytes = decodeBase64(input.data);
   validatePdfBytes(input.contentType, bytes);
