@@ -9,7 +9,7 @@ export const resultLabel = (value: TemperatureResolutionResult) => {
     case "complete": return "Complete";
     case "incomplete": return "Incomplete";
     case "open": return "Open";
-    case "monitoring": return "In progress";
+    case "monitoring": return "Monitoring";
     case "resolved": return "Resolved";
     case "no": return "No";
     case "no_waste": return "No Waste";
@@ -20,7 +20,7 @@ export const resultLabel = (value: TemperatureResolutionResult) => {
 
 export const issueStatusLabel = (value: TemperatureResolutionResult) => {
   switch (value) {
-    case "monitoring": return "In progress";
+    case "monitoring": return "Monitoring";
     case "resolved": return "Resolved";
     case "open": return "Open";
     default: return resultLabel(value);

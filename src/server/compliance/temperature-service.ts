@@ -77,8 +77,6 @@ export async function completeRound(context: AuthContext, input: { roundId: stri
       const issue = locationIssues.find((item) => item.sourceTemperatureReadingId === reading.id && item.category === "Temperature");
       if (!issue) throw new ApiError(422, "Every failed fridge reading must have a temperature issue before completing the round");
       if (!locationUpdates.some((item) => item.issueId === issue.id && item.updateType === "immediate_action" && item.note.trim())) throw new ApiError(422, "Every failed fridge must have a corrective action before completing the round");
-      const existingRechecks = await tx.select({ id: rechecks.id }).from(rechecks).where(eq(rechecks.issueId, issue.id));
-      if (!existingRechecks.length) throw new ApiError(422, "Every failed fridge must have a recheck before completing the round");
     }
     const completedAt = now();
     await tx.update(temperatureRounds).set({ completedAt, teamMemberId: input.teamMemberId }).where(eq(temperatureRounds.id, round.id));

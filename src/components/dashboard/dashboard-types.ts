@@ -177,13 +177,10 @@ export type DashboardData = {
 };
 
 export type IssueProgress = {
-  actions: string[];
+  action: string;
+  note: string;
   actionMemberId: string;
   actionsSaved: boolean;
-  recheckTemperature: string;
-  recheckMemberId: string;
-  recheckResult?: string;
-  recheckSaved: boolean;
 };
 
 export type AdditionalDashboard = {

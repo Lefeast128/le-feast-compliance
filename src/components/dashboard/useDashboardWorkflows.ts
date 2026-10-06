@@ -19,6 +19,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [roundSubmitting, setRoundSubmitting] = useState(false);
   const roundSubmittingRef = useRef(false);
   const [issueProgress, setIssueProgress] = useState<Record<string, IssueProgress>>({});
+  const issueActionSubmittingRef = useRef(new Set<string>());
   const [roundEquipment, setRoundEquipment] = useState<Equipment[]>([]);
   const [probeOpen, setProbeOpen] = useState(false);
   const [probeProduct, setProbeProduct] = useState("");
@@ -55,7 +56,6 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const saveSecurityResponse = useRestMutation(restApi.compliance.saveSecurityResponse);
   const createManualIssue = useRestMutation(restApi.compliance.createManualIssue);
   const addIssueAction = useRestMutation(restApi.compliance.addIssueAction);
-  const addRecheck = useRestMutation(restApi.compliance.addRecheck);
 
   useEffect(() => {
     const catalogueLocationId = dashboard?.location?._id ?? currentLocationId;
@@ -127,7 +127,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       setRoundId(result.roundId);
       if (result.issues.length) {
         setRoundIssues(result.issues);
-        setIssueProgress(Object.fromEntries(result.issues.map(issue => [issue.issueId, { actions: [], actionMemberId: "", actionsSaved: false, recheckTemperature: "", recheckMemberId: "", recheckSaved: false }])));
+        setIssueProgress(Object.fromEntries(result.issues.map(issue => [issue.issueId, { action: "", note: "", actionMemberId: "", actionsSaved: false }])));
         return;
       }
       toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` });
@@ -138,26 +138,24 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     }
   }
 
-  async function saveTemperatureActions(issueId: string, actions: string[], teamMemberId: string) {
-    if (!issueId || !actions.length || !teamMemberId) return;
-    await addIssueAction({ issueId, action: actions.join("; "), teamMemberId });
-    setIssueProgress(current => ({ ...current, [issueId]: { ...current[issueId], actions: [...actions], actionMemberId: teamMemberId, actionsSaved: true } }));
-    toast.success("Action recorded — recheck required");
-  }
-
-  async function saveTemperatureRecheck(issueId: string, recheckTemperature: string, teamMemberId: string) {
-    if (!roundIssues.length || !issueId || !recheckTemperature || !dashboard || !teamMemberId || !roundCompleterId) return;
-    const value = Number(recheckTemperature);
-    if (Number.isNaN(value) || !issueProgress[issueId]?.actionsSaved) return;
-    const recheck = await addRecheck({ issueId, temperature: value, teamMemberId });
-    const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], recheckTemperature, recheckMemberId: teamMemberId, recheckResult: recheck.result, recheckSaved: true } };
-    setIssueProgress(nextProgress);
-    const allSubmitted = roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved && nextProgress[issue.issueId]?.recheckSaved);
-    if (!allSubmitted) { toast.success("Recheck recorded — remaining failed fridges still require rechecks"); return; }
-    if (!roundId) return;
-    await completeRound({ roundId, locationId: dashboard.location._id, session: round!, teamMemberId: roundCompleterId });
-    toast.success(roundIssues.some(issue => nextProgress[issue.issueId]?.recheckResult === "fail") ? "Rechecks recorded — further action required" : "All rechecks passed — round complete");
-    setRound(null); setRoundId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
+  async function saveTemperatureActions(issueId: string, action: string, note: string, teamMemberId: string) {
+    if (!issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
+    if (action === "Other" && !note.trim()) return;
+    issueActionSubmittingRef.current.add(issueId);
+    try {
+      const combinedNote = note.trim() ? `${action} — ${note.trim()}` : action;
+      await addIssueAction({ issueId, action: combinedNote, teamMemberId });
+      const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: teamMemberId, actionsSaved: true } };
+      setIssueProgress(nextProgress);
+      const allActionsSaved = roundIssues.length > 0 && roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved);
+      if (allActionsSaved && dashboard && roundId && round && roundCompleterId) {
+        await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId: roundCompleterId });
+        toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
+        setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
+      } else toast.success("Corrective action recorded");
+    } finally {
+      issueActionSubmittingRef.current.delete(issueId);
+    }
   }
 
   async function saveProbe(teamMemberId: string) {
@@ -267,6 +265,6 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
     issueOpen, setIssueOpen, issueSelected, setIssueSelected,
-    beginRound, completeTemperatureRound, saveTemperatureActions, saveTemperatureRecheck, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
+    beginRound, completeTemperatureRound, saveTemperatureActions, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
   };
 }

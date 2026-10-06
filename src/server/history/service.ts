@@ -93,7 +93,7 @@ export async function archive(context: AuthContext, input: { locationId: string;
   const named = (teamMemberId: string | null | undefined) => teamMemberId ? memberNames.get(teamMemberId) ?? null : null;
   const additionalDocuments = additionalRows.map(row => row.documentId).filter((id): id is string => Boolean(id));
   const documentRows = additionalDocuments.length ? await db.select().from(documents).where(inArray(documents.id, additionalDocuments)) : [];
-  const enrichedReadings = readings.map(row => ({ ...iso(row), session: rounds.find(round => round.id === row.roundId)?.session ?? null, equipmentName: row.equipmentName ?? equipmentNames.get(row.equipmentId) ?? null, teamMemberName: named(row.teamMemberId) }));
+  const enrichedReadings = readings.map(row => ({ ...iso(row), session: rounds.find(round => round.id === row.roundId)?.session ?? null, equipmentName: row.equipmentName ?? equipmentNames.get(row.equipmentId) ?? null, relatedIssueId: issuesRows.find(issue => issue.sourceTemperatureReadingId === row.id)?.id ?? null, teamMemberName: named(row.teamMemberId) }));
   const enrichedRounds = rounds.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
   const enrichedProbes = probes.map(row => ({ ...iso(row), teamMemberName: named(row.teamMemberId) }));
   const checklistResponse = (row: any) => ({ ...iso(row), question: checklistLabels.get(row.questionId) ?? null, teamMemberName: named(row.teamMemberId) });
