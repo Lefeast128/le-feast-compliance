@@ -96,6 +96,7 @@ export default function Dashboard() {
     onTraining: () => setView("training"),
     onLogout: logout,
     todayLabel: dateLabel(),
+    currentUserName: user?.name || user?.email || "Current user",
     renderTimestamp,
     viewTodayRecords,
     setView,

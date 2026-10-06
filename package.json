@@ -42,7 +42,8 @@
     "test:wastage-category-picker": "node --import=tsx/esm scripts/test-wastage-category-picker.mjs",
     "test:password-auth": "node --import=tsx/esm scripts/test-password-auth.mjs",
     "test:organisation-admin": "node --import=tsx/esm scripts/test-organisation-admin.mjs",
-    "test:training-pdf": "node scripts/test-training-pdf.mjs"
+    "test:training-pdf": "node scripts/test-training-pdf.mjs",
+    "test:daily-checks-ui": "node --import=tsx/esm scripts/test-daily-checks-ui.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
