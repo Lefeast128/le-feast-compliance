@@ -17,7 +17,8 @@ check(temperatureService.includes("Every failed fridge must have a corrective ac
 check(!temperatureService.includes("Every failed fridge must have a recheck before completing the round"), "round completion does not require an immediate recheck");
 check(issueService.includes('updateType: "immediate_action"'), "immediate corrective action is recorded in issue history");
 check(!issueService.includes('set({ action, status: "monitoring" })'), "immediate action does not skip the initial Open state");
-check(!issueService.includes("must be resolved by a passing recheck"), "issue resolution is not blocked on a recheck");
+check(issueService.includes('input.status === "resolved" && issue.category === "Temperature"'), "temperature resolution uses corrective evidence");
+check(issueService.includes('issue.category === "Probe"'), "probe resolution rule remains protected");
 check(actionUi.includes('<select disabled={progress.actionsSaved} value={progress.action}'), "corrective action uses a select control");
 check(actionUi.includes("Reason / notes"), "corrective action accepts a reason or note");
 check(!actionUi.includes("Rechecked temperature"), "recheck is not an immediate corrective action option");
@@ -31,4 +32,4 @@ check(inspection.includes("Grouped by completed temperature round"), "inspection
 check(inspection.includes("Detailed inspection chronology"), "detailed chronology is secondary to the grouped inspection view");
 check(inspection.includes("View issue journey"), "grouped failed reading links to its issue journey");
 
-console.log(`Temperature issue lifecycle tests passed: ${passed}/17`);
+console.log(`Temperature issue lifecycle tests passed: ${passed}/18`);
