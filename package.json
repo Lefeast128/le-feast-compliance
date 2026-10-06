@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-role-based-views.mjs && node scripts/test-admin-navigation.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs && node --import=tsx/esm scripts/test-inspection-chronology.mjs && node --import=tsx/esm scripts/test-structured-tasks.mjs && node --import=tsx/esm scripts/test-completion-ux.mjs && node --import=tsx/esm scripts/test-additional-scheduling.mjs && node --import=tsx/esm scripts/test-manager-reviews.mjs && node --import=tsx/esm scripts/test-temperature-controls.mjs && node --import=tsx/esm scripts/test-temperature-issue-lifecycle.mjs && node scripts/test-library.mjs",
+    "test": "node scripts/test-catalogue-sync.mjs && node --import=tsx/esm scripts/test-google-sheets.mjs && node scripts/test-backend-foundation.mjs && node scripts/test-drizzle-integrity.mjs && node scripts/test-auth-delivery.mjs && node scripts/test-auth.mjs && node scripts/test-frontend-auth.mjs && node scripts/test-frontend-domain.mjs && node scripts/test-role-based-views.mjs && node scripts/test-admin-navigation.mjs && node scripts/test-phase3-dashboard.mjs && node scripts/test-phase4-api.mjs && node scripts/test-phase5-api.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7.mjs && node --import=tsx/esm scripts/test-phase7a-wastage.mjs && node scripts/test-staff-attribution.mjs && node --import=tsx/esm scripts/test-inspection-chronology.mjs && node --import=tsx/esm scripts/test-structured-tasks.mjs && node --import=tsx/esm scripts/test-completion-ux.mjs && node --import=tsx/esm scripts/test-additional-scheduling.mjs && node --import=tsx/esm scripts/test-manager-reviews.mjs && node --import=tsx/esm scripts/test-temperature-controls.mjs && node --import=tsx/esm scripts/test-temperature-issue-lifecycle.mjs && node scripts/test-library.mjs && node --import=tsx/esm scripts/test-large-pdf-upload.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -50,6 +50,7 @@
     "test:completion-ux": "node --import=tsx/esm scripts/test-completion-ux.mjs",
     "test:additional-scheduling": "node --import=tsx/esm scripts/test-additional-scheduling.mjs",
     "test:library": "node scripts/test-library.mjs",
+    "test:large-pdf-upload": "node --import=tsx/esm scripts/test-large-pdf-upload.mjs",
     "test:admin-navigation": "node scripts/test-admin-navigation.mjs"
   },
   "dependencies": {

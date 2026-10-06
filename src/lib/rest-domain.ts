@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useState } from "react";
+import { put as putBlob } from "@vercel/blob/client";
 import { apiRequest } from "@/lib/api-client";
 import { dateKeyFrom } from "@/lib/date-key";
+import { MAX_PDF_BYTES } from "@/lib/pdf";
 
 type AnyRecord = Record<string, any>;
 
@@ -184,17 +186,39 @@ export const restApi = {
 };
 
 export const documentsApi = {
-  upload: async ({ locationId, file, data, filename, contentType, purpose }: AnyRecord) => {
-    let encoded = data;
-    if (file && typeof file.arrayBuffer === "function") {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
-      encoded = btoa(binary);
-      filename = file.name;
-      contentType = file.type;
+  upload: async ({ locationId, file, data, filename, contentType, purpose, onUploadProgress }: AnyRecord) => {
+    if (!file) return post("/api/documents/upload", { locationId, purpose, filename, contentType, data });
+    if (file.type !== "application/pdf") throw new Error("Only PDF files are supported.");
+    if (file.size > MAX_PDF_BYTES) throw new Error("This PDF is larger than the 25 MB maximum.");
+    const grant = await post("/api/documents/upload-token", {
+      locationId,
+      purpose,
+      filename: file.name,
+      contentType: "application/pdf",
+      size: file.size,
+    });
+    const uploadDetails = {
+      pathname: grant.pathname,
+      locationId,
+      purpose,
+      filename: grant.filename,
+      contentType: "application/pdf",
+      size: file.size,
+      finalizeToken: grant.finalizeToken,
+    };
+    try {
+      await putBlob(grant.pathname, file, {
+        access: "private",
+        token: grant.clientToken,
+        contentType: "application/pdf",
+        multipart: file.size > 5 * 1024 * 1024,
+        onUploadProgress,
+      });
+      return await post("/api/documents/finalize", uploadDetails);
+    } catch (error) {
+      try { await post("/api/documents/cleanup", uploadDetails); } catch { /* best effort cleanup */ }
+      throw error;
     }
-    return post("/api/documents/upload", { locationId, purpose, filename, contentType, data: encoded });
   },
 };
 

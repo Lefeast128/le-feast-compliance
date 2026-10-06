@@ -1,4 +1,6 @@
-export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+import { MAX_PDF_BYTES } from "../../lib/pdf.ts";
+
+export { MAX_PDF_BYTES };
 
 export function sanitizeFilenameValue(value: unknown) {
   if (typeof value !== "string" || !value.trim()) throw new Error("Filename is required");

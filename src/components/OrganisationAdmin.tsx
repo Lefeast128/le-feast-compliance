@@ -769,7 +769,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     className="mt-2 block w-full text-sm"
                   />
                   <span className="mt-1 block text-xs font-normal text-[#89918b]">
-                    Required for Document / PDF training
+                    Required for Document / PDF training · PDF · Maximum 25 MB
                   </span>
                 </label>
               )}
@@ -800,7 +800,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                 disabled={saving || !trainingTitle.trim()}
                 onClick={saveTraining}
               >
-                {trainingEdit ? "Save training" : "Publish training"}
+                {saving && trainingFile ? "Uploading PDF…" : trainingEdit ? "Save training" : "Publish training"}
               </Button>
               {trainingEdit && (
                 <Button variant="outline" onClick={resetTraining}>
