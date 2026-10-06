@@ -32,10 +32,12 @@ export type CalendarDay = {
 export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "additional" | "managerReviews";
 
 export type ManagerReviewPeriodStatus = {
-  status: "complete" | "due" | "overdue";
+  status: "complete" | "due" | "overdue" | "up_to_date";
   daysUntilDue: number;
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
+  available: boolean;
+  nextAvailableAfter: string | null;
   completed: boolean;
 };
 

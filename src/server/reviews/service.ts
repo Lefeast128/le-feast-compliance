@@ -22,8 +22,8 @@ export const FSA_REVIEW_QUESTIONS = [
 
 export type ReviewType = "weekly" | "four_weekly";
 export type ReviewPeriod = { reviewType: ReviewType; start: string; end: string };
-export type ReviewStatus = "complete" | "due" | "overdue";
-export type ReviewPeriodState = ReviewPeriod & { status: ReviewStatus; daysUntilDue: number };
+export type ReviewStatus = "complete" | "due" | "overdue" | "up_to_date";
+export type ReviewPeriodState = { reviewType: ReviewType; start: string | null; end: string | null; status: ReviewStatus; daysUntilDue: number; available: boolean; nextAvailableAfter: string | null };
 
 type IssueRow = typeof issues.$inferSelect;
 type IssueUpdateRow = typeof issueUpdates.$inferSelect;
@@ -52,18 +52,30 @@ export const completedReviewPeriod = (timeZone: string, reviewType: ReviewType, 
   return { reviewType, start, end };
 };
 
-export const nextOutstandingReviewPeriod = (completedRows: Array<Pick<typeof managerReviews.$inferSelect, "periodStart" | "periodEnd">>, timeZone: string, reviewType: ReviewType, timestamp = Date.now()): ReviewPeriod => {
-  if (!completedRows.length) return completedReviewPeriod(timeZone, reviewType, timestamp);
-  const latest = [...completedRows].sort((a, b) => a.periodEnd.localeCompare(b.periodEnd))[completedRows.length - 1];
-  const start = dateKeyAtOffset(latest.periodEnd, 1);
-  return { reviewType, start, end: dateKeyAtOffset(start, reviewType === "weekly" ? 6 : 27) };
+export const nextOutstandingReviewPeriod = (completedRows: Array<Pick<typeof managerReviews.$inferSelect, "periodStart" | "periodEnd">>, timeZone: string, reviewType: ReviewType, timestamp = Date.now()): ReviewPeriod | null => {
+  const latestEligible = completedReviewPeriod(timeZone, reviewType, timestamp);
+  if (!completedRows.length) return latestEligible;
+  const periodLength = reviewType === "weekly" ? 7 : 28;
+  const completed = new Set(completedRows.map(row => `${row.periodStart}:${row.periodEnd}`));
+  const first = [...completedRows].sort((a, b) => a.periodStart.localeCompare(b.periodStart))[0];
+  let candidate: ReviewPeriod = { reviewType, start: first.periodStart, end: first.periodEnd };
+  while (candidate.end <= latestEligible.end) {
+    if (!completed.has(`${candidate.start}:${candidate.end}`)) return candidate;
+    const start = dateKeyAtOffset(candidate.end, 1);
+    candidate = { reviewType, start, end: dateKeyAtOffset(start, periodLength - 1) };
+  }
+  return null;
 };
 
-export const reviewPeriodState = (period: ReviewPeriod, timeZone: string, completed: boolean, timestamp = Date.now()): ReviewPeriodState => {
-  if (completed) return { ...period, status: "complete", daysUntilDue: 0 };
+export const reviewPeriodState = (period: ReviewPeriod | null, timeZone: string, completed: boolean, timestamp = Date.now(), reviewType: ReviewType = period?.reviewType ?? "weekly"): ReviewPeriodState => {
+  if (!period) {
+    const latestEligible = completedReviewPeriod(timeZone, reviewType, timestamp);
+    return { reviewType, start: null, end: null, status: "up_to_date", daysUntilDue: 0, available: false, nextAvailableAfter: dateKeyAtOffset(latestEligible.end, reviewType === "weekly" ? 7 : 28) };
+  }
+  if (completed) return { ...period, status: "complete", daysUntilDue: 0, available: true, nextAvailableAfter: null };
   const today = localDateKey(timestamp, timeZone);
   const daysUntilDue = Math.round((Date.parse(`${period.end}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
-  return { ...period, status: daysUntilDue < 0 ? "overdue" : "due", daysUntilDue };
+  return { ...period, status: daysUntilDue < 0 ? "overdue" : "due", daysUntilDue, available: true, nextAvailableAfter: null };
 };
 
 const periodBounds = (period: ReviewPeriod, timeZone: string) => ({
@@ -130,6 +142,8 @@ async function rowsForPeriod(locationId: string, period: ReviewPeriod, timeZone:
   return { issueRows, updateRows, recheckRows, readingRows, probeRows, start, end };
 }
 
+const emptyPeriodRows = () => ({ issueRows: [] as IssueRow[], updateRows: [] as IssueUpdateRow[], recheckRows: [] as RecheckRow[], readingRows: [] as Array<typeof temperatureReadings.$inferSelect>, probeRows: [] as Array<typeof foodChecks.$inferSelect>, start: new Date(0), end: new Date(0) });
+
 async function issuePresentation(locationId: string, issueRows: IssueRow[], updateRows: IssueUpdateRow[], recheckRows: RecheckRow[], readingRows: Array<typeof temperatureReadings.$inferSelect>, probeRows: Array<typeof foodChecks.$inferSelect>, end: Date) {
   const ids = [...new Set(issueRows.flatMap(issue => [issue.createdBy, issue.resolvedBy]).filter((id): id is string => Boolean(id)).concat(updateRows.map(update => update.createdBy), recheckRows.map(recheck => recheck.createdBy)))];
   const userRows = ids.length ? await db().select().from(users).where(inArray(users.id, ids)) : [];
@@ -168,7 +182,8 @@ async function issuePresentation(locationId: string, issueRows: IssueRow[], upda
   });
 }
 
-async function existingReview(locationId: string, period: ReviewPeriod) {
+async function existingReview(locationId: string, period: ReviewPeriod | null) {
+  if (!period) return null;
   const [row] = await db().select().from(managerReviews).where(and(eq(managerReviews.locationId, locationId), eq(managerReviews.reviewType, period.reviewType), eq(managerReviews.periodStart, period.start))).limit(1);
   return row ?? null;
 }
@@ -199,8 +214,8 @@ export async function getManagerReviews(context: AuthContext, locationId: string
   const [weeklyRows, fourRows, weeklyScope, fourScope] = await Promise.all([
     existingReview(location.id, weekly),
     existingReview(location.id, fourWeekly),
-    rowsForPeriod(location.id, weekly, location.timezone),
-    rowsForPeriod(location.id, fourWeekly, location.timezone),
+    weekly ? rowsForPeriod(location.id, weekly, location.timezone) : emptyPeriodRows(),
+    fourWeekly ? rowsForPeriod(location.id, fourWeekly, location.timezone) : emptyPeriodRows(),
   ]);
   const allIssueIds = [...new Set(currentIssues.map(issue => issue.id))];
   const [currentUpdates, currentRechecks, allReadings, allProbes] = await Promise.all([
@@ -212,8 +227,8 @@ export async function getManagerReviews(context: AuthContext, locationId: string
   const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
   const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
   const historyNames = new Map(historyUsers.map(user => [user.id, user.name ?? user.email]));
-  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows));
-  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows));
+  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows), Date.now(), "weekly");
+  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), Date.now(), "four_weekly");
   return {
     location: { id: location.id, name: location.name, timezone: location.timezone },
     periods: {
@@ -243,6 +258,9 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   const expected = nextOutstandingReviewPeriod(completedRows, location.timezone, reviewType);
   const periodStart = requireString(input.periodStart, "periodStart");
   const periodEnd = requireString(input.periodEnd, "periodEnd");
+  if (!expected) throw new ApiError(400, "No completed review period is available");
+  const latestEligible = completedReviewPeriod(location.timezone, reviewType);
+  if (expected.end > latestEligible.end) throw new ApiError(400, "Review period has not finished yet");
   if (periodStart !== expected.start || periodEnd !== expected.end) throw new ApiError(400, "Review period is not the latest completed period");
   if (await existingReview(location.id, expected)) throw new ApiError(409, "This review has already been completed");
   const scope = await rowsForPeriod(location.id, expected, location.timezone);

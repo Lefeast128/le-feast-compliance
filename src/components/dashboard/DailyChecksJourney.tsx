@@ -7,6 +7,8 @@ import type { DashboardIssue, ManagerReviewStatus } from "@/components/dashboard
 const reviewStatusLabel = (period: ManagerReviewStatus["periods"]["weekly"]) =>
   period.status === "complete"
     ? "Complete"
+    : period.status === "up_to_date"
+      ? "Up to date"
     : period.status === "overdue"
       ? "Overdue"
       : period.daysUntilDue > 0
@@ -14,7 +16,7 @@ const reviewStatusLabel = (period: ManagerReviewStatus["periods"]["weekly"]) =>
         : "Due";
 
 const reviewTone = (period: ManagerReviewStatus["periods"]["weekly"]) =>
-  period.status === "complete" ? "text-[#2d7951]" : period.status === "overdue" ? "text-[#a13f34]" : "text-[#8a6b12]";
+  period.status === "complete" || period.status === "up_to_date" ? "text-[#2d7951]" : period.status === "overdue" ? "text-[#a13f34]" : "text-[#8a6b12]";
 
 export function DailyChecksJourney({
   locationName,
