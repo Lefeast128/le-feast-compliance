@@ -50,7 +50,7 @@
     "test:completion-ux": "node --import=tsx/esm scripts/test-completion-ux.mjs",
     "test:additional-scheduling": "node --import=tsx/esm scripts/test-additional-scheduling.mjs",
     "test:library": "node scripts/test-library.mjs",
-    "test:large-pdf-upload": "node --import=tsx/esm scripts/test-large-pdf-upload.mjs",
+    "test:large-pdf-upload": "node --import=tsx/esm scripts/test-large-pdf-upload.mjs && node scripts/test-large-pdf-transport.mjs",
     "test:admin-navigation": "node scripts/test-admin-navigation.mjs"
   },
   "dependencies": {

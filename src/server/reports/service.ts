@@ -36,9 +36,9 @@ export async function complianceReport(context: AuthContext, input: { locationId
 
   const [calendarResult, readings, rounds, probes, checklist, checklistSignoffs, security, securitySignoffs, cleaning, wastage, issuesRows, updates, recheckRows, equipmentRows, checklistQuestionRows, securityQuestionRows, cleaningTaskRows, probeProductRows, requirementRows, completionRows, members] = await Promise.all([
     calendar(context, { locationId: location.id, monthStart: range.start, monthEnd: range.end }),
-    db().select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, location.id), gte(temperatureReadings.createdAt, start), lte(temperatureReadings.createdAt, end))),
+    db().select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, location.id), lte(temperatureReadings.createdAt, end))),
     db().select().from(temperatureRounds).where(and(eq(temperatureRounds.locationId, location.id), gte(temperatureRounds.startedAt, start), lte(temperatureRounds.startedAt, end))),
-    db().select().from(foodChecks).where(and(eq(foodChecks.locationId, location.id), gte(foodChecks.createdAt, start), lte(foodChecks.createdAt, end))),
+    db().select().from(foodChecks).where(and(eq(foodChecks.locationId, location.id), lte(foodChecks.createdAt, end))),
     db().select().from(checklistResponses).where(and(eq(checklistResponses.locationId, location.id), gte(checklistResponses.createdAt, start), lte(checklistResponses.createdAt, end))),
     db().select().from(checklistSignOffs).where(and(eq(checklistSignOffs.locationId, location.id), gte(checklistSignOffs.completedAt, start), lte(checklistSignOffs.completedAt, end))),
     db().select().from(securityResponses).where(and(eq(securityResponses.locationId, location.id), gte(securityResponses.createdAt, start), lte(securityResponses.createdAt, end))),
@@ -165,11 +165,11 @@ export async function complianceReport(context: AuthContext, input: { locationId
       latestAction: latestAction ? { note: latestAction.note, occurredAt: iso(latestAction.createdAt), teamMemberName: memberName(latestAction.teamMemberId) } : null,
     };
   };
-  for (const reading of readings.filter(row => row.result === "fail")) {
+  for (const reading of readings.filter(row => row.result === "fail" && row.createdAt >= start && row.createdAt <= end)) {
     const issue = issueFor("sourceTemperatureReadingId", reading.id);
     exceptionRows.push({ type: "temperature", date: localDateKey(reading.createdAt.getTime(), location.timezone), occurredAt: iso(reading.createdAt), label: reading.equipmentName ?? equipmentNames.get(reading.equipmentId) ?? "Equipment", value: `${reading.temperature}°C`, result: "fail", teamMemberName: memberName(reading.teamMemberId), relatedIssueId: issue?.id ?? null, ...temperatureResolution(issue) });
   }
-  for (const probe of probes.filter(row => row.result === "fail")) {
+  for (const probe of probes.filter(row => row.result === "fail" && row.createdAt >= start && row.createdAt <= end)) {
     const issue = issueFor("sourceFoodCheckId", probe.id);
     exceptionRows.push({ type: "food_probe", date: localDateKey(probe.createdAt.getTime(), location.timezone), occurredAt: iso(probe.createdAt), label: probe.product, value: `${probe.temperature}°C`, result: "fail", teamMemberName: memberName(probe.teamMemberId), relatedIssueId: issue?.id ?? null });
   }
@@ -188,10 +188,35 @@ export async function complianceReport(context: AuthContext, input: { locationId
     const dayStart = new Date(localDayRange(Date.parse(`${day.date}T12:00:00Z`), location.timezone).start);
     return issuesRows.some(issue => issue.createdAt < dayStart && asOfIssue(issue, dayStart));
   }).length;
-  const issueRows = issuesRows.filter(issue => issue.createdAt >= start && issue.createdAt <= end || asOfIssue(issue, end)).map(issue => {
+  const issueRows = issuesRows.filter(issue => {
+    const createdInRange = issue.createdAt >= start && issue.createdAt <= end;
+    const resolvedInRange = Boolean(issue.resolvedAt && issue.resolvedAt >= start && issue.resolvedAt <= end);
+    const updatedInRange = updates.some(update => update.issueId === issue.id && update.createdAt >= start && update.createdAt <= end);
+    const recheckedInRange = recheckRows.some(recheck => recheck.issueId === issue.id && recheck.createdAt >= start && recheck.createdAt <= end);
+    return createdInRange || resolvedInRange || updatedInRange || recheckedInRange || asOfIssue(issue, end);
+  }).map(issue => {
     const relevantUpdates = updatesFor(issue.id);
     const latest = relevantUpdates[relevantUpdates.length - 1];
-    return { id: issue.id, title: issue.title, category: issue.category, createdAt: iso(issue.createdAt), status: statusAtEnd(issue), resolvedAt: iso(issue.resolvedAt), teamMemberName: memberName(issue.teamMemberId), recheckCount: rechecksFor(issue.id).length, latestUpdate: latest ? { occurredAt: iso(latest.createdAt), note: latest.note, status: latest.status, teamMemberName: memberName(latest.teamMemberId) } : null, journey: issueJourney(issue) };
+    const latestAction = [...relevantUpdates].reverse().find(update => update.updateType === "immediate_action" || update.updateType === "action" || update.updateType === "further_action");
+    const sourceReading = issue.sourceTemperatureReadingId ? readings.find(reading => reading.id === issue.sourceTemperatureReadingId) : null;
+    const sourceProbe = issue.sourceFoodCheckId ? probes.find(probe => probe.id === issue.sourceFoodCheckId) : null;
+    return {
+      id: issue.id,
+      title: issue.title,
+      category: issue.category,
+      description: issue.description,
+      originalReading: issue.originalReading ?? (sourceReading ? `${sourceReading.temperature}°C` : sourceProbe ? `${sourceProbe.temperature}°C` : null),
+      originalLabel: sourceReading?.equipmentName ?? sourceProbe?.product ?? null,
+      originalOccurredAt: iso(sourceReading?.createdAt ?? sourceProbe?.createdAt ?? issue.createdAt),
+      createdAt: iso(issue.createdAt),
+      status: statusAtEnd(issue),
+      resolvedAt: iso(issue.resolvedAt),
+      teamMemberName: memberName(issue.teamMemberId),
+      recheckCount: rechecksFor(issue.id).length,
+      latestAction: latestAction ? { occurredAt: iso(latestAction.createdAt), note: latestAction.note, status: latestAction.status, teamMemberName: memberName(latestAction.teamMemberId) } : null,
+      latestUpdate: latest ? { occurredAt: iso(latest.createdAt), note: latest.note, status: latest.status, teamMemberName: memberName(latest.teamMemberId) } : null,
+      journey: issueJourney(issue),
+    };
   });
   const additionalByDate = evaluated.map(day => {
     const due = selectVersions(requirementRows, day.date).filter(requirement => localDateKey(requirement.nextDueAt.getTime(), location.timezone) === day.date);

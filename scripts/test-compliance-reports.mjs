@@ -6,6 +6,7 @@ import { currentMonthRange, last30DaysRange, previousMonthRange } from "../src/l
 const reportService = await readFile(new URL("../src/server/reports/service.ts", import.meta.url), "utf8");
 const reportRoute = await readFile(new URL("../api/reports/compliance.ts", import.meta.url), "utf8");
 const reportUi = await readFile(new URL("../src/components/ComplianceReports.tsx", import.meta.url), "utf8");
+const dayView = await readFile(new URL("../src/components/MobileDayView.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
 
 const range = reportDateRange("2026-07-01", "2026-07-03");
@@ -57,13 +58,24 @@ assert.match(reportUi, /Current month/);
 assert.match(reportUi, /Previous month/);
 assert.match(reportUi, /Last 30 days/);
 assert.match(reportUi, /type="date"/);
-assert.match(reportUi, /Daily breakdown/);
+assert.match(reportUi, /Daily records/);
+assert.match(reportUi, /Issues &amp; Actions|Issues & Actions/);
+assert.match(reportUi, /Manager reviews/);
+assert.match(reportUi, /role="tab"/);
+assert.match(dayView, /All recorded readings/);
+assert.match(dayView, /All recorded probe readings/);
+assert.match(dayView, /View issue journey/);
+assert.doesNotMatch(reportUi, /<h2[^>]*>Exceptions<\/h2>/);
+assert.doesNotMatch(reportUi, /<h2[^>]*>Corrective actions \/ issues<\/h2>/);
 assert.match(reportUi, /onOpenDay/);
 assert.match(dashboard, /setSelectedDay\(date\)/);
 assert.doesNotMatch(reportUi, /documentStorageId|pathname/);
-assert.match(reportUi, /No recorded failures in this period/);
+assert.match(reportUi, /No issues match this filter/);
 assert.match(reportService, /evaluatedDaysMissingEvidence/);
 assert.match(reportService, /No Waste|noWaste/);
 assert.match(reportService, /rechecksRecorded/);
+assert.match(reportService, /resolvedInRange/);
+assert.match(reportService, /updatedInRange/);
+assert.match(reportService, /recheckedInRange/);
 
 console.log("Compliance report tests passed: 44/44");

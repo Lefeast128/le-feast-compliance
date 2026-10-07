@@ -28,7 +28,7 @@ check(workflow.includes("issueActionSubmittingRef"), "repeated action submission
 check(workflow.includes("await completeRound({ roundId"), "round completes after corrective actions");
 check(managerReviews.includes("<IssueDetail"), "manager View issue opens actionable issue detail");
 check(managerReviews.includes("correctiveActions"), "manager review exposes issue action activity");
-check(inspection.includes("Grouped by completed temperature round"), "inspection groups fridge readings by round");
+check(inspection.includes("All recorded readings, grouped by temperature round"), "inspection groups fridge readings by round");
 check(inspection.includes("Detailed inspection chronology"), "detailed chronology is secondary to the grouped inspection view");
 check(inspection.includes("View issue journey"), "grouped failed reading links to its issue journey");
 
