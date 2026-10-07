@@ -12,6 +12,7 @@ const library = await read("src/components/OrganisationLibraryAdmin.tsx");
 const training = await read("src/components/ConfigEditor.tsx");
 const storeTraining = await read("src/components/admin/AdminStoreOverview.tsx");
 const organisationTraining = await read("src/components/OrganisationAdmin.tsx");
+const pure = await read("src/server/documents/pure.ts");
 
 assert.equal(MAX_PDF_BYTES, 25 * 1024 * 1024);
 const pdf = new Uint8Array(11.6 * 1024 * 1024);
@@ -32,6 +33,7 @@ for (const [name, value, needles] of [
   ["library admin", library, ["PDF · Maximum 25 MB", "Uploading PDF…", "documentsApi.upload"]],
   ["store training admin", storeTraining, ["documentsApi.upload"]],
   ["organisation training admin", organisationTraining, ["PDF · Maximum 25 MB", "Uploading PDF…"]],
+  ["production-safe PDF module import", pure, ["../../lib/pdf-constants.js"]],
 ]) {
   for (const needle of needles) assert.ok(value.includes(needle), `${name} missing ${needle}`);
 }

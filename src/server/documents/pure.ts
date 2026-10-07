@@ -1,4 +1,4 @@
-import { MAX_PDF_BYTES } from "../../lib/pdf.ts";
+import { MAX_PDF_BYTES } from "../../lib/pdf-constants.js";
 
 export { MAX_PDF_BYTES };
 

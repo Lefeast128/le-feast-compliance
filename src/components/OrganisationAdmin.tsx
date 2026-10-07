@@ -549,6 +549,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
   }
 
   const stores = data?.locations ?? [];
+  const trainingItemBeingEdited = trainingEdit
+    ? data?.training.find((item) => item.id === trainingEdit)
+    : undefined;
+  const existingTrainingPdfAttached = Boolean(
+    trainingItemBeingEdited?.attachmentStatus?.length &&
+      trainingItemBeingEdited.attachmentStatus.every(
+        (attachment) => attachment.status === "attached",
+      ),
+  );
   const storePicker = (
     all: boolean,
     setAll: (value: boolean) => void,
@@ -699,21 +708,26 @@ export default function OrganisationAdmin({ onBack }: Props) {
               </Button>
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-semibold">
-                Training format
-                <select
-                  value={trainingFormat}
-                  onChange={(event) =>
-                    setTrainingFormat(
-                      event.target.value as "briefing" | "document",
-                    )
-                  }
-                  className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                >
-                  <option value="briefing">Briefing / instruction</option>
-                  <option value="document">Document / PDF</option>
-                </select>
-              </label>
+              <div className="md:col-span-2">
+                <p className="text-sm font-semibold">Training type</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {([
+                    ["briefing", "Briefing / instruction", "Instructions without a document"],
+                    ["document", "Document / PDF", "Training supplied as a PDF"],
+                  ] as const).map(([value, label, description]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTrainingFormat(value)}
+                      className={`rounded-2xl border p-4 text-left transition ${trainingFormat === value ? "border-[#d5b72f] bg-[#fff9df] shadow-[0_4px_16px_rgba(23,25,24,0.06)]" : "border-black/[0.1] bg-white hover:border-[#e5d77b]"}`}
+                      aria-pressed={trainingFormat === value}
+                    >
+                      <span className="block text-sm font-semibold">{label}</span>
+                      <span className="mt-1 block text-xs font-normal text-[#727a74]">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="text-sm font-semibold">
                 Title
                 <Input
@@ -758,20 +772,22 @@ export default function OrganisationAdmin({ onBack }: Props) {
                 </select>
               </label>
               {trainingFormat === "document" && (
-                <label className="text-sm font-semibold">
-                  PDF upload
+                <div className="rounded-2xl border border-[#e5d77b] bg-[#fffdf1] p-4 md:col-span-2">
+                  <p className="text-sm font-semibold">PDF document</p>
+                  {trainingEdit && existingTrainingPdfAttached && !trainingFile && (
+                    <p className="mt-1 text-sm text-[#2d7951]">Current PDF attached</p>
+                  )}
                   <input
                     type="file"
                     accept="application/pdf"
-                    onChange={(event) =>
-                      setTrainingFile(event.target.files?.[0] ?? null)
-                    }
-                    className="mt-2 block w-full text-sm"
+                    onChange={(event) => setTrainingFile(event.target.files?.[0] ?? null)}
+                    className="mt-3 block w-full rounded-xl border border-black/[0.1] bg-white p-3 text-sm"
                   />
-                  <span className="mt-1 block text-xs font-normal text-[#89918b]">
-                    Required for Document / PDF training · PDF · Maximum 25 MB
+                  <span className="mt-2 block text-xs font-normal text-[#89918b]">
+                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 25 MB" : "Required for Document / PDF training · PDF · Maximum 25 MB"}
                   </span>
-                </label>
+                  {trainingFile && <span className="mt-2 block text-xs text-[#727a74]">Selected: {trainingFile.name} · {(trainingFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
+                </div>
               )}
               <div className="md:col-span-2">
                 {storePicker(

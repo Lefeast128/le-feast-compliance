@@ -14,7 +14,7 @@ const checks = [
   [service, ["A PDF is required for document training", "documentSelected", "attachmentStatus", "attached", "missing", "safeTrainingRequirements"]],
   [training, ["currentDocumentVersionId", "trainingFormat: \"document\"", "centralTrainingPublications", "documentUrl: requirement.trainingFormat === \"document\""]],
   [dashboard, ["documentUrl: requirement.trainingFormat === \"document\""]],
-  [admin, ["Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus"]],
+  [admin, ["Training type", "Briefing / instruction", "Document / PDF", "aria-pressed", "Current PDF attached", "Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus"]],
   [trainingView, ["<iframe", "Open PDF", "documentUrl", "whitespace-pre-wrap"]],
   [rest, ["/api/documents/upload", "attachTrainingDocument"]],
   [documentRoute, ["documentForAccess", "readPrivateDocument", "Content-Disposition"]],

@@ -12,6 +12,7 @@ const dashboard = await read("src/pages/Dashboard.tsx");
 const rest = await read("src/lib/rest-domain.ts");
 const reader = await read("api/library/documents/[id].ts");
 const upload = await read("src/server/documents/service.ts");
+const restState = await read("src/lib/rest-domain.ts");
 
 const checks = [
   [schema, ["libraryDocuments", "libraryDocumentVersions", "library_documents", "library_document_versions"]],
@@ -24,6 +25,8 @@ const checks = [
   [rest, ["/api/library?locationId=", "/api/admin/organisation/library"]],
   [reader, ["requireContext", "libraryDocumentForAccess", "Content-Disposition", "readLibraryDocument"]],
   [upload, ["library_document", "validatePdfBytes"]],
+  [admin, ["useRestQueryState", "Try again", "No documents have been published yet.", "PDF · Maximum 25 MB"]],
+  [restState, ["RestQueryState", "loading: boolean", "error: Error | null", "retry: () => void"]],
 ];
 
 let count = 0;

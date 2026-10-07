@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { put as putBlob } from "@vercel/blob/client";
 import { apiRequest } from "@/lib/api-client";
 import { dateKeyFrom } from "@/lib/date-key";
-import { MAX_PDF_BYTES } from "@/lib/pdf";
+import { MAX_PDF_BYTES } from "@/lib/pdf-constants.js";
 
 type AnyRecord = Record<string, any>;
 
@@ -240,6 +240,45 @@ export function useRestQuery<T>(key: string | null, loader: () => Promise<T>, en
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, revision]);
   return value;
+}
+
+export type RestQueryState<T> = {
+  data: T | undefined;
+  loading: boolean;
+  error: Error | null;
+  retry: () => void;
+};
+
+export function useRestQueryState<T>(key: string | null, loader: () => Promise<T>, enabled = true): RestQueryState<T> {
+  const [state, setState] = useState<{ data: T | undefined; loading: boolean; error: Error | null }>({
+    data: undefined,
+    loading: enabled && Boolean(key),
+    error: null,
+  });
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRevision((current) => current + 1);
+    window.addEventListener("rest:data-changed", refresh);
+    return () => window.removeEventListener("rest:data-changed", refresh);
+  }, []);
+  useEffect(() => {
+    if (!enabled || !key) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setState({ data: undefined, loading: false, error: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ data: undefined, loading: true, error: null });
+    loader().then((data) => {
+      if (!cancelled) setState({ data, loading: false, error: null });
+    }).catch((error: unknown) => {
+      if (!cancelled) setState({ data: undefined, loading: false, error: error instanceof Error ? error : new Error("Request failed") });
+    });
+    return () => { cancelled = true; };
+    // The key controls the request inputs; callers may create a closure for those inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, key, revision]);
+  return { ...state, retry: () => setRevision((current) => current + 1) };
 }
 
 export function useRestMutation<TArgs extends AnyRecord, TResult = any>(operation: (args: TArgs) => Promise<TResult>) {
