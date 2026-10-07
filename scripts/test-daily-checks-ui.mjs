@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   buildDailyTaskModels,
+  dailyTaskStatusLabel,
+  getIssueAttentionTaskIds,
   getProgressMessage,
   getProgressPercent,
   getTaskStatus,
@@ -22,7 +24,7 @@ const base = {
   additionalCompleted: 0,
   additionalDue: 3,
   wastageCount: 0,
-  hasOpenIssues: false,
+  issueAttentionTaskIds: [],
 };
 
 assert.equal(getProgressPercent(0, 6), 0);
@@ -43,6 +45,27 @@ assert.equal(zero.filter((task) => task.required).length, 6);
 assert.equal(zero.find((task) => task.id === "am-temperature")?.status, "not-started");
 assert.equal(zero.find((task) => task.id === "pm-temperature")?.status, "due-later");
 assert.equal(zero.find((task) => task.id === "additional-checks")?.status, "not-started");
+assert.equal(zero.find((task) => task.id === "food-probes")?.required, false);
+assert.equal(zero.find((task) => task.id === "food-probes")?.status, "not-started");
+assert.equal(dailyTaskStatusLabel(zero.find((task) => task.id === "food-probes")), "As needed");
+assert.equal(dailyTaskStatusLabel(zero.find((task) => task.id === "additional-checks")), "As needed");
+assert.equal(dailyTaskStatusLabel(buildDailyTaskModels({ ...base, additionalDue: 0 }).find((task) => task.id === "additional-checks")), "Nothing due today");
+
+assert.deepEqual(
+  getIssueAttentionTaskIds({
+    issues: [
+      { sourceTemperatureReadingId: "reading-am" },
+      { sourceFoodCheckId: "probe" },
+      { title: "opening checklist: Fire exit clear", category: "Food safety" },
+      { title: "Clean surfaces: First pass", category: "Operational task" },
+      { title: "Manual issue reported", category: "Food safety" },
+    ],
+    temperatureReadings: [{ _id: "reading-am", roundId: "round-am" }],
+    temperatureRounds: [{ _id: "round-am", session: "AM" }],
+    structuredTasks: [{ area: "cleaning", title: "Clean surfaces" }],
+  }),
+  ["am-temperature", "food-probes", "opening-checklist", "cleaning"],
+);
 
 const partial = buildDailyTaskModels({
   ...base,
@@ -50,12 +73,13 @@ const partial = buildDailyTaskModels({
   amInProgress: false,
   foodProbeCount: 2,
   cleaningCompleted: 2,
-  hasOpenIssues: true,
+  issueAttentionTaskIds: ["opening-checklist"],
 });
 assert.equal(partial.find((task) => task.id === "am-temperature")?.status, "completed");
 assert.equal(partial.find((task) => task.id === "opening-checklist")?.status, "attention");
 assert.equal(partial.find((task) => task.id === "food-probes")?.detail, "2 recorded today");
 assert.equal(partial.find((task) => task.id === "pm-security")?.status, "due-later");
+assert.equal(partial.find((task) => task.id === "cleaning")?.status, "not-started");
 
 const complete = buildDailyTaskModels({
   ...base,
@@ -71,4 +95,4 @@ const complete = buildDailyTaskModels({
 assert.equal(complete.filter((task) => task.required && task.status === "completed").length, 6);
 assert.ok(complete.filter((task) => task.status === "completed").length >= 8);
 
-console.log("Daily checks UI tests passed: 18/18");
+console.log("Daily checks UI tests passed: 23/23");

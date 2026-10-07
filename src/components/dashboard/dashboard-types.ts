@@ -54,6 +54,10 @@ export type DashboardIssue = {
   title: string;
   description: string;
   action?: string | null;
+  category?: string | null;
+  sourceTemperatureReadingId?: string | null;
+  sourceFoodCheckId?: string | null;
+  sourceAdditionalCompletionId?: string | null;
 };
 
 export type ChecklistQuestion = {
@@ -134,6 +138,13 @@ export type TemperatureRound = {
   teamMemberId?: string;
 };
 
+export type TemperatureReading = {
+  _id: string;
+  roundId: string;
+  result: string;
+  temperature: number;
+};
+
 export type FoodCheck = {
   _id: string;
   product: string;
@@ -158,6 +169,7 @@ export type DashboardData = {
   access?: { role: "admin" | "manager" | "staff" };
   teamMembers: TeamMember[];
   equipment: Equipment[];
+  readings: TemperatureReading[];
   issues: DashboardIssue[];
   rounds: TemperatureRound[];
   checklists: { opening: ChecklistState; closing: ChecklistState };

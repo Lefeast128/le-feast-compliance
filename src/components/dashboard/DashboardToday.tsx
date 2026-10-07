@@ -4,6 +4,7 @@ import StaffWastageModal from "@/components/WastageModal";
 import { DailyChecksJourney } from "@/components/dashboard/DailyChecksJourney";
 import {
   buildDailyTaskModels,
+  getIssueAttentionTaskIds,
   getProgressMessage,
   getProgressPercent,
   type DailyTaskModel,
@@ -164,6 +165,12 @@ export default function DashboardToday({
       ? (task.steps ?? []).filter(step => step.required !== false).every(step => active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === step.id))
       : active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === "simple") || active.cleaningCompletions.some(completion => completion.taskId === task._id)).length
     : active.cleaningCompletions.length;
+  const issueAttentionTaskIds = getIssueAttentionTaskIds({
+    issues: openIssues,
+    temperatureReadings: active.readings,
+    temperatureRounds: active.rounds,
+    structuredTasks,
+  });
   const tasks = buildDailyTaskModels({
     equipmentCount: equipment.length,
     amComplete,
@@ -180,7 +187,7 @@ export default function DashboardToday({
     additionalCompleted: additional?.completions.length ?? 0,
     additionalDue: additional?.requirements.length ?? 0,
     wastageCount: active.wastageRecords.length,
-    hasOpenIssues: openIssues.length > 0,
+    issueAttentionTaskIds,
   });
 
   const taskAction = (task: DailyTaskModel) => {
