@@ -2,6 +2,7 @@ export type DailyTaskStatus =
   | "not-started"
   | "in-progress"
   | "completed"
+  | "completed-attention"
   | "due-later"
   | "attention"
   | "not-scheduled";
@@ -30,6 +31,7 @@ const statusLabels: Record<DailyTaskStatus, string> = {
   "not-started": "Ready to start",
   "in-progress": "In progress",
   completed: "Completed",
+  "completed-attention": "Completed · Requires attention",
   "due-later": "Due later today",
   attention: "Requires attention",
   "not-scheduled": "Nothing due today",
@@ -37,6 +39,7 @@ const statusLabels: Record<DailyTaskStatus, string> = {
 
 export function dailyTaskStatusLabel(task: Pick<DailyTaskModel, "required" | "status">) {
   if (task.status === "not-scheduled") return "Nothing due today";
+  if (task.status === "completed-attention") return "Completed · Requires attention";
   if (!task.required && task.status !== "completed" && task.status !== "attention") return "As needed";
   return statusLabels[task.status];
 }
@@ -156,6 +159,7 @@ export function getTaskStatus({
   dueLater?: boolean;
   attention?: boolean;
 }): DailyTaskStatus {
+  if (complete && attention) return "completed-attention";
   if (complete) return "completed";
   if (attention) return "attention";
   if (dueLater) return "due-later";
@@ -177,7 +181,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       status: getTaskStatus({
         complete: input.amComplete,
         inProgress: input.amInProgress,
-        attention: issueAttention("am-temperature") && !input.amComplete,
+        attention: issueAttention("am-temperature"),
       }),
       actionLabel: input.amComplete ? "View readings" : "Start AM temperatures",
       required: true,
@@ -188,7 +192,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Confirm the store is ready to open safely.",
       detail: input.openingComplete ? "All questions and sign-off complete" : "Questions still to complete",
       icon: "checklist",
-      status: getTaskStatus({ complete: input.openingComplete, attention: issueAttention("opening-checklist") && !input.openingComplete }),
+      status: getTaskStatus({ complete: input.openingComplete, attention: issueAttention("opening-checklist") }),
       actionLabel: input.openingComplete ? "View checklist" : "Start opening checklist",
       required: true,
     },
@@ -198,7 +202,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Complete the morning security questions.",
       detail: input.amSecurityComplete ? "Completed" : "Not completed",
       icon: "security",
-      status: getTaskStatus({ complete: input.amSecurityComplete, attention: issueAttention("am-security") && !input.amSecurityComplete }),
+      status: getTaskStatus({ complete: input.amSecurityComplete, attention: issueAttention("am-security") }),
       actionLabel: input.amSecurityComplete ? "View security check" : "Start AM security",
       required: true,
     },
@@ -208,7 +212,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Record cooking temperatures when required.",
       detail: input.foodProbeCount ? `${input.foodProbeCount} recorded today` : "No readings recorded today",
       icon: "probe",
-      status: "not-started",
+      status: issueAttention("food-probes") ? getTaskStatus({ complete: false, attention: true }) : "not-started",
       actionLabel: "Record food probe",
       required: false,
     },
@@ -216,9 +220,11 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       id: "cleaning",
       title: "Cleaning jobs",
       description: "Complete today's scheduled cleaning tasks.",
-      detail: `${input.cleaningCompleted} of ${input.cleaningDue} due today complete`,
+      detail: input.cleaningDue ? `${input.cleaningCompleted} of ${input.cleaningDue} due today complete` : "Nothing due today",
       icon: "cleaning",
-      status: getTaskStatus({ complete: input.cleaningDue > 0 && input.cleaningCompleted >= input.cleaningDue }),
+      status: input.cleaningDue > 0
+        ? getTaskStatus({ complete: input.cleaningCompleted >= input.cleaningDue, attention: issueAttention("cleaning") })
+        : "not-scheduled",
       actionLabel: "Open cleaning jobs",
       required: false,
     },
@@ -229,7 +235,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       detail: input.additionalDue ? `${input.additionalCompleted} of ${input.additionalDue} complete` : "Nothing due today",
       icon: "additional",
       status: input.additionalDue
-        ? getTaskStatus({ complete: input.additionalCompleted >= input.additionalDue })
+        ? getTaskStatus({ complete: input.additionalCompleted >= input.additionalDue, attention: issueAttention("additional-checks") })
         : "not-scheduled",
       actionLabel: "Open additional checks",
       required: false,
@@ -250,7 +256,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Record the evening temperature round.",
       detail: input.pmComplete ? `${input.equipmentCount} of ${input.equipmentCount} recorded` : "Due later today",
       icon: "temperature",
-      status: getTaskStatus({ complete: input.pmComplete, inProgress: input.pmInProgress, dueLater: !input.pmComplete }),
+      status: getTaskStatus({ complete: input.pmComplete, inProgress: input.pmInProgress, dueLater: !input.pmComplete, attention: issueAttention("pm-temperature") }),
       actionLabel: input.pmComplete ? "View readings" : "Start PM temperatures",
       required: true,
     },
@@ -260,7 +266,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Confirm the store is ready to close safely.",
       detail: input.closingComplete ? "All questions and sign-off complete" : "Due later today",
       icon: "checklist",
-      status: getTaskStatus({ complete: input.closingComplete, dueLater: !input.closingComplete }),
+      status: getTaskStatus({ complete: input.closingComplete, dueLater: !input.closingComplete, attention: issueAttention("closing-checklist") }),
       actionLabel: input.closingComplete ? "View checklist" : "Start closing checklist",
       required: true,
     },
@@ -270,7 +276,7 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Complete the evening security questions.",
       detail: input.pmSecurityComplete ? "Completed" : "Due later today",
       icon: "security",
-      status: getTaskStatus({ complete: input.pmSecurityComplete, dueLater: !input.pmSecurityComplete }),
+      status: getTaskStatus({ complete: input.pmSecurityComplete, dueLater: !input.pmSecurityComplete, attention: issueAttention("pm-security") }),
       actionLabel: input.pmSecurityComplete ? "View security check" : "Start PM security",
       required: true,
     },
