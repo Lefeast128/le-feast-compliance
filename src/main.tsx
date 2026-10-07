@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AuthProvider } from "@/hooks/use-auth";
+import { PwaStatus } from "@/components/PwaStatus";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -109,6 +110,7 @@ createRoot(document.getElementById("root")!).render(
           </Suspense>
         </BrowserRouter>
         <Toaster />
+        <PwaStatus />
       </AuthProvider>
     </RootErrorBoundary>
   </StrictMode>,

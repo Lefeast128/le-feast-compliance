@@ -46,6 +46,9 @@ export class ApiError extends Error {
   }
 }
 
+export const OFFLINE_MUTATION_MESSAGE =
+  "You're offline. Reconnect before submitting this check.";
+
 const parseBody = (text: string): unknown => {
   if (!text) return null;
 
@@ -57,6 +60,15 @@ const parseBody = (text: string): unknown => {
 };
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}) {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false &&
+    !["GET", "HEAD", "OPTIONS"].includes(method)
+  ) {
+    throw new ApiError(0, OFFLINE_MUTATION_MESSAGE);
+  }
+
   const headers = new Headers(init.headers);
   if (init.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");

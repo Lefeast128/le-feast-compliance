@@ -1,13 +1,50 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+function getAppVersion() {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) {
+    return process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 12);
+  }
+
+  try {
+    return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "dev";
+  }
+}
+
+function pwaServiceWorkerPlugin(): Plugin {
+  return {
+    name: "le-feast-pwa-service-worker",
+    apply: "build",
+    generateBundle() {
+      const template = readFileSync(
+        new URL("./src/pwa/sw-template.js", import.meta.url),
+        "utf8",
+      );
+      this.emitFile({
+        type: "asset",
+        fileName: "sw.js",
+        source: template.replaceAll("__APP_VERSION__", getAppVersion()),
+      });
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
   void command;
   return {
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), pwaServiceWorkerPlugin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(getAppVersion()),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

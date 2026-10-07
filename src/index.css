@@ -128,14 +128,30 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  html {
+    background: var(--background);
+  }
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
   }
   button:not([disabled]),
   [role="button"]:not([disabled]) {
     cursor: pointer;
+  }
+}
+
+@supports (min-height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
   }
 }
