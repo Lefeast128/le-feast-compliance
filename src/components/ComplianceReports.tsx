@@ -362,7 +362,7 @@ export default function ComplianceReports({
                 <span className="block text-lg font-semibold">{reportDate(day.date, timeZone)}</span>
                 <span className="mt-3 flex flex-wrap items-center gap-2">
                   <StatusPill tone={tone}>{status.label}</StatusPill>
-                  {day.correctiveActionRecorded && <span className="text-xs font-semibold text-[#8a6513]">Issue recorded</span>}
+                  {day.correctiveActionRecorded && <span className="text-xs font-semibold text-[#8a6513]">Corrective action recorded</span>}
                 </span>
                 <span className="mt-2 block text-sm text-[#727a74]">{status.detail}</span>
               </span>
@@ -413,7 +413,7 @@ export default function ComplianceReports({
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-white p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#89918b]">Original problem</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#89918b]">Original result</p>
                   <p className="mt-1 text-sm font-semibold">{issue.originalLabel ?? issue.description}</p>
                   {issue.originalReading && <p className="mt-1 text-sm text-[#a13d32]">{issue.originalReading} · Failed</p>}
                 </div>

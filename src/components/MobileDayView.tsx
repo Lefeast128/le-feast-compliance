@@ -73,7 +73,7 @@ export default function MobileDayView({ location, date, archive, onBack }: any) 
   const by = (types: string[]) => chronology.filter((event: any) => types.includes(event.eventType));
   const summary = archive?.summary;
   const counts = summary?.counts ?? {};
-  const summaryLabel = summary?.status === "complete" ? "Complete" : summary?.status === "corrective_action" ? "Corrective action recorded" : summary?.status === "future" ? "Future date" : "Incomplete";
+  const summaryLabel = summary?.complete ? "Complete" : summary?.status === "future" ? "Future date" : "Incomplete";
   const issues = archive?.issues ?? [];
   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
   const issueForReading = (reading: any) => issues.find((issue: any) => issue.id === (reading.relatedIssueId ?? issues.find((item: any) => item.sourceTemperatureReadingId === reading.id)?.id));
@@ -99,7 +99,7 @@ export default function MobileDayView({ location, date, archive, onBack }: any) 
 
         <section className="mt-7 rounded-2xl border border-black/[0.07] bg-white p-5">
           <div className="flex items-center justify-between gap-3">
-            <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#89918b]">Day summary</p><h2 className="mt-1 text-lg font-semibold">{summaryLabel}</h2></div>
+            <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#89918b]">Day summary</p><h2 className="mt-1 text-lg font-semibold">{summaryLabel}</h2>{summary?.correctiveActionRecorded && <p className="mt-2 text-sm font-semibold text-[#8a6513]">Corrective action recorded</p>}</div>
             {summary?.complete ? <CheckCircle2 className="size-5 text-[#2d7951]" /> : <span className="rounded-full bg-[#f6f7f5] px-3 py-1 text-xs font-semibold text-[#727a74]">Evidence recorded</span>}
           </div>
           {summary?.carriedOpenIssueCount ? <p className="mt-3 text-sm text-[#8f3a31]">{summary.carriedOpenIssueCount} open issue{summary.carriedOpenIssueCount === 1 ? "" : "s"} carried into this day.</p> : null}

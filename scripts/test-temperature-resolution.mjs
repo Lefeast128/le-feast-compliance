@@ -63,9 +63,9 @@ check(reportService.includes('row.result === "fail"'), "report exceptions are ba
 check(reportService.includes("daysWithTemperatureFailure"), "failure-day summary remains present");
 check(reportService.includes("relatedIssueId"), "report exposes the linked issue");
 check(reportService.includes("latestRecheck"), "report exposes latest recheck separately");
-check(reportUi.includes("Original result: Failed"), "report UI labels original failure");
+check(reportUi.includes("Original result") && reportUi.includes("Failed"), "report UI labels original failure");
 check(reportUi.includes("View issue"), "report UI links a temperature exception to its issue");
-check(dayUi.includes("resultLabel(event.result)"), "historical chronology uses factual result labels");
+check(dayUi.includes("responseLabel(event.result)"), "historical chronology uses factual result labels");
 check(exportService.includes('exception.result === "fail" ? "Failed"'), "CSV/XLSX preserve Failed result text");
 check(exportService.includes("Corrective Action Status"), "exports keep resolution state separate");
 

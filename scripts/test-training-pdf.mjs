@@ -15,7 +15,7 @@ const checks = [
   [training, ["currentDocumentVersionId", "trainingFormat: \"document\"", "centralTrainingPublications", "documentUrl: requirement.trainingFormat === \"document\"", "removeTrainingDocument", "central_training_document_removed"]],
   [dashboard, ["documentUrl: requirement.trainingFormat === \"document\""]],
   [admin, ["Training type", "Briefing / instruction", "Document / PDF", "aria-pressed", "Current PDF attached", "Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus", "Remove PDF", "removeCentralTrainingDocument", "PDF removed", "The training requirement and historical records will be preserved."]],
-  [trainingView, ["<iframe", "Open PDF", "documentUrl", "whitespace-pre-wrap"]],
+  [trainingView, ["<iframe", "Open PDF", "documentUrl", "whitespace-pre-wrap", "trainingFormatLabel", "Document / PDF", "Briefing", "Acknowledged", "Not acknowledged"]],
   [rest, ["/api/documents/upload", "attachTrainingDocument", "removeTrainingDocument"]],
   [documentRoute, ["documentForAccess", "readPrivateDocument", "Content-Disposition"]],
 ];
@@ -32,5 +32,6 @@ assert.doesNotMatch(admin, /Optional supporting document/);
 assert.doesNotMatch(trainingView, /View supporting PDF/);
 assert.doesNotMatch(service, /pathname.*return|storageId.*return/);
 assert.match(documentRoute, /requireContext/);
+assert.match(trainingView, /requirement\.trainingFormat/);
 
 console.log(`Training PDF attachment tests passed: ${count}/${count}`);

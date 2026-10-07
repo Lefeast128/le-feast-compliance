@@ -18,6 +18,9 @@ const categoryLabels: Record<string, string> = {
   other: "Other",
 };
 
+const trainingFormatLabel = (requirement: { trainingFormat?: string | null }) =>
+  requirement.trainingFormat === "document" ? "Document / PDF" : "Briefing";
+
 type Props = {
   locationName: string;
   requirements: any[];
@@ -249,6 +252,9 @@ export default function TrainingView({
                 >
                   <div>
                     <p className="font-semibold">{requirement.title}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#89918b]">
+                      {trainingFormatLabel(requirement)}
+                    </p>
                     <p className="mt-1 text-sm text-[#727a74]">
                       {members.length
                         ? `${count} of ${members.length} complete · ${members.length - count} outstanding`
@@ -277,6 +283,18 @@ export default function TrainingView({
                   <h2 className="mt-2 text-2xl font-semibold">
                     {selectedRequirement.title}
                   </h2>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    <span className="rounded-full bg-[#fff7dc] px-3 py-1 text-[#80610e]">
+                      {trainingFormatLabel(selectedRequirement)}
+                    </span>
+                    <span className="rounded-full bg-[#f2f5ef] px-3 py-1 text-[#4e5851]">
+                      {applicableMembers(selectedRequirement).length > 0 &&
+                      completedCount(selectedRequirement) ===
+                        applicableMembers(selectedRequirement).length
+                        ? "Acknowledged"
+                        : "Not acknowledged"}
+                    </span>
+                  </div>
                   <p className="mt-1 text-sm text-[#727a74]">
                     {applicableMembers(selectedRequirement).length
                       ? `${completedCount(selectedRequirement)} of ${applicableMembers(selectedRequirement).length} complete`
@@ -327,8 +345,8 @@ export default function TrainingView({
                         <p className="font-semibold">{member.name}</p>
                         <p className="mt-1 text-xs text-[#89918b]">
                           {completion
-                            ? `Completed ${dateLabel(completion.completedAt)}`
-                            : "Outstanding"}
+                            ? `Acknowledged · ${dateLabel(completion.completedAt)}`
+                            : "Not acknowledged"}
                         </p>
                       </div>
                       {completion ? (
@@ -363,6 +381,9 @@ export default function TrainingView({
               <h2 className="mt-2 text-2xl font-semibold">
                 {acknowledgementTarget.requirement.title}
               </h2>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#89918b]">
+                {trainingFormatLabel(acknowledgementTarget.requirement)}
+              </p>
               {(acknowledgementTarget.requirement.trainingInstructions ??
                 acknowledgementTarget.requirement.description) && (
                 <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#727a74]">

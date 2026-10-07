@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = name => readFile(new URL(`../${name}`, import.meta.url), "utf8");
-const [temperatureService, issueService, actionUi, workflow, managerReviews, inspection] = await Promise.all([
+const [temperatureService, issueService, actionUi, workflow, managerReviews, inspection, issueDetail] = await Promise.all([
   read("src/server/compliance/temperature-service.ts"),
   read("src/server/compliance/issue-service.ts"),
   read("src/components/TemperatureActionScreen.tsx"),
   read("src/components/dashboard/useDashboardWorkflows.ts"),
   read("src/components/ManagerReviews.tsx"),
   read("src/components/MobileDayView.tsx"),
+  read("src/components/IssueDetail.tsx"),
 ]);
 let passed = 0;
 const check = (condition, message) => { assert.ok(condition, message); passed += 1; };
@@ -28,8 +29,11 @@ check(workflow.includes("issueActionSubmittingRef"), "repeated action submission
 check(workflow.includes("await completeRound({ roundId"), "round completes after corrective actions");
 check(managerReviews.includes("<IssueDetail"), "manager View issue opens actionable issue detail");
 check(managerReviews.includes("correctiveActions"), "manager review exposes issue action activity");
+check(issueDetail.includes("effectiveUpdateType"), "issue action wording follows the effective update type");
+check(issueDetail.includes('effectiveUpdateType === "resolution" ? "Resolve issue" : "Add update"'), "issue detail uses context-sensitive action labels");
+check(!issueDetail.includes("Save update"), "generic Save update wording is removed");
 check(inspection.includes("All recorded readings, grouped by temperature round"), "inspection groups fridge readings by round");
 check(inspection.includes("Detailed inspection chronology"), "detailed chronology is secondary to the grouped inspection view");
 check(inspection.includes("View issue journey"), "grouped failed reading links to its issue journey");
 
-console.log(`Temperature issue lifecycle tests passed: ${passed}/18`);
+console.log(`Temperature issue lifecycle tests passed: ${passed}/21`);
