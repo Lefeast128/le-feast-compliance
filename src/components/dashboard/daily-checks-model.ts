@@ -224,7 +224,9 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       icon: "cleaning",
       status: input.cleaningDue > 0
         ? getTaskStatus({ complete: input.cleaningCompleted >= input.cleaningDue, attention: issueAttention("cleaning") })
-        : "not-scheduled",
+        : issueAttention("cleaning")
+          ? getTaskStatus({ complete: false, attention: true })
+          : "not-scheduled",
       actionLabel: "Open cleaning jobs",
       required: false,
     },
@@ -236,7 +238,9 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       icon: "additional",
       status: input.additionalDue
         ? getTaskStatus({ complete: input.additionalCompleted >= input.additionalDue, attention: issueAttention("additional-checks") })
-        : "not-scheduled",
+        : issueAttention("additional-checks")
+          ? getTaskStatus({ complete: false, attention: true })
+          : "not-scheduled",
       actionLabel: "Open additional checks",
       required: false,
     },

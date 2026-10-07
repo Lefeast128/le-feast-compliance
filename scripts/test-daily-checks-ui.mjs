@@ -54,6 +54,18 @@ const noCleaningDue = buildDailyTaskModels({ ...base, cleaningDue: 0 }).find((ta
 assert.equal(noCleaningDue?.status, "not-scheduled");
 assert.equal(noCleaningDue?.detail, "Nothing due today");
 assert.equal(dailyTaskStatusLabel(noCleaningDue), "Nothing due today");
+const cleaningIssueWithNothingDue = buildDailyTaskModels({ ...base, cleaningDue: 0, issueAttentionTaskIds: ["cleaning"] }).find((task) => task.id === "cleaning");
+assert.equal(cleaningIssueWithNothingDue?.status, "attention");
+assert.equal(cleaningIssueWithNothingDue?.detail, "Nothing due today");
+assert.equal(dailyTaskStatusLabel(cleaningIssueWithNothingDue), "Requires attention");
+const noAdditionalDue = buildDailyTaskModels({ ...base, additionalDue: 0 }).find((task) => task.id === "additional-checks");
+assert.equal(noAdditionalDue?.status, "not-scheduled");
+assert.equal(noAdditionalDue?.detail, "Nothing due today");
+assert.equal(dailyTaskStatusLabel(noAdditionalDue), "Nothing due today");
+const additionalIssueWithNothingDue = buildDailyTaskModels({ ...base, additionalDue: 0, issueAttentionTaskIds: ["additional-checks"] }).find((task) => task.id === "additional-checks");
+assert.equal(additionalIssueWithNothingDue?.status, "attention");
+assert.equal(additionalIssueWithNothingDue?.detail, "Nothing due today");
+assert.equal(dailyTaskStatusLabel(additionalIssueWithNothingDue), "Requires attention");
 
 assert.deepEqual(
   getIssueAttentionTaskIds({
