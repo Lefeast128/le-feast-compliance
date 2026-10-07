@@ -8,7 +8,7 @@ import { restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildCatalogueUpdatePayload, clearEditorForStoreChange, createCatalogueEditor, filterCatalogueProducts, getCategorySuggestions, resetCatalogueEditor, type CatalogueAdminProduct, type CatalogueAvailabilityFilter, type CatalogueEditorState, type CatalogueReviewFilter } from "@/lib/catalogue-admin";
 
 type LocationOption = { id?: string; _id?: string; name: string };
-type Props = { locationId: string; locations: LocationOption[]; onClose: () => void; onOpenReports?: () => void };
+type Props = { locationId: string; locations: LocationOption[]; onClose: () => void };
 type SyncStatus = { lastSuccessfulSyncAt?: string | null; lastError?: string | null };
 type CatalogueResponse = { products?: CatalogueAdminProduct[]; syncStatus?: SyncStatus | null };
 type CatalogueData = { locationId: string; products: CatalogueAdminProduct[]; syncStatus: SyncStatus | null };
@@ -18,7 +18,7 @@ const safeError = (error: unknown, fallback: string) => error instanceof Error &
 const categoryOf = (product: CatalogueAdminProduct) => product.wastageCategory ?? product.category ?? "";
 const formatSyncTime = (value: unknown) => value ? new Date(String(value)).toLocaleString("en-GB") : "Not yet synced";
 
-export default function WastageCatalogueAdmin({ locationId, locations, onClose, onOpenReports }: Props) {
+export default function WastageCatalogueAdmin({ locationId, locations, onClose }: Props) {
   const [activeLocationId, setActiveLocationId] = useState(locationId);
   const [catalogue, setCatalogue] = useState<CatalogueData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +118,7 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose, 
     <header className="border-b border-black/[0.07] bg-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-8 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3"><Button variant="outline" size="icon" onClick={onClose} aria-label="Back to admin setup"><ArrowLeft className="size-4" /></Button><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Admin setup</p><h1 className="mt-1 text-2xl font-semibold">Wastage catalogue</h1></div></div>
-        <div className="flex items-center gap-3"><label className="flex items-center gap-2 text-sm font-semibold"><span className="sr-only">Selected store</span><select value={activeLocationId} onChange={event => changeStore(event.target.value)} className="h-11 rounded-xl border border-black/[0.1] bg-white px-3"><option value="" disabled>Select store</option>{locations.map(location => <option key={locationIdOf(location)} value={locationIdOf(location)}>{location.name}</option>)}</select></label>{onOpenReports && <Button variant="outline" onClick={onOpenReports}>Compliance reports</Button>}<Button variant="outline" onClick={onClose}>Back to setup</Button></div>
+        <div className="flex items-center gap-3"><label className="flex items-center gap-2 text-sm font-semibold"><span className="sr-only">Selected store</span><select value={activeLocationId} onChange={event => changeStore(event.target.value)} className="h-11 rounded-xl border border-black/[0.1] bg-white px-3"><option value="" disabled>Select store</option>{locations.map(location => <option key={locationIdOf(location)} value={locationIdOf(location)}>{location.name}</option>)}</select></label><Button variant="outline" onClick={onClose}>Back to setup</Button></div>
       </div>
     </header>
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">

@@ -139,7 +139,6 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
           locationId={selectedLocationId}
           locations={locations}
           onClose={() => setFeature(null)}
-          onOpenReports={() => setFeature("reports")}
         />
       );
     }

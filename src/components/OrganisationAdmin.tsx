@@ -177,6 +177,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
     restApi.admin.organisation.retireOperationalTask,
   );
   const attachDocument = useRestMutation(restApi.admin.attachTrainingDocument);
+  const removeTrainingDocument = useRestMutation(
+    restApi.admin.removeTrainingDocument,
+  );
   const [trainingEdit, setTrainingEdit] = useState<string | null>(null);
   const [trainingTitle, setTrainingTitle] = useState("");
   const [trainingDescription, setTrainingDescription] = useState("");
@@ -436,6 +439,32 @@ export default function OrganisationAdmin({ onBack }: Props) {
         error instanceof Error
           ? error.message
           : "Unable to update training document",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCentralTrainingDocument(item: TrainingItem) {
+    const requirementId = item.requirementIds[0];
+    if (!requirementId) return;
+    if (
+      !window.confirm(
+        "Remove the current PDF from this training requirement?\n\nThe training requirement and historical records will be preserved.",
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      await removeTrainingDocument({ requirementId });
+      if (trainingEdit === item.id) {
+        setTrainingFormat("briefing");
+        setTrainingFile(null);
+      }
+      toast.success("PDF removed");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to remove PDF",
       );
     } finally {
       setSaving(false);
@@ -891,6 +920,19 @@ export default function OrganisationAdmin({ onBack }: Props) {
                         />
                       </label>
                     )}
+                    {item.trainingFormat === "document" &&
+                      item.attachmentStatus?.some(
+                        (status) => status.status === "attached",
+                      ) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={saving}
+                          onClick={() => void removeCentralTrainingDocument(item)}
+                        >
+                          Remove PDF
+                        </Button>
+                      )}
                     <Button
                       variant="ghost"
                       size="icon"

@@ -12,11 +12,11 @@ const documentRoute = await read("api/documents/[id].ts");
 
 const checks = [
   [service, ["A PDF is required for document training", "documentSelected", "attachmentStatus", "attached", "missing", "safeTrainingRequirements"]],
-  [training, ["currentDocumentVersionId", "trainingFormat: \"document\"", "centralTrainingPublications", "documentUrl: requirement.trainingFormat === \"document\""]],
+  [training, ["currentDocumentVersionId", "trainingFormat: \"document\"", "centralTrainingPublications", "documentUrl: requirement.trainingFormat === \"document\"", "removeTrainingDocument", "central_training_document_removed"]],
   [dashboard, ["documentUrl: requirement.trainingFormat === \"document\""]],
-  [admin, ["Training type", "Briefing / instruction", "Document / PDF", "aria-pressed", "Current PDF attached", "Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus"]],
+  [admin, ["Training type", "Briefing / instruction", "Document / PDF", "aria-pressed", "Current PDF attached", "Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus", "Remove PDF", "removeCentralTrainingDocument", "PDF removed", "The training requirement and historical records will be preserved."]],
   [trainingView, ["<iframe", "Open PDF", "documentUrl", "whitespace-pre-wrap"]],
-  [rest, ["/api/documents/upload", "attachTrainingDocument"]],
+  [rest, ["/api/documents/upload", "attachTrainingDocument", "removeTrainingDocument"]],
   [documentRoute, ["documentForAccess", "readPrivateDocument", "Content-Disposition"]],
 ];
 

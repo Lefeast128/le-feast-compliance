@@ -206,15 +206,38 @@ export async function removeTrainingDocument(context: AuthContext, requirementId
   if (!requirement) throw new ApiError(404, "Training requirement not found");
   await locationFor(context, requirement.locationId, true);
   if (requirement.centralPublicationId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard training is controlled centrally");
-  const [updated] = await getDb().update(trainingRequirements).set({ documentStorageId: null, documentName: null, currentDocumentVersionId: null, requiredDocumentVersionId: null, trainingFormat: "briefing" }).where(eq(trainingRequirements.id, requirement.id)).returning();
-  return {
-    id: updated.id,
-    locationId: updated.locationId,
-    title: updated.title,
-    trainingFormat: updated.trainingFormat,
-    currentDocumentVersionId: updated.currentDocumentVersionId,
-    requiredDocumentVersionId: updated.requiredDocumentVersionId,
-  };
+  return getDb().transaction(async tx => {
+    const requirements = requirement.centralPublicationId
+      ? await tx.select().from(trainingRequirements).where(and(eq(trainingRequirements.centralPublicationId, requirement.centralPublicationId), eq(trainingRequirements.active, true)))
+      : [requirement];
+    const requirementIds = requirements.map(item => item.id);
+    const [updated] = await tx.update(trainingRequirements)
+      .set({ documentStorageId: null, documentName: null, currentDocumentVersionId: null, requiredDocumentVersionId: null, trainingFormat: "briefing" })
+      .where(inArray(trainingRequirements.id, requirementIds))
+      .returning();
+    if (requirement.centralPublicationId) {
+      await tx.update(centralTrainingPublications)
+        .set({ trainingFormat: "briefing", updatedAt: new Date() })
+        .where(eq(centralTrainingPublications.id, requirement.centralPublicationId));
+      await tx.insert(auditEvents).values({
+        locationId: null,
+        userId: context.user.id,
+        type: "central_training_document_removed",
+        detail: JSON.stringify({ publicationId: requirement.centralPublicationId, locationIds: requirements.map(item => item.locationId) }),
+        createdAt: new Date(),
+      });
+    }
+    const result = requirements.find(item => item.id === requirement.id) ? await tx.select().from(trainingRequirements).where(eq(trainingRequirements.id, requirement.id)).limit(1) : [];
+    const current = result[0] ?? updated;
+    return {
+      id: current.id,
+      locationId: current.locationId,
+      title: current.title,
+      trainingFormat: current.trainingFormat,
+      currentDocumentVersionId: current.currentDocumentVersionId,
+      requiredDocumentVersionId: current.requiredDocumentVersionId,
+    };
+  });
 }
 
 export async function completeTraining(context: AuthContext, input: Record<string, unknown>) {
