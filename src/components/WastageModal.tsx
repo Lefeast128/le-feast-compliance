@@ -3,6 +3,7 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ALL_WASTAGE_CATEGORY, buildWastagePayload, emptyWastagePickerDraft, filterWastageProducts, getWastagePickerCategories, isPositiveQuantity, setWastagePickerMode, wastagePickerCategory, type WastagePickerDraft, type WastagePickerMode, type WastagePickerProduct } from "@/lib/wastage-picker";
+import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
 
 type TeamMember = { _id?: string; id?: string; name: string };
 type Props = {
@@ -68,7 +69,7 @@ export default function WastageModal({ products, teamMembers, loading, error, on
       {draft.mode === "adhoc" && <div className="mt-5"><label className="block text-sm font-semibold">Item name<Input autoFocus value={draft.adHocItemName} onChange={event => update("adHocItemName", event.target.value)} className="mt-2 h-12" placeholder="Enter item name" maxLength={200} /></label><p className="mt-2 text-xs text-[#89918b]">Use this only when the item is not available in the TouchOffice catalogue.</p></div>}
       {draft.mode !== "no_waste" && <label className="mt-4 block text-sm font-semibold">Quantity<Input type="number" min="0.01" step="any" inputMode="decimal" value={draft.quantity} onChange={event => update("quantity", event.target.value)} className="mt-2 h-12" placeholder="e.g. 3" /></label>}
       <label className="mt-4 block text-sm font-semibold">Notes (optional)<textarea value={draft.notes} onChange={event => update("notes", event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3" placeholder="Reason or context" /></label>
-      <label className="mt-5 block text-sm font-semibold">Recorded by<select value={draft.teamMemberId} onChange={event => update("teamMemberId", event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="">Select team member</option>{teamMembers.map(member => <option key={memberId(member)} value={memberId(member)}>{member.name}</option>)}</select></label>
+      <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers.map(member => ({ _id: memberId(member), name: member.name }))} value={draft.teamMemberId} onChange={value => update("teamMemberId", value)} label="Recording wastage as" /></div>
       {saveError && <p className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{saveError}</p>}
       <Button disabled={!canSave || saving} className="mt-7 h-14 w-full bg-[#f4c542] font-semibold text-[#171717]" onClick={submit}>{saving ? "Saving…" : draft.mode === "no_waste" ? "Save no waste" : "Save wastage record"}</Button>
     </div>

@@ -13,6 +13,7 @@ import CalendarView from "@/components/dashboard/CalendarView";
 import DashboardToday, { type DashboardTodayProps } from "@/components/dashboard/DashboardToday";
 import { BottomNavigation } from "@/components/dashboard/DashboardPrimitives";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
+import OperationalRecordsView from "@/components/dashboard/OperationalRecordsView";
 import { useDashboardWorkflows } from "@/components/dashboard/useDashboardWorkflows";
 import type { CalendarDay, DashboardData, DashboardLocation, DashboardView, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
 import { useAuth } from "@/hooks/use-auth";
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [locationId, setLocationId] = useState<string | null>(null);
   const [view, setView] = useState<DashboardView>("today");
   const [structuredTaskArea, setStructuredTaskArea] = useState<"opening" | "closing" | "cleaning" | "security_am" | "security_pm" | null>(null);
+  const [recordView, setRecordView] = useState<{ kind: "temperature" | "checklist" | "security" | "cleaning" | "probes" | "wastage"; session?: "AM" | "PM"; checklist?: "opening" | "closing" } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const bounds = monthBounds(calendarMonth);
@@ -51,6 +53,7 @@ export default function Dashboard() {
     setView("today");
     workflows.resetForLocation();
     setStructuredTaskArea(null);
+    setRecordView(null);
   }
 
   function openManagementView() {
@@ -63,14 +66,29 @@ export default function Dashboard() {
     setView("managerReviews");
   }
 
-  function viewTodayRecords() {
-    setSelectedDay(formatDateKey(new Date()));
-    setView("day");
-  }
+  const viewTemperatureRecords = (session: "AM" | "PM") => setRecordView({ kind: "temperature", session });
+  const viewChecklistRecords = (checklist: "opening" | "closing") => setRecordView({ kind: "checklist", checklist });
+  const viewSecurityRecords = (session: "AM" | "PM") => setRecordView({ kind: "security", session });
+  const viewCleaningRecords = () => setRecordView({ kind: "cleaning" });
+  const viewProbeRecords = () => setRecordView({ kind: "probes" });
+  const viewWastageRecords = () => setRecordView({ kind: "wastage" });
+  const addProbeFromRecords = () => {
+    setRecordView(null);
+    workflows.setProbeProduct(workflows.active?.probeProducts[0]?.name ?? "");
+    workflows.setProbeFailed(false);
+    workflows.setProbeIssueId(null);
+    workflows.setProbeQuantity("");
+    workflows.setProbeOpen(true);
+  };
+  const addWastageFromRecords = () => {
+    setRecordView(null);
+    workflows.openWastage();
+  };
 
   if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
   if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
 
+  if (recordView) return <OperationalRecordsView {...recordView} dashboard={dashboard} onBack={() => setRecordView(null)} onAdd={recordView.kind === "probes" ? addProbeFromRecords : recordView.kind === "wastage" ? addWastageFromRecords : undefined} />;
   if (workflows.round && workflows.roundIssues.length) return <TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} onSaveActions={workflows.saveTemperatureActions} onBack={() => { workflows.resetForLocation(); }} />;
   if (workflows.round) return <TemperatureRoundEntry session={workflows.round} equipment={workflows.roundEquipment} teamMembers={dashboard.teamMembers} temperatures={workflows.temperatures} setTemperatures={workflows.setTemperatures} submitting={workflows.roundSubmitting} onComplete={workflows.completeTemperatureRound} onBack={() => workflows.resetForLocation()} />;
   if (structuredTaskArea) return <StructuredTaskWorkflow key={`${dashboard.location._id}:${structuredTaskArea}`} locationId={dashboard.location._id} locationName={dashboard.location.name} area={structuredTaskArea} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === structuredTaskArea)} responses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} onBack={() => setStructuredTaskArea(null)} />;
@@ -94,7 +112,12 @@ export default function Dashboard() {
     todayLabel: dateLabel(),
     currentUserName: user?.name || user?.email || "Current user",
     renderTimestamp,
-    viewTodayRecords,
+    viewTemperatureRecords,
+    viewChecklistRecords,
+    viewSecurityRecords,
+    viewCleaningRecords,
+    viewProbeRecords,
+    viewWastageRecords,
     setView,
     additional,
     structuredTasks: workflows.active?.structuredTasks ?? [],

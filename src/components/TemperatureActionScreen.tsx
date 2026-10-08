@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Check, TriangleAlert } from "lucide-react";
+import { StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 
 type IssueProgress = {
   action: string;
@@ -38,7 +39,7 @@ export default function TemperatureActionScreen({ session, issues, teamMembers, 
             <p className="mt-6 font-semibold">Corrective action</p>
             <select disabled={progress.actionsSaved} value={progress.action} onChange={(event) => update({ action: event.target.value })} className="mt-3 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="">Select corrective action</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>
             <label className="mt-4 block text-sm font-semibold">Reason / notes<textarea disabled={progress.actionsSaved} value={progress.note} onChange={(event) => update({ note: event.target.value })} className="mt-2 min-h-24 w-full rounded-xl border border-black/[0.1] bg-white p-3" placeholder="Add context if useful" /></label>
-            <label className="mt-4 block text-sm font-semibold">Recorded by<select disabled={progress.actionsSaved} value={progress.actionMemberId} onChange={(event) => update({ actionMemberId: event.target.value })} className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="">Select team member</option>{teamMembers.map((item: any) => <option key={item._id} value={item._id}>{item.name}</option>)}</select></label>
+            <div className="mt-4"><StaffAttributionLine value={progress.actionMemberId} teamMembers={teamMembers} onChange={(value) => update({ actionMemberId: value })} label={`Change person for ${issue.name}`} /></div>
             {!progress.actionsSaved ? <Button aria-label="Mark complete" disabled={!progress.action || !progress.actionMemberId || (progress.action === "Other" && !progress.note.trim())} className="mt-6 h-14 w-full bg-[#2d7951] text-white" onClick={() => onSaveActions(issue.issueId, progress.action, progress.note, progress.actionMemberId)}><Check className="mr-2 size-5" /> Mark complete</Button> : <div className="mt-6 flex items-center gap-3 rounded-2xl border border-[#b9dfc5] bg-[#f3fbf5] p-5 text-[#2d7951]"><Check className="size-5" /><div><p className="font-semibold">Issue reported</p><p className="text-sm">Corrective action recorded. Further rechecks and resolution are managed in Issues &amp; Reviews.</p></div></div>}
             {!progress.actionsSaved && <p className="mt-3 flex items-center gap-2 text-xs text-[#727a74]"><TriangleAlert className="size-4" /> The temperature reading remains failed until the issue is resolved.</p>}
           </div>;

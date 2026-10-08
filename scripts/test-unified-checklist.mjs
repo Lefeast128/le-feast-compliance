@@ -36,7 +36,7 @@ assert.equal(isItemComplete({ ...stepsVersion, steps: [{ id: "one", label: "Seal
 assert.equal(isItemComplete({ ...stepsVersion, steps: [...stepsVersion.steps, { id: "two", label: "Date", responseType: "short_text", required: true }] }, [], oldStepsResponse), false, "new required steps remain outstanding");
 assert.deepEqual(buildBulkCompletionPlan([task("one", "task"), task("two", "task")], ["one", "two"], "", { two: "sarah" }), [{ taskId: "one", teamMemberId: "" }, { taskId: "two", teamMemberId: "sarah" }], "bulk plan exposes missing attribution for confirmation validation");
 
-const [component, workflow, dashboard, schema, migration, structuredService, checklistService, cleaningService, securityService] = await Promise.all([
+const [component, workflow, dashboard, schema, migration, structuredService, checklistService, cleaningService, securityService, attribution] = await Promise.all([
   readFile("src/components/InlineChecklist.tsx", "utf8"),
   readFile("src/components/StructuredTaskWorkflow.tsx", "utf8"),
   readFile("src/pages/Dashboard.tsx", "utf8"),
@@ -46,17 +46,18 @@ const [component, workflow, dashboard, schema, migration, structuredService, che
   readFile("src/server/compliance/checklist-service.ts", "utf8"),
   readFile("src/server/compliance/cleaning-service.ts", "utf8"),
   readFile("src/server/compliance/security-service.ts", "utf8"),
+  readFile("src/components/dashboard/StaffAttribution.tsx", "utf8"),
 ]);
 assert.match(component, /Select all simple tasks/);
 assert.match(component, /aria-expanded=\{expanded\}/, "checklist rows progressively disclose their controls");
 assert.match(component, /aria-controls=\{taskPanelId\}/, "expanded checklist rows expose an accessible panel relationship");
 assert.match(component, /fixed inset-x-0 bottom-0/, "bulk review uses a safe-area-aware bottom action area");
 assert.match(component, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]/, "checklist content reserves space for action UI and safe areas");
-assert.match(component, /Default for new answers and tasks/, "default staff attribution is explained once at the top");
-assert.match(component, /MemberSelect label="Change person"/, "expanded items expose a discreet staff override");
-assert.match(component, /Signed by:/, "expanded answers show their signing attribution inline");
-assert.match(component, /pickerOpen &&/, "staff picker is disclosed only after Change is selected");
-assert.match(component, /checklist-attribution/, "attribution line is styled as a compact post-answer control");
+assert.match(component, /<ActiveStaffControl/, "default staff attribution is explained once at the top");
+assert.match(component, /MemberSelect = StaffAttributionLine/, "expanded items use the shared staff override");
+assert.match(attribution, /Signed by:/, "expanded answers show their signing attribution inline");
+assert.match(attribution, /pickerOpen &&/, "staff picker is disclosed only after Change is selected");
+assert.match(attribution, /role="radiogroup"/, "active staff is exposed as a compact switcher");
 assert.match(component, /Recorded step responses/, "completed detailed tasks retain an expandable evidence view");
 assert.match(component, /animate-in fade-in-0 slide-in-from-top-1/, "expanded panels use a restrained progressive disclosure animation");
 assert.match(component, /transition-transform duration-200 motion-reduce:transition-none/, "row expansion respects reduced motion");

@@ -23,11 +23,11 @@ import {
   Circle,
   ClipboardList,
   Loader2,
-  UserRound,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
+import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 
 type ChecklistTask = UnifiedItem & {
   title: string;
@@ -48,6 +48,8 @@ type Props = {
 };
 type IssueDraft = { problem: string; action: string };
 type MemberMap = Record<string, string>;
+
+const MemberSelect = StaffAttributionLine;
 
 const timeLabel = (value?: number | string) =>
   value === undefined
@@ -71,59 +73,6 @@ const stepLabel = (step: StructuredStep) =>
       : step.responseType === "short_text"
         ? "Short text"
         : "Confirm";
-
-function MemberSelect({
-  label,
-  value,
-  teamMembers,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  teamMembers: TeamMember[];
-  onChange: (value: string) => void;
-}) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const memberName = teamMembers.find((member) => member._id === value)?.name ?? "Not selected";
-
-  return (
-    <div className="checklist-attribution mt-3 rounded-xl border border-black/[0.06] bg-[#f6f7f5] px-3 py-2">
-      <div className="flex items-center justify-between gap-3 text-xs text-[#59625c]">
-        <span className="min-w-0 truncate">
-          Signed by: <strong className={value ? "font-semibold text-[#303631]" : "font-semibold text-[#8f3a31]"}>{memberName}</strong>
-        </span>
-        <button
-          type="button"
-          onClick={() => setPickerOpen((current) => !current)}
-          aria-expanded={pickerOpen}
-          aria-label={label}
-          className="shrink-0 rounded-lg px-2 py-1 font-semibold text-[#796513] transition hover:bg-[#fff7c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffde56]"
-        >
-          Change
-        </button>
-      </div>
-      {pickerOpen && (
-        <select
-          autoFocus
-          value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setPickerOpen(false);
-          }}
-          className="mt-2 h-10 w-full rounded-lg border border-black/[0.1] bg-white px-3 text-sm font-medium text-[#171918] outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40"
-          aria-label="Change person"
-        >
-          <option value="">Select team member</option>
-          {teamMembers.map((member) => (
-            <option key={member._id} value={member._id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-}
 
 export default function InlineChecklist({
   locationId,
@@ -545,19 +494,7 @@ export default function InlineChecklist({
       </header>
 
       <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
-        <section className="rounded-2xl border border-black/[0.07] bg-white p-4 shadow-[0_4px_16px_rgba(23,25,24,0.04)] sm:p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#fff7c9] text-[#796513]"><UserRound className="size-5" /></div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#89918b]">Completing as</p>
-              <p className="mt-0.5 text-sm text-[#59625c]">Default for new answers and tasks.</p>
-            </div>
-            <select value={workflowMemberId} onChange={(event) => setWorkflowMemberId(event.target.value)} className="h-11 max-w-[10.5rem] rounded-xl border border-black/[0.1] bg-white px-3 text-sm font-semibold outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40" aria-label="Default team member">
-              <option value="">Select person</option>
-              {teamMembers.map((member) => <option key={member._id} value={member._id}>{member.name}</option>)}
-            </select>
-          </div>
-        </section>
+        <ActiveStaffControl teamMembers={teamMembers} value={workflowMemberId} onChange={setWorkflowMemberId} />
 
         {eligibleSimpleTasks.length > 0 && <div className="flex items-center justify-between gap-3 px-1">
           <p className="text-xs text-[#727a74]">{selectedSimple.length > 0 ? `${selectedSimple.length} simple task${selectedSimple.length === 1 ? "" : "s"} selected` : "Simple tasks can be selected together."}</p>
@@ -584,6 +521,10 @@ export default function InlineChecklist({
                   <span className={`mt-0.5 block text-xs font-medium ${issue ? "text-[#b64738]" : complete ? "text-[#2d7951]" : "text-[#727a74]"}`}>{status}{task.taskType === "with_steps" && !issue && !complete ? " to go" : ""}</span>
                 </button>
                 {isSimpleCompletionTask(task) && !complete && <Button type="button" size="icon" aria-label={`Mark ${task.title} complete`} disabled={!memberFor(task._id) || saving === task._id} onClick={() => void saveSimpleTask(task)} className="size-10 shrink-0 rounded-xl bg-[#2d7951] text-white shadow-sm hover:bg-[#246442]">{saving === task._id ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-5" />}</Button>}
+                {task.taskType !== "with_steps" && task.completionMode === "question" && !complete && <div className="grid shrink-0 grid-cols-2 gap-1.5">
+                  <Button type="button" disabled={!memberFor(task._id) || saving === task._id} className="h-10 rounded-xl bg-[#2d7951] px-3 text-xs text-white hover:bg-[#246442]" onClick={() => void saveQuestion(task, "yes")}>Yes</Button>
+                  <Button type="button" variant="outline" disabled={!memberFor(task._id)} className="h-10 rounded-xl border-[#c9a94d] px-3 text-xs text-[#7b651a]" onClick={() => { setExpandedTaskId(task._id); setIssueOpen(task._id); }}>Report issue</Button>
+                </div>}
                 <ChevronDown className={`size-4 shrink-0 text-[#89918b] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
               </div>
 

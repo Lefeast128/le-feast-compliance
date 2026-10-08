@@ -12,6 +12,7 @@ import type {
 } from "@/components/dashboard/dashboard-types";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronRight } from "lucide-react";
+import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
 
 type Answer = "yes" | "no" | "na" | null;
 
@@ -102,21 +103,7 @@ export function ProbeModal({
           </p>
         </div>
       )}
-      <label className="mt-5 block text-sm font-semibold">
-        Completed by
-        <select
-          value={teamMemberId}
-          onChange={(event) => setTeamMemberId(event.target.value)}
-          className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-        >
-          <option value="">Select team member</option>
-          {teamMembers.map((member) => (
-            <option key={member._id} value={member._id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing probe as" /></div>
       <Button
         aria-label="Mark complete"
         disabled={!product || !quantity.trim() || !temperature || !teamMemberId}
@@ -288,21 +275,7 @@ export function SecurityScreen({
         <h1 className="mt-5 text-3xl font-semibold leading-tight">
           {question}
         </h1>
-        <label className="mt-8 block text-sm font-semibold">
-          Completed by
-          <select
-            value={teamMemberId}
-            onChange={(event) => setTeamMemberId(event.target.value)}
-            className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-          >
-            <option value="">Select team member</option>
-            {teamMembers.map((member) => (
-              <option key={member._id} value={member._id}>
-                {member.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="mt-8"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing security check as" /></div>
         {last && (
           <>
             <p className="mt-10 font-semibold">

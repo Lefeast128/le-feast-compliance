@@ -10,6 +10,8 @@ import {
 } from "../src/components/dashboard/daily-checks-model.ts";
 
 const journeySource = await readFile(new URL("../src/components/dashboard/DailyChecksJourney.tsx", import.meta.url), "utf8");
+const dashboardTodaySource = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
+const dashboardSource = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
 
 const base = {
   equipmentCount: 4,
@@ -84,6 +86,14 @@ assert.equal(dailyTaskStatusLabel(additionalIssueWithNothingDue), "Requires atte
 const additionalSection = journeySource.slice(journeySource.indexOf('aria-labelledby="additional-checks-heading"'), journeySource.indexOf('aria-labelledby="issues-heading"'));
 assert.match(additionalSection, /<ul[^>]*>[\s\S]*<DailyTaskCard[\s\S]*<\/ul>/, "additional checks card has a valid list container");
 assert.doesNotMatch(additionalSection, /<\/div>\s*<DailyTaskCard/, "additional checks card is not a direct section child");
+assert.doesNotMatch(dashboardTodaySource, /viewTodayRecords/, "completed cards do not route through the general daily report");
+for (const callback of ["viewTemperatureRecords", "viewChecklistRecords", "viewSecurityRecords", "viewCleaningRecords", "viewProbeRecords", "viewWastageRecords"]) {
+  assert.match(dashboardTodaySource, new RegExp(callback), `${callback} is available for card-specific navigation`);
+}
+for (const destination of ["temperature", "checklist", "security", "cleaning", "probes", "wastage"]) {
+  assert.match(dashboardSource, new RegExp(`kind: \\\"${destination}\\\"`), `${destination} records have a dedicated view`);
+}
+assert.match(dashboardSource, /OperationalRecordsView/, "completed checks render their own record view");
 
 assert.deepEqual(
   getIssueAttentionTaskIds({

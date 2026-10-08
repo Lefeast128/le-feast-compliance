@@ -50,7 +50,12 @@ export type DashboardTodayProps = {
   pmSecurityComplete: boolean;
   openIssues: DashboardIssue[];
   beginRound: (session: "AM" | "PM") => void | Promise<void>;
-  viewTodayRecords: () => void;
+  viewTemperatureRecords: (session: "AM" | "PM") => void;
+  viewChecklistRecords: (checklist: "opening" | "closing") => void;
+  viewSecurityRecords: (session: "AM" | "PM") => void;
+  viewCleaningRecords: () => void;
+  viewProbeRecords: () => void;
+  viewWastageRecords: () => void;
   setView: Dispatch<SetStateAction<DashboardView>>;
   additional?: { requirements: unknown[]; completions: unknown[] };
   setCleaningList: Dispatch<SetStateAction<boolean>>;
@@ -110,7 +115,12 @@ export default function DashboardToday({
   pmSecurityComplete,
   openIssues,
   beginRound,
-  viewTodayRecords,
+  viewTemperatureRecords,
+  viewChecklistRecords,
+  viewSecurityRecords,
+  viewCleaningRecords,
+  viewProbeRecords,
+  viewWastageRecords,
   setView,
   additional,
   setCleaningList,
@@ -178,47 +188,52 @@ export default function DashboardToday({
   const taskAction = (task: DailyTaskModel) => {
     switch (task.id) {
       case "am-temperature":
-        if (amComplete) viewTodayRecords();
+        if (amComplete) viewTemperatureRecords("AM");
         else void beginRound("AM");
         break;
       case "pm-temperature":
-        if (pmComplete) viewTodayRecords();
+        if (pmComplete) viewTemperatureRecords("PM");
         else void beginRound("PM");
         break;
       case "opening-checklist":
-        if (openingComplete) viewTodayRecords();
+        if (openingComplete) viewChecklistRecords("opening");
         else setChecklistList("opening");
         break;
       case "closing-checklist":
-        if (closingComplete) viewTodayRecords();
+        if (closingComplete) viewChecklistRecords("closing");
         else setChecklistList("closing");
         break;
       case "am-security":
-        if (structuredTasks.some(task => task.area === "security_am" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_am");
-        else if (amSecurityComplete) viewTodayRecords();
+        if (!amSecurityComplete && structuredTasks.some(task => task.area === "security_am" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_am");
+        else if (amSecurityComplete) viewSecurityRecords("AM");
         else beginSecurity("AM");
         break;
       case "pm-security":
-        if (structuredTasks.some(task => task.area === "security_pm" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_pm");
-        else if (pmSecurityComplete) viewTodayRecords();
+        if (!pmSecurityComplete && structuredTasks.some(task => task.area === "security_pm" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_pm");
+        else if (pmSecurityComplete) viewSecurityRecords("PM");
         else beginSecurity("PM");
         break;
       case "food-probes":
-        setProbeProduct(active.probeProducts[0]?.name ?? "");
-        setProbeFailed(false);
-        setProbeIssueId(null);
-        setProbeQuantity("");
-        setProbeOpen(true);
+        if (active.foodChecks.length) viewProbeRecords();
+        else {
+          setProbeProduct(active.probeProducts[0]?.name ?? "");
+          setProbeFailed(false);
+          setProbeIssueId(null);
+          setProbeQuantity("");
+          setProbeOpen(true);
+        }
         break;
       case "cleaning":
-        if (structuredTasks.some(task => task.area === "cleaning" && (task.taskType === "with_steps" || task.completionMode === "question"))) onOpenStructuredTask("cleaning");
+        if (cleaningCompleted > 0 && cleaningCompleted >= (cleaningTasks.length || active.cleaningTasks.length)) viewCleaningRecords();
+        else if (structuredTasks.some(task => task.area === "cleaning" && (task.taskType === "with_steps" || task.completionMode === "question"))) onOpenStructuredTask("cleaning");
         else setCleaningList(true);
         break;
       case "additional-checks":
         setView("additional");
         break;
       case "wastage":
-        openWastage();
+        if (active.wastageRecords.length) viewWastageRecords();
+        else openWastage();
         break;
       default:
         break;

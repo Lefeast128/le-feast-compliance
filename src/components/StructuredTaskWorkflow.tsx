@@ -9,6 +9,7 @@ import type {
 import { AlertTriangle, Check, ChevronLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
+import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 
 type Props = {
   locationId: string;
@@ -47,6 +48,7 @@ export default function StructuredTaskWorkflow({
   const [issues, setIssues] = useState<Record<string, IssueDraft>>({});
   const [issueOpen, setIssueOpen] = useState<string | null>(null);
   const [signOffMember, setSignOffMember] = useState("");
+  const [activeMemberId, setActiveMemberId] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [localResponses, setLocalResponses] = useState<
     Record<string, StructuredTaskResponse>
@@ -95,7 +97,7 @@ export default function StructuredTaskWorkflow({
     value = values[`${task._id}:${step.id}`],
   ) {
     const key = `${task._id}:${step.id}`;
-    const memberId = members[key];
+    const memberId = members[key] || activeMemberId;
     if (!memberId || !value || saving) return;
     setSaving(key);
     try {
@@ -139,7 +141,7 @@ export default function StructuredTaskWorkflow({
     step: StructuredStep,
   ) {
     const key = `${task._id}:${step.id}`;
-    const memberId = members[key];
+    const memberId = members[key] || activeMemberId;
     const issue = issues[key];
     if (!memberId || !issue?.problem.trim() || saving) return;
     setSaving(`issue:${key}`);
@@ -194,6 +196,7 @@ export default function StructuredTaskWorkflow({
             Each step can be completed by the team member who carried it out.
           </p>
         </div>
+        <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
         {areaTasks.map((task) => {
           const steps = stepsFor(task);
           const requiredSteps = steps.filter((step) => step.required !== false);
@@ -264,29 +267,18 @@ export default function StructuredTaskWorkflow({
                       {!response && (
                         <div className="mt-4 space-y-3">
                           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.7fr)]">
-                            <select
-                              aria-label={`Completed by for ${step.label}`}
-                              value={members[key] ?? ""}
-                              onChange={(event) =>
-                                setMembers((current) => ({
-                                  ...current,
-                                  [key]: event.target.value,
-                                }))
-                              }
-                              className="h-12 min-w-0 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm sm:col-span-2"
-                            >
-                              <option value="">Completed by…</option>
-                              {teamMembers.map((member) => (
-                                <option key={member._id} value={member._id}>
-                                  {member.name}
-                                </option>
-                              ))}
-                            </select>
+                            <StaffAttributionLine
+                              value={members[key] || activeMemberId}
+                              teamMembers={teamMembers}
+                              onChange={(value) => setMembers((current) => ({ ...current, [key]: value }))}
+                              label={`Change person for ${step.label}`}
+                              className="sm:col-span-2"
+                            />
                             {step.responseType === "yes_no" ? (
                               <div className="grid grid-cols-2 gap-2 sm:col-span-2">
                                 <Button
                                   type="button"
-                                  disabled={!members[key] || saving === key}
+                                  disabled={!(members[key] || activeMemberId) || saving === key}
                                   className="h-12 bg-[#2d7951] text-white"
                                   onClick={() =>
                                     void saveStep(task, step, "yes")
@@ -297,7 +289,7 @@ export default function StructuredTaskWorkflow({
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  disabled={!members[key] || saving === key}
+                                  disabled={!(members[key] || activeMemberId) || saving === key}
                                   className="h-12 border-[#b64738] text-[#8f3a31]"
                                   onClick={() => {
                                     setValues((current) => ({
@@ -341,20 +333,14 @@ export default function StructuredTaskWorkflow({
                                     type="button"
                                     aria-label="Mark complete"
                                     disabled={
-                                      !members[key] ||
+                                      !(members[key] || activeMemberId) ||
                                       (step.responseType !== "confirm" &&
                                         !selectedValue) ||
                                       saving === key
                                     }
                                     className="h-12 bg-[#2d7951] text-white hover:bg-[#246442]"
                                     onClick={() =>
-                                      void saveStep(
-                                        task,
-                                        step,
-                                        step.responseType === "confirm"
-                                          ? "confirmed"
-                                          : selectedValue,
-                                      )
+                                      void saveStep(task, step, step.responseType === "confirm" ? "confirmed" : selectedValue)
                                     }
                                   >
                                     <Check className="size-6" />
@@ -363,7 +349,7 @@ export default function StructuredTaskWorkflow({
                                     type="button"
                                     variant="outline"
                                     disabled={
-                                      !members[key] || saving === `issue:${key}`
+                                    !(members[key] || activeMemberId) || saving === `issue:${key}`
                                     }
                                     className="h-12 border-[#c9a94d] text-[#7b651a]"
                                     onClick={() => setIssueOpen(key)}
@@ -425,7 +411,7 @@ export default function StructuredTaskWorkflow({
                                     (step.responseType === "yes_no" &&
                                       !issue.action.trim()) ||
                                     saving?.startsWith("issue:") ||
-                                    !members[key]
+                                    !(members[key] || activeMemberId)
                                   }
                                   className="bg-[#202522] text-white"
                                   onClick={() =>

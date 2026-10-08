@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Check, ChevronLeft } from "lucide-react";
 import { useState } from "react";
+import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 
 type CleaningTask = { _id: string; name: string; frequency?: string };
 type CleaningCompletion = {
@@ -37,11 +38,12 @@ export default function InlineCleaning({
   onBack,
 }: Props) {
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const [activeMemberId, setActiveMemberId] = useState("");
   const [issueTask, setIssueTask] = useState<string | null>(null);
   const [issueText, setIssueText] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   async function complete(task: CleaningTask) {
-    const memberId = selected[task._id];
+    const memberId = selected[task._id] || activeMemberId;
     if (!memberId || saving) return;
     setSaving(task._id);
     try {
@@ -51,7 +53,7 @@ export default function InlineCleaning({
     }
   }
   async function report(task: CleaningTask) {
-    const memberId = selected[task._id];
+    const memberId = selected[task._id] || activeMemberId;
     if (!memberId || !issueText.trim() || !onIssue) return;
     setSaving(`issue:${task._id}`);
     try {
@@ -83,6 +85,9 @@ export default function InlineCleaning({
         <p className="mt-2 text-sm text-[#727a74]">
           Complete each cleaning job with the person who carried it out.
         </p>
+        <div className="mt-6">
+          <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
+        </div>
         <div className="mt-7 space-y-2">
           {tasks.map((task) => {
             const completion = completions.find(
@@ -119,30 +124,13 @@ export default function InlineCleaning({
                   </div>
                 ) : (
                   <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.6fr)]">
-                    <label
-                      className="sr-only"
-                      htmlFor={`cleaning-member-${task._id}`}
-                    >
-                      Completed by
-                    </label>
-                    <select
-                      id={`cleaning-member-${task._id}`}
-                      value={selected[task._id] ?? ""}
-                      onChange={(event) =>
-                        setSelected((current) => ({
-                          ...current,
-                          [task._id]: event.target.value,
-                        }))
-                      }
-                      className="h-12 min-w-0 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                    >
-                      <option value="">Completed by…</option>
-                      {teamMembers.map((member) => (
-                        <option key={member._id} value={member._id}>
-                          {member.name}
-                        </option>
-                      ))}
-                    </select>
+                    <StaffAttributionLine
+                      value={selected[task._id] || activeMemberId}
+                      teamMembers={teamMembers}
+                      onChange={(value) => setSelected((current) => ({ ...current, [task._id]: value }))}
+                      label={`Change person for ${task.name}`}
+                      className="sm:col-span-2"
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         type="button"

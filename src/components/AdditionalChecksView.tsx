@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 
 const dueLabel = (value: number) =>
   new Date(value).toLocaleDateString("en-GB", {
@@ -28,6 +29,7 @@ export default function AdditionalChecksView({
   const [selected, setSelected] = useState<any>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [member, setMember] = useState("");
+  const [activeMemberId, setActiveMemberId] = useState("");
   const [certificate, setCertificate] = useState<File | null>(null);
   const [reference, setReference] = useState("");
   const [now] = useState(() => Date.now());
@@ -43,10 +45,11 @@ export default function AdditionalChecksView({
     );
   }).length;
   async function submit() {
-    if (!selected || !member) return;
+    const effectiveMember = member || activeMemberId;
+    if (!selected || !effectiveMember) return;
     await onComplete({
       requirementId: selected._id,
-      teamMemberId: member,
+      teamMemberId: effectiveMember,
       answers: Object.entries(values).map(([key, value]) => ({ key, value })),
       certificate,
       certificateReference: reference,
@@ -75,6 +78,9 @@ export default function AdditionalChecksView({
           Recurring compliance
         </p>
         <h1 className="mt-2 text-3xl font-semibold">Additional Checks</h1>
+        <div className="mt-5">
+          <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
+        </div>
         <div className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5">
           <div className="flex justify-between text-sm font-semibold">
             <span>
@@ -237,26 +243,12 @@ export default function AdditionalChecksView({
                     className="mt-2 h-12"
                   />
                 </label>
-                <label className="block text-sm font-semibold">
-                  Completed by
-                  <select
-                    value={member}
-                    onChange={(event) => setMember(event.target.value)}
-                    className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                  >
-                    <option value="">Select team member</option>
-                    {teamMembers.map((item) => (
-                      <option key={item._id} value={item._id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <StaffAttributionLine value={member || activeMemberId} teamMembers={teamMembers} onChange={setMember} label="Change person for this additional check" />
               </div>
               <Button
                 aria-label="Mark complete"
                 disabled={
-                  !member ||
+                  !(member || activeMemberId) ||
                   (selected.fields.some((field: any) => field.type === "pdf") &&
                     !certificate)
                 }
