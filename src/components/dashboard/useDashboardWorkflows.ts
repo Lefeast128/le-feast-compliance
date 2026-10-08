@@ -100,17 +100,22 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       const item = active.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
       return issue && item ? [{ ...item, issueId: issue._id, temperature: reading.temperature }] : [];
     });
-    setRound(pending.session);
-    setRoundId(pending._id);
-    setRoundCompleterId(pending.teamMemberId ?? null);
-    setRoundEquipment([...active.equipment]);
-    setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
-    setRoundIssues(recoveredIssues);
-    setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
-      const linkedIssue = active.issues.find(item => item._id === issue.issueId);
-      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
-      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
-    })));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setRound(pending.session);
+      setRoundId(pending._id);
+      setRoundCompleterId(pending.teamMemberId ?? null);
+      setRoundEquipment([...active.equipment]);
+      setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+      setRoundIssues(recoveredIssues);
+      setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
+        const linkedIssue = active.issues.find(item => item._id === issue.issueId);
+        const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+        return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
+      })));
+    });
+    return () => { cancelled = true; };
   }, [active, round]);
   const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
