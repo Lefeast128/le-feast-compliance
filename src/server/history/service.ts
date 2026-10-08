@@ -7,6 +7,7 @@ import { ApiError } from "../compliance/errors.js";
 import { localDateKey, localDayRange } from "../compliance/validation.js";
 import { localWeekday } from "../dashboard/time.js";
 import { buildInspectionChronology, carriedOpenIssues } from "./chronology.js";
+import { hasCorrectiveActionEvidence, isCorrectiveActionUpdate } from "../compliance/corrective-action.js";
 
 function dateValue(value: unknown, label: string) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, `${label} must be YYYY-MM-DD`);
@@ -20,6 +21,7 @@ async function locationFor(context: AuthContext, locationId: string) {
   const [location] = await getDb().select().from(locations).where(eq(locations.id, locationId)).limit(1); if (!location || !location.active) throw new ApiError(404, "Location not found"); requireLocationAccess(context, location.id, location.organisationId); return location;
 }
 const iso = (row: any) => row && { ...row, createdAt: row.createdAt?.toISOString?.() ?? row.createdAt, startedAt: row.startedAt?.toISOString?.() ?? row.startedAt, completedAt: row.completedAt?.toISOString?.() ?? row.completedAt, resolvedAt: row.resolvedAt?.toISOString?.() ?? row.resolvedAt };
+const inLocalDay = (row: any, field: string, date: string, timezone: string) => row[field] instanceof Date && localDateKey(row[field].getTime(), timezone) === date;
 
 export async function calendar(context: AuthContext, input: { locationId: string; monthStart: string; monthEnd: string }) {
   const location = await locationFor(context, input.locationId); const { from, to, days } = dayBounds(input.monthStart, input.monthEnd); const db = getDb(); const start = new Date(localDayRange(Date.parse(`${from}T12:00:00Z`), location.timezone).start); const end = new Date(localDayRange(Date.parse(`${to}T12:00:00Z`), location.timezone).end - 1);
@@ -125,7 +127,10 @@ export async function archive(context: AuthContext, input: { locationId: string;
   const summary = {
     status: calendarDay?.status === "green" ? "complete" : calendarDay?.status === "amber" ? "corrective_action" : calendarDay?.status === "grey" ? "future" : "incomplete",
     complete: Boolean(calendarDay?.complete),
-    correctiveActionRecorded: chronology.some(event => event.eventType.startsWith("issue_") || event.result === "fail" || event.result === "no"),
+    correctiveActionRecorded: issuesRows.some(issue => inLocalDay(issue, "createdAt", from, location.timezone) && hasCorrectiveActionEvidence({ action: issue.action }))
+      || updates.some(update => inLocalDay(update, "createdAt", from, location.timezone) && isCorrectiveActionUpdate(update))
+      || enrichedChecklistResponses.some(response => hasCorrectiveActionEvidence({ responseAction: response.action }))
+      || enrichedProbes.some(probe => hasCorrectiveActionEvidence({ responseAction: probe.action })),
     carriedOpenIssueCount: carry.length,
     counts: {
       temperatureReadings: enrichedReadings.length,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { issueUpdateActionLabel, selectIssueStatus, selectIssueUpdateType } from "../src/components/issue-detail-actions.ts";
 
 const read = name => readFile(new URL(`../${name}`, import.meta.url), "utf8");
 const [temperatureService, issueService, actionUi, workflow, managerReviews, inspection, issueDetail] = await Promise.all([
@@ -13,6 +14,7 @@ const [temperatureService, issueService, actionUi, workflow, managerReviews, ins
 ]);
 let passed = 0;
 const check = (condition, message) => { assert.ok(condition, message); passed += 1; };
+const equalCheck = (actual, expected, message) => { assert.deepEqual(actual, expected, message); passed += 1; };
 
 check(temperatureService.includes("Every failed fridge must have a corrective action before completing the round"), "failed readings still require immediate corrective action");
 check(!temperatureService.includes("Every failed fridge must have a recheck before completing the round"), "round completion does not require an immediate recheck");
@@ -29,11 +31,21 @@ check(workflow.includes("issueActionSubmittingRef"), "repeated action submission
 check(workflow.includes("await completeRound({ roundId"), "round completes after corrective actions");
 check(managerReviews.includes("<IssueDetail"), "manager View issue opens actionable issue detail");
 check(managerReviews.includes("correctiveActions"), "manager review exposes issue action activity");
-check(issueDetail.includes("effectiveUpdateType"), "issue action wording follows the effective update type");
-check(issueDetail.includes('effectiveUpdateType === "resolution" ? "Resolve issue" : "Add update"'), "issue detail uses context-sensitive action labels");
+check(issueDetail.includes("selection.updateType"), "issue action wording follows the submitted update type");
+check(issueDetail.includes("issueUpdateActionLabel(selection.updateType)"), "issue detail uses the selected action for its label");
 check(!issueDetail.includes("Save update"), "generic Save update wording is removed");
+let selection = { updateType: "further_action", status: "open" };
+selection = selectIssueUpdateType(selection, "resolution");
+equalCheck(selection, { updateType: "resolution", status: "resolved" }, "resolution selection submits a resolved resolution update");
+check(issueUpdateActionLabel(selection.updateType) === "Resolve issue", "resolution selection uses Resolve issue label");
+selection = selectIssueStatus(selection, "monitoring");
+equalCheck(selection, { updateType: "further_action", status: "monitoring" }, "monitoring selection submits a further action update");
+check(issueUpdateActionLabel(selection.updateType) === "Add update", "monitoring selection uses Add update label");
+selection = selectIssueStatus(selection, "resolved");
+equalCheck(selection, { updateType: "resolution", status: "resolved" }, "resolved status cannot submit a further action update");
+check(issueUpdateActionLabel(selection.updateType) === "Resolve issue", "resolved status uses Resolve issue label");
 check(inspection.includes("All recorded readings, grouped by temperature round"), "inspection groups fridge readings by round");
 check(inspection.includes("Detailed inspection chronology"), "detailed chronology is secondary to the grouped inspection view");
 check(inspection.includes("View issue journey"), "grouped failed reading links to its issue journey");
 
-console.log(`Temperature issue lifecycle tests passed: ${passed}/21`);
+console.log(`Temperature issue lifecycle tests passed: ${passed}/27`);

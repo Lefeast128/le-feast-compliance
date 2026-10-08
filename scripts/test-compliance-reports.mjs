@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { asOfIssue, evaluatedDays, reportDateRange, sectionCompletion } from "../src/server/reports/calculations.ts";
+import { hasCorrectiveActionEvidence } from "../src/server/compliance/corrective-action.ts";
 import { currentMonthRange, last30DaysRange, previousMonthRange } from "../src/lib/compliance-reports.ts";
 
 const reportService = await readFile(new URL("../src/server/reports/service.ts", import.meta.url), "utf8");
+const historyService = await readFile(new URL("../src/server/history/service.ts", import.meta.url), "utf8");
 const reportRoute = await readFile(new URL("../api/reports/compliance.ts", import.meta.url), "utf8");
 const reportUi = await readFile(new URL("../src/components/ComplianceReports.tsx", import.meta.url), "utf8");
 const dayView = await readFile(new URL("../src/components/MobileDayView.tsx", import.meta.url), "utf8");
@@ -81,5 +83,13 @@ assert.match(reportService, /rechecksRecorded/);
 assert.match(reportService, /resolvedInRange/);
 assert.match(reportService, /updatedInRange/);
 assert.match(reportService, /recheckedInRange/);
+assert.match(reportService, /hasCorrectiveActionEvidence/);
+assert.match(historyService, /hasCorrectiveActionEvidence/);
+assert.equal(hasCorrectiveActionEvidence({}), false, "failed detection alone is not corrective action evidence");
+assert.equal(hasCorrectiveActionEvidence({ action: "", updates: [] }), false, "issue creation without an action is not corrective action evidence");
+assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "resolution", note: "Resolved" }] }), false, "resolution alone is not corrective action evidence");
+assert.equal(hasCorrectiveActionEvidence({ responseAction: "Door checked" }), true, "recorded response action is corrective action evidence");
+assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "immediate_action", note: "Food moved" }] }), true, "immediate action update is corrective action evidence");
+assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "further_action", note: "Maintenance reported" }] }), true, "further action update is corrective action evidence");
 
-console.log("Compliance report tests passed: 44/44");
+console.log("Compliance report tests passed, including corrective-action evidence regressions");
