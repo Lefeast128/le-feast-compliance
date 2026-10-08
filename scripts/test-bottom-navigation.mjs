@@ -5,6 +5,8 @@ const primitives = await readFile(new URL("../src/components/dashboard/Dashboard
 const dashboard = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
 const today = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
 const library = await readFile(new URL("../src/components/LibraryView.tsx", import.meta.url), "utf8");
+const workflows = await readFile(new URL("../src/components/dashboard/DashboardWorkflowScreens.tsx", import.meta.url), "utf8");
+const taskIssueModal = await readFile(new URL("../src/components/TaskIssueModal.tsx", import.meta.url), "utf8");
 
 for (const label of ["Daily Checks", "Calendar", "Training", "Library", "Admin"]) {
   assert.match(primitives, new RegExp(label), `${label} destination is preserved`);
@@ -19,6 +21,11 @@ assert.match(primitives, /aria-current=\{active === key \? "page" : undefined\}/
 assert.match(primitives, /focus-visible:ring-2/, "keyboard focus remains visible");
 assert.match(primitives, /safe-area-inset-bottom/, "navigation respects the bottom safe area");
 assert.match(primitives, /backdrop-blur-xl/, "navigation uses translucent blur treatment");
+assert.match(primitives, /fixed inset-x-0 bottom-0 z-20/, "navigation sits below modal overlays");
+assert.match(primitives, /fixed inset-0 z-30/, "shared modal backdrop sits above navigation");
+assert.match(workflows, /<Modal/, "food probe uses the shared modal layer");
+assert.match(taskIssueModal, /fixed inset-0 z-30/, "issue reporting overlay also blocks navigation");
+assert.match(today, /onClose=\{\(\) => \{[\s\S]*setProbeOpen\(false\)/, "probe dismissal restores the main navigation state");
 assert.equal((dashboard.match(/<BottomNavigation /g) ?? []).length, 1, "Dashboard owns one persistent navigation bar");
 assert.match(dashboard, /const mainView = view === "calendar"/, "main destinations share a parent shell");
 assert.match(dashboard, /activeNavigation = view === "calendar" \|\| view === "training" \|\| view === "library" \|\| view === "admin"/, "main tab active state follows the current view");
