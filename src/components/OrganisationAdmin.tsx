@@ -4,6 +4,7 @@ import OrganisationFeatureCards, {
   type OrganisationFeatureKey,
 } from "@/components/admin/OrganisationFeatureCards";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
+import CleaningScheduleFields from "@/components/CleaningScheduleFields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -276,7 +277,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskWeekdays(
       item.weekdays?.length
         ? item.weekdays
-        : item.kind === "additional" && item.nextDueAt
+        : item.kind === "cleaning" && item.frequency === "weekly"
+          ? [1]
+          : item.kind === "additional" && item.nextDueAt
           ? [new Date(item.nextDueAt).getUTCDay() || 7]
           : [],
     );
@@ -1382,7 +1385,11 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     Frequency
                     <select
                       value={taskFrequency}
-                      onChange={(event) => setTaskFrequency(event.target.value)}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setTaskFrequency(next);
+                        if (next === "weekly" && !taskWeekdays.length) setTaskWeekdays([1]);
+                      }}
                       className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
                     >
                       <option value="after_use">After use</option>
@@ -1391,36 +1398,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="specific_days">Specific days</option>
                     </select>
                   </label>
-                  {taskFrequency === "specific_days" && (
-                    <div className="md:col-span-2">
-                      <p className="text-sm font-semibold">Weekdays</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                          (day, index) => (
-                            <label
-                              key={day}
-                              className="rounded-xl border px-3 py-2 text-sm"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={taskWeekdays.includes(index)}
-                                onChange={() =>
-                                  setTaskWeekdays(
-                                    taskWeekdays.includes(index)
-                                      ? taskWeekdays.filter(
-                                          (value) => value !== index,
-                                        )
-                                      : [...taskWeekdays, index],
-                                  )
-                                }
-                              />{" "}
-                              <span className="ml-1">{day}</span>
-                            </label>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <div className="md:col-span-2"><CleaningScheduleFields frequency={taskFrequency} weekdays={taskWeekdays} onWeekdaysChange={setTaskWeekdays} /></div>
                 </>
               )}
               {taskType === "additional" && (

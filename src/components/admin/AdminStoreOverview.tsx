@@ -28,6 +28,7 @@ import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
 
 type Props = {
   store: AdminStore;
@@ -518,9 +519,9 @@ export default function AdminStoreOverview({
                       )}
                     </p>
                     <p className="text-xs text-[#89918b]">
-                      {item.frequency === "specific_days"
-                        ? `Specific days: ${item.weekdays.join(", ")}`
-                        : item.frequency.replace("_", " ")}
+                      {item.frequency === "weekly" || item.frequency === "specific_days"
+                        ? `${item.frequency === "weekly" ? "Weekly" : "Specific days"}: ${cleaningWeekdaySummary(item.frequency, item.weekdays)}`
+                        : cleaningWeekdaySummary(item.frequency, item.weekdays)}
                     </p>
                   </div>
                   {item.centralItemId ? (

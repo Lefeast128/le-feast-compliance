@@ -5,6 +5,7 @@ import { ApiError } from "../compliance/errors.js";
 import { requireEnum } from "../compliance/validation.js";
 import { db, id, locationFor, text } from "./shared.js";
 import { validateStructuredSteps } from "../compliance/structured-task-service.js";
+import { normalizeCleaningWeekdays } from "../../shared/cleaning-scheduling.js";
 
 const taskType = (value: unknown) => value === undefined ? "simple" : value === "with_steps" ? "with_steps" : value === "simple" ? "simple" : (() => { throw new ApiError(422, "Task type is invalid"); })();
 const completionMode = (value: unknown, fallback = "task") => value === undefined ? fallback : value === "task" ? "task" : value === "question" ? "question" : (() => { throw new ApiError(422, "Completion mode is invalid"); })();
@@ -24,12 +25,19 @@ const weekdays = (value: unknown): number[] => {
   if (!Array.isArray(value) || value.some(day => !Number.isInteger(day) || day < 0 || day > 6)) throw new ApiError(400, "weekdays must contain values from 0 to 6");
   return value as number[];
 };
+const scheduledWeekdays = (frequency: string, value: unknown) => {
+  const days = weekdays(value);
+  if ((frequency === "weekly" || frequency === "specific_days") && !days.length) {
+    throw new ApiError(422, "Select at least one cleaning weekday");
+  }
+  return normalizeCleaningWeekdays(frequency, days);
+};
 
 export async function addCleaning(context: AuthContext, input: Record<string, unknown>) {
   const location = await locationFor(context, id(input.locationId, "locationId"));
   const name = text(input.name, "Name");
   const frequency = cleaningFrequency(input.frequency);
-  const days = weekdays(input.weekdays ?? []);
+  const days = scheduledWeekdays(frequency, input.weekdays ?? []);
   const type = taskType(input.taskType);
   const mode = type === "with_steps" ? "question" : completionMode(input.completionMode);
   const steps = validateStructuredSteps(input.steps, type);
@@ -44,7 +52,7 @@ export async function updateCleaning(context: AuthContext, taskId: string, input
   if (!old.active) throw new ApiError(409, "This configuration version is no longer active");
   const name = text(input.name, "Name");
   const frequency = cleaningFrequency(input.frequency);
-  const days = weekdays(input.weekdays ?? []);
+  const days = scheduledWeekdays(frequency, input.weekdays ?? []);
   const type = taskType(input.taskType ?? old.taskType);
   const mode = type === "with_steps" ? "question" : completionMode(input.completionMode, old.completionMode ?? "task");
   const steps = validateStructuredSteps(input.steps ?? old.steps, type);

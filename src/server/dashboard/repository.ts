@@ -11,6 +11,7 @@ import { requireLocationAccess, type AuthContext } from "../auth/core.js";
 import { localDateKey, localDayRange, localWeekday } from "./time.js";
 import type { ApiLocation, DashboardResponse } from "../../shared/dashboard.js";
 import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
+import { cleaningRunsOn } from "../../shared/cleaning-scheduling.js";
 
 const serialize = <T>(value: T): T => {
   if (value instanceof Date) return value.toISOString() as T;
@@ -49,8 +50,7 @@ export const listAccessibleLocations = async (context: AuthContext) => {
 };
 
 const dueCleaning = (task: typeof cleaningTasks.$inferSelect, weekday: number) => {
-  const weekdays = Array.isArray(task.weekdays) ? task.weekdays : [];
-  return task.active && (task.frequency === "after_use" || task.frequency === "daily" || (task.frequency === "weekly" && weekday === 1) || (task.frequency === "specific_days" && weekdays.includes(weekday)));
+  return task.active && cleaningRunsOn(task.frequency, task.weekdays, weekday);
 };
 
 export const getDashboard = async (context: AuthContext, locationId: string): Promise<DashboardResponse> => {

@@ -369,6 +369,7 @@ function operationalValues(input: Record<string, unknown>, kind: OperationalKind
     const frequency = requireEnum(input.frequency, "frequency", ["after_use", "daily", "weekly", "specific_days"] as const);
     const weekdays = input.weekdays === undefined ? [] : input.weekdays;
     if (!Array.isArray(weekdays) || weekdays.some(day => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6)) throw new ApiError(400, "weekdays must contain values from 0 to 6");
+    if ((frequency === "weekly" || frequency === "specific_days") && !weekdays.length) throw new ApiError(422, "Select at least one cleaning weekday");
     const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
     const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "task", "completionMode", ["question", "task"] as const);
     return { name: requireString(input.name, "Name"), description: textOrNull(input.description, "Description"), taskType, completionMode, steps: validateStructuredSteps(input.steps, taskType), frequency, weekdays: weekdays as number[] };
