@@ -236,7 +236,7 @@ export function buildInspectionChronology(input: ChronologyInput): InspectionChr
       eventType: "additional_check",
       occurredAt: completion.completedAt,
       title: text(completion.requirementTitle, "Additional check"),
-      detail: [answers, completion.certificateReference ? `Certificate: ${completion.certificateReference}` : ""].filter(Boolean).join(" · ") || "Completed",
+      detail: [answers, completion.certificateReference ? `Corrective action taken: ${completion.certificateReference}` : ""].filter(Boolean).join(" · ") || "Completed",
       result: "complete",
       sourceRecordId: completion.id,
       documentUrl: completion.documentUrl ?? null,

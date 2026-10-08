@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
+import { additionalCheckHasFailure } from "@/shared/additional-check-validation";
 
 const dueLabel = (value: number) =>
   new Date(value).toLocaleDateString("en-GB", {
@@ -35,6 +36,8 @@ export default function AdditionalChecksView({
   const [certificate, setCertificate] = useState<File | null>(null);
   const [reference, setReference] = useState("");
   const [now] = useState(() => Date.now());
+  const selectedValues = selected ? values : {};
+  const hasFailedValue = selected ? additionalCheckHasFailure(selected.fields, selectedValues) : false;
   const doneCount = requirements.filter((requirement) => {
     const root = requirement.versionRootId ?? requirement._id;
     return (
@@ -134,12 +137,13 @@ export default function AdditionalChecksView({
               <div className="mt-6 space-y-4">
                 {selected.fields.map((field: any) => {
                   if (field.type === "pdf") return null;
+                  if (field.type === "actions" && !hasFailedValue) return null;
                   return (
                     <label
                       key={field.key}
                       className="block text-sm font-semibold"
                     >
-                      {field.label}
+                      <>{field.label}{(field.type === "temperature" || field.type === "number") && (field.minimum !== undefined || field.maximum !== undefined) && <span className="mt-1 block text-xs font-normal text-[#727a74]">Acceptable range: {field.minimum ?? "no minimum"}–{field.maximum ?? "no maximum"}{field.type === "temperature" ? " °C" : ""}</span>}</>
                       {field.type === "yes_no" ? (
                         <select
                           value={values[field.key] ?? ""}
@@ -229,20 +233,17 @@ export default function AdditionalChecksView({
                     </span>
                   </label>
                 )}
-                <label className="block text-sm font-semibold">
-                  Certificate/reference number
-                  <Input
-                    value={reference}
-                    onChange={(event) => setReference(event.target.value)}
-                    className="mt-2 h-12"
-                  />
-                </label>
+                {hasFailedValue && <label className="block text-sm font-semibold">
+                  Corrective action taken
+                  <textarea required value={reference} onChange={(event) => setReference(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" placeholder="Describe what was done to address the failed reading" />
+                </label>}
                 <StaffAttributionLine value={member || activeMemberId} teamMembers={teamMembers} onChange={setMember} label="Change person for this additional check" />
               </div>
               <Button
                 aria-label="Mark complete"
                 disabled={
                   !(member || activeMemberId) ||
+                  (hasFailedValue && !reference.trim()) ||
                   (selected.fields.some((field: any) => field.type === "pdf") &&
                     !certificate)
                 }
