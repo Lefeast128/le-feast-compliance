@@ -83,23 +83,45 @@ function MemberSelect({
   teamMembers: TeamMember[];
   onChange: (value: string) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const memberName = teamMembers.find((member) => member._id === value)?.name ?? "Not selected";
+
   return (
-    <label className="block text-xs font-semibold uppercase tracking-[0.12em] text-[#727a74]">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm font-medium normal-case tracking-normal text-[#171918] outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40"
-        aria-label={label}
-      >
-        <option value="">Select team member</option>
-        {teamMembers.map((member) => (
-          <option key={member._id} value={member._id}>
-            {member.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="checklist-attribution mt-3 rounded-xl border border-black/[0.06] bg-[#f6f7f5] px-3 py-2">
+      <div className="flex items-center justify-between gap-3 text-xs text-[#59625c]">
+        <span className="min-w-0 truncate">
+          Signed by: <strong className={value ? "font-semibold text-[#303631]" : "font-semibold text-[#8f3a31]"}>{memberName}</strong>
+        </span>
+        <button
+          type="button"
+          onClick={() => setPickerOpen((current) => !current)}
+          aria-expanded={pickerOpen}
+          aria-label={label}
+          className="shrink-0 rounded-lg px-2 py-1 font-semibold text-[#796513] transition hover:bg-[#fff7c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffde56]"
+        >
+          Change
+        </button>
+      </div>
+      {pickerOpen && (
+        <select
+          autoFocus
+          value={value}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setPickerOpen(false);
+          }}
+          className="mt-2 h-10 w-full rounded-lg border border-black/[0.1] bg-white px-3 text-sm font-medium text-[#171918] outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40"
+          aria-label="Change person"
+        >
+          <option value="">Select team member</option>
+          {teamMembers.map((member) => (
+            <option key={member._id} value={member._id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 

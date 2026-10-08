@@ -113,6 +113,10 @@
 }
 
 @layer utilities {
+  /* Keep the compact signer line after the answer controls in expanded checklist items. */
+  div:has(> .checklist-attribution) { display: flex; flex-direction: column; }
+  div:has(> .checklist-attribution) > .checklist-attribution { order: 2; }
+  div:has(> .checklist-attribution) > div[class*="bg-[#fff8f6]"] { order: 3; }
   /* Keep the store controls in separate rows on the operational header at narrow widths. */
   @media (max-width: 1023px) {
     header.sticky > div { display: block !important; }
