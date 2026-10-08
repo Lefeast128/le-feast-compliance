@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
-import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember } from "@/components/dashboard/dashboard-types";
+import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember, TemperatureReading } from "@/components/dashboard/dashboard-types";
 import { submitTemperatureRound } from "@/components/dashboard/temperature-round";
 import { isItemComplete } from "@/lib/unified-checklist";
 
@@ -22,6 +22,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [issueProgress, setIssueProgress] = useState<Record<string, IssueProgress>>({});
   const issueActionSubmittingRef = useRef(new Set<string>());
   const [roundEquipment, setRoundEquipment] = useState<Equipment[]>([]);
+  const [roundReadings, setRoundReadings] = useState<TemperatureReading[]>([]);
   const [probeOpen, setProbeOpen] = useState(false);
   const [probeProduct, setProbeProduct] = useState("");
   const [probeTemperature, setProbeTemperature] = useState("");
@@ -86,37 +87,32 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const memberName = (id: string | undefined) => active?.teamMembers.find((member: TeamMember) => member._id === id)?.name ?? "Team member";
   const amRound = active?.rounds.find(item => item.session === "AM" && item.completedAt);
   const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt);
+  const pendingAmRound = active?.rounds.find(item => item.session === "AM" && !item.completedAt);
+  const pendingPmRound = active?.rounds.find(item => item.session === "PM" && !item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
-  useEffect(() => {
-    if (!active || round) return;
-    const pending = active.rounds.find(item => !item.completedAt);
-    if (!pending) return;
+  const hydratePendingRound = (pending: NonNullable<typeof pendingAmRound>) => {
+    if (!active) return;
     const readings = active.readings.filter(reading => reading.roundId === pending._id);
-    if (!readings.length) return;
     const failed = readings.filter(reading => reading.result === "fail");
     const recoveredIssues = failed.flatMap(reading => {
       const issue = active.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
       const item = active.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
       return issue && item ? [{ ...item, issueId: issue._id, temperature: reading.temperature }] : [];
     });
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setRound(pending.session);
-      setRoundId(pending._id);
-      setRoundCompleterId(pending.teamMemberId ?? null);
-      setRoundEquipment([...active.equipment]);
-      setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
-      setRoundIssues(recoveredIssues);
-      setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
-        const linkedIssue = active.issues.find(item => item._id === issue.issueId);
-        const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
-        return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
-      })));
-    });
-    return () => { cancelled = true; };
-  }, [active, round]);
+    setRound(pending.session);
+    setRoundId(pending._id);
+    setRoundCompleterId(pending.teamMemberId ?? null);
+    setRoundEquipment([...active.equipment]);
+    setRoundReadings(readings);
+    setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+    setRoundIssues(recoveredIssues);
+    setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
+      const linkedIssue = active.issues.find(item => item._id === issue.issueId);
+      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
+    })));
+  };
   const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
     const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
@@ -132,7 +128,12 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   function beginRound(session: "AM" | "PM") {
     if (!dashboard) return;
-    setRoundId(null); setRoundEquipment([...equipment]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
+    const pending = active?.rounds.find(item => item.session === session && !item.completedAt);
+    if (pending) {
+      hydratePendingRound(pending);
+      return;
+    }
+    setRoundId(null); setRoundEquipment([...equipment]); setRoundReadings([]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
   }
 
   async function completeTemperatureRound(teamMemberId: string) {
@@ -148,18 +149,33 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
         teamMemberId,
         equipment: roundEquipment,
         temperatures,
+        existingReadings: roundReadings,
         startRound,
         recordTemperature,
         completeRound,
       });
       setRoundId(result.roundId);
-      if (result.issues.length) {
-        setRoundIssues(result.issues);
-        setIssueProgress(Object.fromEntries(result.issues.map(issue => [issue.issueId, { action: "", note: "", actionMemberId: "", actionsSaved: false }])));
+      if (result.savedReadings.length) {
+        const recoveredReadings: TemperatureReading[] = result.savedReadings.map(reading => ({
+          _id: `local-${result.roundId}-${reading.equipmentId}`,
+          roundId: result.roundId,
+          equipmentId: reading.equipmentId,
+          result: reading.result ?? "pass",
+          temperature: reading.temperature,
+          teamMemberId,
+          createdAt: new Date().toISOString(),
+        }));
+        setRoundReadings(current => [...current, ...recoveredReadings].filter((reading, index, all) => all.findIndex(candidate => candidate.equipmentId === reading.equipmentId) === index));
+      }
+      if (result.issues.length || result.error) {
+        const combinedIssues = [...roundIssues, ...result.issues].filter((issue, index, all) => all.findIndex(candidate => candidate.issueId === issue.issueId) === index);
+        setRoundIssues(combinedIssues);
+        setIssueProgress(current => Object.fromEntries(combinedIssues.map(issue => [issue.issueId, current[issue.issueId] ?? { action: "", note: "", actionMemberId: "", actionsSaved: false }])));
+        if (result.error) toast.error("Some readings could not be saved", { description: result.error.message });
         return;
       }
       toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` });
-      setRound(null); setRoundId(null); setRoundEquipment([]);
+      setRound(null); setRoundId(null); setRoundEquipment([]); setRoundReadings([]);
     } finally {
       roundSubmittingRef.current = false;
       setRoundSubmitting(false);
@@ -175,12 +191,9 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       await addIssueAction({ issueId, action: combinedNote, teamMemberId });
       const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: teamMemberId, actionsSaved: true } };
       setIssueProgress(nextProgress);
-      const allActionsSaved = roundIssues.length > 0 && roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved);
-      if (allActionsSaved && dashboard && roundId && round && roundCompleterId) {
-        await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId: roundCompleterId });
-        toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
-        setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
-      } else toast.success("Corrective action recorded");
+      toast.success("Corrective action recorded");
+    } catch (error) {
+      toast.error("Corrective action could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       issueActionSubmittingRef.current.delete(issueId);
     }
@@ -277,16 +290,26 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     toast.success("Additional check completed");
   }
 
-  async function completeRecoveredTemperatureRound() {
-    if (!dashboard || !round || !roundId || !roundCompleterId) return;
-    await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId: roundCompleterId });
-    toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
-    setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
+  async function completeRecoveredTemperatureRound(teamMemberId: string) {
+    if (!dashboard || !round || !roundId || !teamMemberId || roundSubmittingRef.current) return;
+    roundSubmittingRef.current = true;
+    setRoundCompleterId(teamMemberId);
+    setRoundSubmitting(true);
+    try {
+      await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId });
+      toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
+      setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({});
+    } catch (error) {
+      toast.error("Temperature round could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      roundSubmittingRef.current = false;
+      setRoundSubmitting(false);
+    }
   }
 
   function resetForLocation() {
     roundSubmittingRef.current = false;
-    setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
+    setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
   }
 
   function openWastage() {
@@ -294,8 +317,8 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   }
 
   return {
-    active, equipment, openIssues, memberName, amRound, pmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
-    round, roundIssues, issueProgress, setIssueProgress, roundEquipment, temperatures, setTemperatures, roundSubmitting,
+    active, equipment, openIssues, memberName, amRound, pmRound, pendingAmRound, pendingPmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
+    round, roundId, roundCompleterId, setRoundCompleterId, roundIssues, issueProgress, setIssueProgress, roundEquipment, roundReadings, temperatures, setTemperatures, roundSubmitting,
     probeOpen, setProbeOpen, probeProduct, setProbeProduct, probeTemperature, setProbeTemperature, probeFailed, setProbeFailed, probeIssueId, setProbeIssueId, probeQuantity, setProbeQuantity,
     wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,

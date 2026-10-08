@@ -50,6 +50,8 @@ export type DailyChecksModelInput = {
   pmComplete: boolean;
   amInProgress: boolean;
   pmInProgress: boolean;
+  amPendingStartedAt?: number;
+  pmPendingStartedAt?: number;
   openingComplete: boolean;
   closingComplete: boolean;
   amSecurityComplete: boolean;
@@ -169,6 +171,7 @@ export function getTaskStatus({
 
 export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskModel[] {
   const issueAttention = (taskId: string) => input.issueAttentionTaskIds.includes(taskId);
+  const pendingDate = (value?: number) => value ? new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
   return [
     {
       id: "am-temperature",
@@ -176,14 +179,16 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Record temperatures for every fridge.",
       detail: input.amComplete
         ? `${input.equipmentCount} of ${input.equipmentCount} recorded`
-        : `0 of ${input.equipmentCount || 4} recorded`,
+        : input.amInProgress
+          ? `Resume AM temperatures${pendingDate(input.amPendingStartedAt) ? ` · started ${pendingDate(input.amPendingStartedAt)}` : ""}`
+          : `0 of ${input.equipmentCount || 4} recorded`,
       icon: "temperature",
       status: getTaskStatus({
         complete: input.amComplete,
         inProgress: input.amInProgress,
         attention: issueAttention("am-temperature"),
       }),
-      actionLabel: input.amComplete ? "View readings" : "Start AM temperatures",
+      actionLabel: input.amComplete ? "View readings" : input.amInProgress ? "Resume AM temperatures" : "Start AM temperatures",
       required: true,
     },
     {
@@ -234,10 +239,10 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       id: "pm-temperature",
       title: "PM fridge temperatures",
       description: "Record the evening temperature round.",
-      detail: input.pmComplete ? `${input.equipmentCount} of ${input.equipmentCount} recorded` : "Due later today",
+      detail: input.pmComplete ? `${input.equipmentCount} of ${input.equipmentCount} recorded` : input.pmInProgress ? `Resume PM temperatures${pendingDate(input.pmPendingStartedAt) ? ` · started ${pendingDate(input.pmPendingStartedAt)}` : ""}` : "Due later today",
       icon: "temperature",
       status: getTaskStatus({ complete: input.pmComplete, inProgress: input.pmInProgress, dueLater: !input.pmComplete, attention: issueAttention("pm-temperature") }),
-      actionLabel: input.pmComplete ? "View readings" : "Start PM temperatures",
+      actionLabel: input.pmComplete ? "View readings" : input.pmInProgress ? "Resume PM temperatures" : "Start PM temperatures",
       required: true,
     },
     {

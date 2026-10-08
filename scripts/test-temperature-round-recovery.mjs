@@ -12,7 +12,13 @@ assert.doesNotMatch(service, /Every failed fridge must have a recheck before com
 assert.match(service, /sourceTemperatureReadingId: reading\.id/);
 assert.match(service, /minimumTemperature: minimum/);
 assert.match(service, /maximumTemperature: maximum/);
-assert.match(workflow, /active\.rounds\.find\(item => !item\.completedAt\)/);
+assert.match(workflow, /pendingAmRound/);
+assert.match(workflow, /pendingPmRound/);
+assert.doesNotMatch(workflow, /useEffect\(\(\) => \{\s*if \(!active \|\| round\) return;\s*const pending/);
+assert.match(workflow, /roundReadings/);
+assert.match(workflow, /existingReadings: roundReadings/);
+assert.match(workflow, /setRoundCompleterId/);
+assert.doesNotMatch(workflow.slice(workflow.indexOf("async function saveTemperatureActions"), workflow.indexOf("async function saveProbe")), /completeRound\(/, "saving the final corrective action must not silently complete the round");
 assert.match(workflow, /linkedIssue\?\.updates\?\.find/);
 assert.match(workflow, /completeRecoveredTemperatureRound/);
 assert.match(actionScreen, /Complete temperature round/);

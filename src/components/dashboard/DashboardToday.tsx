@@ -42,6 +42,8 @@ export type DashboardTodayProps = {
   memberName: (id?: string) => string;
   amRound?: TemperatureRound;
   pmRound?: TemperatureRound;
+  pendingAmRound?: TemperatureRound;
+  pendingPmRound?: TemperatureRound;
   amComplete: boolean;
   pmComplete: boolean;
   openingComplete: boolean;
@@ -107,6 +109,8 @@ export default function DashboardToday({
   memberName,
   amRound,
   pmRound,
+  pendingAmRound,
+  pendingPmRound,
   amComplete,
   pmComplete,
   openingComplete,
@@ -170,8 +174,10 @@ export default function DashboardToday({
     equipmentCount: equipment.length,
     amComplete,
     pmComplete,
-    amInProgress: Boolean(amRound && !amComplete),
-    pmInProgress: Boolean(pmRound && !pmComplete),
+    amInProgress: Boolean(pendingAmRound),
+    pmInProgress: Boolean(pendingPmRound),
+    amPendingStartedAt: pendingAmRound?.startedAt,
+    pmPendingStartedAt: pendingPmRound?.startedAt,
     openingComplete,
     closingComplete,
     amSecurityComplete,
