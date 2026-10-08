@@ -4,6 +4,7 @@ import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
 import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember } from "@/components/dashboard/dashboard-types";
 import { submitTemperatureRound } from "@/components/dashboard/temperature-round";
+import { isItemComplete } from "@/lib/unified-checklist";
 
 type WorkflowArgs = {
   dashboard: DashboardData | null | undefined;
@@ -87,15 +88,11 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
-  const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string }>, signedOff: boolean, legacyComplete: boolean) => {
+  const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
-    if (!tasks.some(task => task.taskType === "with_steps" || task.completionMode === "task")) return legacyComplete;
     const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
-    const complete = tasks.every(task => task.taskType === "with_steps"
-      ? (task.steps ?? []).filter(step => step.required !== false).every(step => responses.some(response => response.taskId === task._id && response.stepId === step.id))
-      : task.completionMode === "task"
-        ? responses.some(response => response.taskId === task._id && response.stepId === "simple")
-        : responses.some(response => response.taskId === task._id && response.stepId === "simple") || legacyResponses.some(response => response.questionId === task._id));
+    if (!tasks.length) return legacyComplete;
+    const complete = tasks.every(task => isItemComplete(task, legacyResponses, responses));
     return complete && signedOff;
   };
   const openingComplete = structuredComplete("opening", active?.checklists.opening.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening")), (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening"));

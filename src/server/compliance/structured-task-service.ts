@@ -21,6 +21,7 @@ import { ApiError } from "./errors.js";
 import { localDateKey, localDayRange } from "../dashboard/time.js";
 import { activeMember } from "./shared.js";
 import { id, locationFor, text } from "../management/shared.js";
+import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
 
 export const structuredAreas = ["opening", "closing", "cleaning", "security_am", "security_pm"] as const;
 export type StructuredTaskArea = typeof structuredAreas[number];
@@ -113,7 +114,28 @@ function dto(row: TaskRow) {
     active: row.active,
     order: row.order,
     versionRootId: row.versionRootId,
+    definitionKey: checklistDefinitionKey(row),
   };
+}
+
+export function structuredResponseStepForTask(row: TaskRow, requestedStepId: string) {
+  if (row.taskType === "with_steps") {
+    return ((row.steps ?? []) as StructuredStepDefinition[]).find(step => step.id === requestedStepId) ?? null;
+  }
+  const completionMode = row.completionMode ?? ("name" in row ? "task" : "question");
+  if (requestedStepId !== "simple") return null;
+  return {
+    id: "simple",
+    label: rowTitle(row),
+    responseType: completionMode === "task" ? "confirm" as const : "yes_no" as const,
+    required: true,
+  };
+}
+
+function responseMatchesTask(task: TaskRow, response: { taskId: string }, versionsById: Map<string, TaskRow>) {
+  if (response.taskId === task.id) return true;
+  const previous = versionsById.get(response.taskId);
+  return Boolean(previous && checklistVersionRoot(previous) === checklistVersionRoot(task) && checklistDefinitionKey(previous) === checklistDefinitionKey(task));
 }
 
 async function findActiveTask(area: StructuredTaskArea, rawTaskId: unknown, locationId: string, executor = db()): Promise<TaskRow> {
@@ -136,7 +158,20 @@ export async function listStructuredTasks(context: AuthContext, input: { locatio
   ]);
   const dateKey = input.date ?? localDateKey(Date.now(), location[0].timezone);
   const responses = await db().select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.dateKey, dateKey)));
-  return { dateKey, tasks: [...checklists, ...cleaning, ...security].map(dto), responses: responses.map(row => ({ ...row, createdAt: row.createdAt.toISOString() })) };
+  const [checklistVersions, cleaningVersions, securityVersions] = await Promise.all([
+    db().select().from(checklistQuestions).where(eq(checklistQuestions.locationId, locationId)),
+    db().select().from(cleaningTasks).where(eq(cleaningTasks.locationId, locationId)),
+    db().select().from(securityQuestions).where(eq(securityQuestions.locationId, locationId)),
+  ]);
+  const versionsById = new Map([...checklistVersions, ...cleaningVersions, ...securityVersions].map(row => [row.id, row as TaskRow]));
+  return {
+    dateKey,
+    tasks: [...checklists, ...cleaning, ...security].map(dto),
+    responses: responses.map(row => {
+      const task = versionsById.get(row.taskId);
+      return { ...row, createdAt: row.createdAt.toISOString(), taskVersionRootId: task ? checklistVersionRoot(task) : null, taskDefinitionKey: task ? checklistDefinitionKey(task) : null };
+    }),
+  };
 }
 
 export async function updateLocalStructuredTask(context: AuthContext, input: Record<string, unknown>) {
@@ -204,9 +239,8 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
   const area = input.area;
   if (typeof area !== "string" || !structuredAreas.includes(area as StructuredTaskArea)) throw new ApiError(422, "Task area is invalid");
   const row = await findActiveTask(area as StructuredTaskArea, input.taskId, locationId);
-  const steps = (row.steps ?? []) as StructuredStepDefinition[];
   const requestedStepId = typeof input.stepId === "string" ? input.stepId : "";
-  const step = row.taskType === "with_steps" ? steps.find(item => item.id === requestedStepId) : { id: "simple", label: rowTitle(row), responseType: "confirm" as const };
+  const step = structuredResponseStepForTask(row, requestedStepId);
   if (!step) throw new ApiError(404, "Task step not found");
   const value = validateStructuredTaskResponse(step, input.value);
   const memberId = id(input.teamMemberId, "teamMemberId");
@@ -245,6 +279,10 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
     const tasks = area === "opening" || area === "closing"
       ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, locationId), eq(checklistQuestions.checklist, parsedArea as "opening" | "closing"), eq(checklistQuestions.active, true)))
       : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, locationId), eq(securityQuestions.session, area === "security_am" ? "AM" : "PM"), eq(securityQuestions.active, true)));
+    const versionTasks = area === "opening" || area === "closing"
+      ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, locationId), eq(checklistQuestions.checklist, parsedArea as "opening" | "closing")))
+      : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, locationId), eq(securityQuestions.session, area === "security_am" ? "AM" : "PM")));
+    const versionsById = new Map(versionTasks.map(task => [task.id, task as TaskRow]));
     if (!tasks.length) throw new ApiError(422, "No active checklist tasks exist for this location");
     const legacyChecklist = area === "opening" || area === "closing"
       ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, locationId), eq(checklistResponses.checklist, parsedArea as "opening" | "closing"), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
@@ -254,10 +292,10 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
       : [];
     const structured = await tx.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, parsedArea), eq(structuredTaskResponses.dateKey, dateKey)));
     const complete = tasks.every(task => task.taskType === "with_steps"
-      ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structured.some(response => response.taskId === task.id && response.stepId === step.id))
+      ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structured.some(response => response.taskId === task.id && response.stepId === step.id) || structured.some(response => response.stepId === step.id && responseMatchesTask(task, response, versionsById)))
       : task.completionMode === "task"
-        ? structured.some(response => response.taskId === task.id && response.stepId === "simple")
-        : structured.some(response => response.taskId === task.id && response.stepId === "simple") || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id));
+        ? structured.some(response => response.taskId === task.id && response.stepId === "simple") || structured.some(response => response.stepId === "simple" && responseMatchesTask(task, response, versionsById))
+        : structured.some(response => response.taskId === task.id && response.stepId === "simple") || structured.some(response => response.stepId === "simple" && responseMatchesTask(task, response, versionsById)) || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id || versionsById.has(response.questionId) && responseMatchesTask(task, { taskId: response.questionId }, versionsById)));
     if (!complete) throw new ApiError(422, "Every active task must be completed before sign-off");
     const [signoff] = area === "opening" || area === "closing"
       ? await tx.insert(checklistSignOffs).values({ locationId, checklist: area, dateKey, completedAt: new Date(), completedBy: context.user.id, teamMemberId: memberId }).onConflictDoNothing({ target: [checklistSignOffs.locationId, checklistSignOffs.checklist, checklistSignOffs.dateKey] }).returning({ id: checklistSignOffs.id })

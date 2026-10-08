@@ -8,6 +8,7 @@ import type {
 } from "@/components/dashboard/dashboard-types";
 import { AlertTriangle, Check, ChevronLeft } from "lucide-react";
 import { useMemo, useState } from "react";
+import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 
 type Props = {
   locationId: string;
@@ -27,6 +28,7 @@ const responseLabel = (type: StructuredStep["responseType"]) =>
     number: "Number",
     short_text: "Short text",
   })[type];
+const responseTime = (value?: string) => value ? new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
 
 export default function StructuredTaskWorkflow({
   locationId,
@@ -56,7 +58,7 @@ export default function StructuredTaskWorkflow({
   const responseFor = (taskId: string, stepId: string) =>
     responses.find(
       (response) =>
-        response.taskId === taskId &&
+        (response.taskId === taskId || versionedChecklistResponseMatches(areaTasks.find((task) => task._id === taskId) ?? { _id: taskId }, response)) &&
         response.taskArea === area &&
         response.stepId === stepId,
     ) ?? localResponses[`${taskId}:${stepId}`];
@@ -68,7 +70,7 @@ export default function StructuredTaskWorkflow({
             id: "simple",
             label: task.title,
             description: task.description,
-            responseType: "confirm",
+            responseType: task.completionMode === "task" ? "confirm" : "yes_no",
             required: true,
           },
         ];
@@ -114,6 +116,8 @@ export default function StructuredTaskWorkflow({
           _id: `local-${key}`,
           taskArea: area,
           taskId: task._id,
+          taskVersionRootId: task.versionRootId,
+          taskDefinitionKey: task.definitionKey,
           stepId: step.id,
           responseType: step.responseType,
           responseValue: step.responseType === "confirm" ? "confirmed" : value,
@@ -252,6 +256,7 @@ export default function StructuredTaskWorkflow({
                                 (member) =>
                                   member._id === response.teamMemberId,
                               )?.name ?? "Team member"}
+                              {responseTime(response.createdAt) ? ` · ${responseTime(response.createdAt)}` : ""}
                             </span>
                           </span>
                         )}

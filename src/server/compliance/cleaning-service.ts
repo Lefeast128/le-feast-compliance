@@ -14,6 +14,7 @@ export async function completeCleaning(context: AuthContext, input: { locationId
   const [task] = await db.select().from(cleaningTasks).where(and(eq(cleaningTasks.id, input.taskId), eq(cleaningTasks.locationId, location.id))).limit(1);
   if (!task) throw new ApiError(422, "Cleaning task does not belong to this location");
   if (!task.active) throw new ApiError(422, "This configuration version is no longer active");
+  if (task.completionMode === "question") throw new ApiError(422, "Yes/No cleaning questions must use the structured task workflow");
   const dateKey = localDateKey(Date.now(), location.timezone);
   const existing = await db.select({ id: cleaningCompletions.id }).from(cleaningCompletions).where(and(eq(cleaningCompletions.locationId, location.id), eq(cleaningCompletions.taskId, task.id), eq(cleaningCompletions.dateKey, dateKey))).limit(1);
   if (existing[0]) return { completionId: existing[0].id, existing: true };

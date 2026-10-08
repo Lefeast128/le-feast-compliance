@@ -194,12 +194,12 @@ export default function DashboardToday({
         else setChecklistList("closing");
         break;
       case "am-security":
-        if (structuredTasks.some(task => task.area === "security_am" && task.taskType === "with_steps")) onOpenStructuredTask("security_am");
+        if (structuredTasks.some(task => task.area === "security_am" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_am");
         else if (amSecurityComplete) viewTodayRecords();
         else beginSecurity("AM");
         break;
       case "pm-security":
-        if (structuredTasks.some(task => task.area === "security_pm" && task.taskType === "with_steps")) onOpenStructuredTask("security_pm");
+        if (structuredTasks.some(task => task.area === "security_pm" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_pm");
         else if (pmSecurityComplete) viewTodayRecords();
         else beginSecurity("PM");
         break;
@@ -211,7 +211,7 @@ export default function DashboardToday({
         setProbeOpen(true);
         break;
       case "cleaning":
-        if (structuredTasks.some(task => task.area === "cleaning" && task.taskType === "with_steps")) onOpenStructuredTask("cleaning");
+        if (structuredTasks.some(task => task.area === "cleaning" && (task.taskType === "with_steps" || task.completionMode === "question"))) onOpenStructuredTask("cleaning");
         else setCleaningList(true);
         break;
       case "additional-checks":

@@ -17,6 +17,7 @@ export async function saveChecklistResponse(context: AuthContext, input: { locat
     if (!question) throw new ApiError(422, "Checklist question does not belong to this location");
     if (question.checklist !== input.checklist) throw new ApiError(422, "Checklist question does not match this checklist");
     if (!question.active) throw new ApiError(422, "This configuration version is no longer active");
+    if (question.completionMode === "task") throw new ApiError(422, "Simple completion tasks must use the structured task workflow");
     const range = localDayRange(Date.now(), location.timezone);
     const existing = await tx.select({ id: checklistResponses.id }).from(checklistResponses).where(and(eq(checklistResponses.locationId, location.id), eq(checklistResponses.questionId, question.id), eq(checklistResponses.checklist, input.checklist), gte(checklistResponses.createdAt, new Date(range.start)), lt(checklistResponses.createdAt, new Date(range.end))));
     if (existing.length) throw new ApiError(409, "Checklist question already answered today");
@@ -38,6 +39,7 @@ export async function signOffChecklist(context: AuthContext, input: { locationId
     if (existing[0]) return { signoffId: existing[0].id, existing: true };
     const questions = await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, location.id), eq(checklistQuestions.checklist, input.checklist), eq(checklistQuestions.active, true)));
     if (!questions.length) throw new ApiError(422, "No active checklist questions exist for this location");
+    if (questions.some((question) => question.taskType === "with_steps" || question.completionMode === "task")) throw new ApiError(422, "This checklist must use the structured task workflow");
     const range = localDayRange(Date.now(), location.timezone);
     const responses = await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, location.id), eq(checklistResponses.checklist, input.checklist), gte(checklistResponses.createdAt, new Date(range.start)), lt(checklistResponses.createdAt, new Date(range.end))));
     const responseIds = new Set(responses.map((item) => item.questionId)); if (questions.some((question) => !responseIds.has(question.id))) throw new ApiError(422, "Every active checklist question must have a response today");

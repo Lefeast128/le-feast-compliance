@@ -1,16 +1,19 @@
 import type { StructuredStep } from "@/components/dashboard/dashboard-types";
+import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 
 export type UnifiedMode = "question" | "task";
 
 export type UnifiedItem = {
   _id: string;
+  versionRootId?: string | null;
+  definitionKey?: string | null;
   taskType?: "simple" | "with_steps";
   completionMode?: UnifiedMode;
   steps?: StructuredStep[];
 };
 
-export type LegacyCompletion = { questionId: string };
-export type StructuredCompletion = { taskId: string; stepId: string };
+export type LegacyCompletion = { questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null };
+export type StructuredCompletion = { taskId: string; stepId: string; taskVersionRootId?: string | null; taskDefinitionKey?: string | null };
 
 export const isSimpleCompletionTask = (item: UnifiedItem) =>
   item.taskType !== "with_steps" && item.completionMode === "task";
@@ -24,11 +27,11 @@ export function isItemComplete(
   structured: StructuredCompletion[],
 ) {
   if (item.taskType === "with_steps") {
-    const responses = new Set(structured.filter((response) => response.taskId === item._id).map((response) => response.stepId));
+    const responses = new Set(structured.filter((response) => versionedChecklistResponseMatches(item, response)).map((response) => response.stepId));
     return requiredStepIds(item).every((stepId) => responses.has(stepId));
   }
-  return structured.some((response) => response.taskId === item._id && response.stepId === "simple")
-    || (item.completionMode !== "task" && legacy.some((response) => response.questionId === item._id));
+  return structured.some((response) => response.stepId === "simple" && versionedChecklistResponseMatches(item, response))
+    || (item.completionMode !== "task" && legacy.some((response) => versionedChecklistResponseMatches(item, response)));
 }
 
 export const eligibleSimpleTaskIds = (

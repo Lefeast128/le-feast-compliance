@@ -10,6 +10,7 @@ import {
 import { requireLocationAccess, type AuthContext } from "../auth/core.js";
 import { localDateKey, localDayRange, localWeekday } from "./time.js";
 import type { ApiLocation, DashboardResponse } from "../../shared/dashboard.js";
+import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
 
 const serialize = <T>(value: T): T => {
   if (value instanceof Date) return value.toISOString() as T;
@@ -95,6 +96,13 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     db.select().from(additionalCompletions).where(eq(additionalCompletions.locationId, location.id)),
     db.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, location.id), eq(structuredTaskResponses.dateKey, todayKey))),
   ]);
+  const [checklistVersionRows, cleaningVersionRows, securityVersionRows] = await Promise.all([
+    db.select().from(checklistQuestions).where(eq(checklistQuestions.locationId, location.id)),
+    db.select().from(cleaningTasks).where(eq(cleaningTasks.locationId, location.id)),
+    db.select().from(securityQuestions).where(eq(securityQuestions.locationId, location.id)),
+  ]);
+  const taskVersions = [...checklistVersionRows, ...cleaningVersionRows, ...securityVersionRows];
+  const taskVersionById = new Map(taskVersions.map(row => [row.id, row]));
 
   const issueIds = issueRows.map(issue => issue.id);
   const issueUpdateRows = issueIds.length ? await db.select().from(issueUpdates).where(inArray(issueUpdates.issueId, issueIds)).orderBy(asc(issueUpdates.createdAt)) : [];
@@ -126,9 +134,9 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   const weekday = localWeekday(now, location.timezone);
   const cleaningData = cleaningTaskRows.filter(task => dueCleaning(task, weekday));
   const structuredTasks = [
-    ...checklistQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.checklist, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
-    ...cleaningData.map(row => ({ id: row.id, locationId: row.locationId, area: "cleaning" as const, title: row.name, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order, frequency: row.frequency, weekdays: row.weekdays })),
-    ...securityQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.session === "AM" ? "security_am" as const : "security_pm" as const, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
+    ...checklistQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.checklist, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, versionRootId: row.versionRootId, definitionKey: checklistDefinitionKey(row), centralItemId: row.centralItemId, order: row.order })),
+    ...cleaningData.map(row => ({ id: row.id, locationId: row.locationId, area: "cleaning" as const, title: row.name, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, versionRootId: row.versionRootId, definitionKey: checklistDefinitionKey(row), centralItemId: row.centralItemId, order: row.order, frequency: row.frequency, weekdays: row.weekdays })),
+    ...securityQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.session === "AM" ? "security_am" as const : "security_pm" as const, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, versionRootId: row.versionRootId, definitionKey: checklistDefinitionKey(row), centralItemId: row.centralItemId, order: row.order })),
   ];
   const currentVersions = trainingRequirementRows.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
   const contentVersions = trainingRequirementRows.length ? await db.select().from(trainingContentVersions).where(inArray(trainingContentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
@@ -171,7 +179,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
     cleaningTasks: serialize(cleaningData), cleaningCompletions: serialize(cleaningCompletionRows.filter(completion => cleaningData.some(task => task.id === completion.taskId)).map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") }))),
     teamMembers: serialize(activeTeamMemberRows), trainingRequirements: trainingData, trainingCompletions: trainingDataRows,
     additionalRequirements: serialize(additionalRequirementRows), additionalCompletions: additionalData,
-    structuredTasks: serialize(structuredTasks), structuredTaskResponses: serialize(structuredTaskResponseRows),
-    checklists: serialize({ opening: { questions: checklists.opening.questions, responses: checklists.opening.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) }, closing: { questions: checklists.closing.questions, responses: checklists.closing.responses.map(row => ({ ...row, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) } }),
+    structuredTasks: serialize(structuredTasks), structuredTaskResponses: serialize(structuredTaskResponseRows.map(row => ({ ...row, taskVersionRootId: taskVersionById.get(row.taskId) ? checklistVersionRoot(taskVersionById.get(row.taskId)!) : null, taskDefinitionKey: taskVersionById.get(row.taskId) ? checklistDefinitionKey(taskVersionById.get(row.taskId)!) : null }))),
+    checklists: serialize({ opening: { questions: checklists.opening.questions, responses: checklists.opening.responses.map(row => ({ ...row, questionVersionRootId: taskVersionById.get(row.questionId) ? checklistVersionRoot(taskVersionById.get(row.questionId)!) : null, questionDefinitionKey: taskVersionById.get(row.questionId) ? checklistDefinitionKey(taskVersionById.get(row.questionId)!) : null, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) }, closing: { questions: checklists.closing.questions, responses: checklists.closing.responses.map(row => ({ ...row, questionVersionRootId: taskVersionById.get(row.questionId) ? checklistVersionRoot(taskVersionById.get(row.questionId)!) : null, questionDefinitionKey: taskVersionById.get(row.questionId) ? checklistDefinitionKey(taskVersionById.get(row.questionId)!) : null, teamMemberName: teamNames.get(row.teamMemberId ?? "") })) } }),
   };
 };
