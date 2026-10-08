@@ -30,7 +30,7 @@ assert.match(service, /if \(input\.answer === "no" && !input\.action\?\.trim\(\)
 
 assert.match(checklist, /workflowMemberId/);
 assert.match(checklist, /overrides/);
-assert.match(checklist, /saveStructured\(\{ locationId, area: checklist, taskId/);
+assert.match(checklist, /saveStructured\(\{\s*locationId,\s*area: checklist,\s*taskId:/);
 assert.match(checklist, /disabled=\{!memberFor\(task\._id\)\}/);
 assert.match(dashboardSource, /questionId, answer: "yes", teamMemberId/);
 assert.match(dashboardSource, /questionId: dashboard\.location\._id|questionId: currentSecurityQuestion\._id/);

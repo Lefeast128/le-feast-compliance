@@ -48,6 +48,13 @@ const [component, workflow, dashboard, schema, migration, structuredService, che
   readFile("src/server/compliance/security-service.ts", "utf8"),
 ]);
 assert.match(component, /Select all simple tasks/);
+assert.match(component, /aria-expanded=\{expanded\}/, "checklist rows progressively disclose their controls");
+assert.match(component, /aria-controls=\{taskPanelId\}/, "expanded checklist rows expose an accessible panel relationship");
+assert.match(component, /fixed inset-x-0 bottom-0/, "bulk review uses a safe-area-aware bottom action area");
+assert.match(component, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]/, "checklist content reserves space for action UI and safe areas");
+assert.match(component, /Default for new answers and tasks/, "default staff attribution is explained once at the top");
+assert.match(component, /Recorded step responses/, "completed detailed tasks retain an expandable evidence view");
+assert.match(component, /transition-transform duration-200 motion-reduce:transition-none/, "row expansion respects reduced motion");
 assert.match(component, /Confirm simple tasks/);
 assert.match(component, /Yes/);
 assert.match(component, /Report an issue/);
