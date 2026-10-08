@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 
 const dueLabel = (value: number) =>
   new Date(value).toLocaleDateString("en-GB", {
@@ -62,22 +64,14 @@ export default function AdditionalChecksView({
   }
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
-      <header className="border-b border-black/[0.07] bg-white">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft className="size-5" />
-          </Button>
-          <div>
-            <p className="font-semibold">Additional Checks</p>
-            <p className="text-xs text-[#89918b]">{locationName}</p>
-          </div>
-        </div>
-      </header>
+      <OperationalHeader
+        title="Additional Checks"
+        eyebrow="Recurring compliance"
+        date={operationalDateLabel()}
+        subtitle={locationName}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-2xl px-4 py-7 sm:px-6">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-          Recurring compliance
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold">Additional Checks</h1>
         <div className="mt-5">
           <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
         </div>

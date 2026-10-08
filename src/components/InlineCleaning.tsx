@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Check, ChevronLeft } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState } from "react";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 
 type CleaningTask = { _id: string; name: string; frequency?: string };
 type CleaningCompletion = {
@@ -66,22 +68,14 @@ export default function InlineCleaning({
   }
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
-      <header className="border-b border-black/[0.07] bg-white">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ChevronLeft />
-          </Button>
-          <div>
-            <p className="font-semibold">Cleaning</p>
-            <p className="text-xs text-[#89918b]">{locationName} · Today</p>
-          </div>
-        </div>
-      </header>
+      <OperationalHeader
+        title="Cleaning jobs"
+        eyebrow="Daily checks"
+        date={operationalDateLabel()}
+        subtitle={locationName}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-          Daily checks
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold">Cleaning jobs</h1>
         <p className="mt-2 text-sm text-[#727a74]">
           Complete each cleaning job with the person who carried it out.
         </p>

@@ -18,16 +18,16 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Circle,
-  ClipboardList,
   Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 
 type ChecklistTask = UnifiedItem & {
   title: string;
@@ -58,13 +58,6 @@ const timeLabel = (value?: number | string) =>
         hour: "2-digit",
         minute: "2-digit",
       });
-const dateLabel = (value = new Date()) =>
-  new Intl.DateTimeFormat("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(value);
 const stepLabel = (step: StructuredStep) =>
   step.responseType === "yes_no"
     ? "Yes / No"
@@ -144,9 +137,6 @@ export default function InlineChecklist({
     taskDefinitionKey: response.taskDefinitionKey,
   }));
   const progress = checklistProgress(tasks, legacy, structured);
-  const completionPercent = progress.total
-    ? Math.round((progress.complete / progress.total) * 100)
-    : 0;
   const memberFor = (key: string) => overrides[key] || workflowMemberId;
   const memberName = (id?: string | null) =>
     teamMembers.find((member) => member._id === id)?.name ?? "Not recorded";
@@ -471,27 +461,13 @@ export default function InlineChecklist({
 
   return (
     <div className="min-h-screen bg-[#f6f7f5] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#171918]">
-      <header className="sticky top-0 z-20 border-b border-black/[0.07] bg-white/95 shadow-[0_1px_10px_rgba(23,25,24,0.04)] backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
-          <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to daily checks" className="shrink-0 rounded-full">
-            <ChevronLeft className="size-5" />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="size-4 shrink-0 text-[#8e7818]" />
-              <p className="truncate text-sm font-semibold">{title}</p>
-            </div>
-            <p className="mt-0.5 text-xs text-[#89918b]">{dateLabel()}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-sm font-bold text-[#303631]">{progress.complete} / {progress.total}</p>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#89918b]">complete</p>
-          </div>
-        </div>
-        <div className="mx-auto h-1 max-w-3xl overflow-hidden bg-[#e9ede8] sm:rounded-full">
-          <div className="h-full rounded-full bg-[#2d7951] transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${completionPercent}%` }} aria-label={`${completionPercent}% complete`} />
-        </div>
-      </header>
+      <OperationalHeader
+        title={title}
+        eyebrow="Daily checklist"
+        date={operationalDateLabel()}
+        progress={{ complete: progress.complete, total: progress.total }}
+        onBack={onBack}
+      />
 
       <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
         <ActiveStaffControl teamMembers={teamMembers} value={workflowMemberId} onChange={setWorkflowMemberId} />

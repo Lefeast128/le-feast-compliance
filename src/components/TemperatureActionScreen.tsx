@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Check, TriangleAlert } from "lucide-react";
 import { StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 
 type IssueProgress = {
   action: string;
@@ -24,7 +26,7 @@ const emptyProgress: IssueProgress = { action: "", note: "", actionMemberId: "",
 
 export default function TemperatureActionScreen({ session, issues, teamMembers, issueProgress, setIssueProgress, onSaveActions, onBack }: Props) {
   return <div className="min-h-screen bg-[#fff8f6]">
-    <header className="border-b border-black/[0.07] bg-white"><div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4"><Button variant="ghost" size="icon" onClick={onBack}>←</Button><p className="font-semibold">Action required</p></div></header>
+    <OperationalHeader title="Corrective action" eyebrow={`${session} fridge temperatures`} date={operationalDateLabel()} subtitle="Record what happened for each failed fridge." onBack={onBack} />
     <main className="mx-auto max-w-2xl px-5 py-10">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#b64738]">{session} fridge temperatures</p>
       <h1 className="mt-3 text-3xl font-semibold">Record what happened for each fridge</h1>

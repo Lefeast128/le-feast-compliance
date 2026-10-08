@@ -11,6 +11,7 @@ export type TeamMember = {
 
 export type Equipment = {
   _id: string;
+  name?: string;
   type?: string;
   minimumTemperature?: number;
   preferredTemperature?: number;
@@ -135,6 +136,11 @@ export type SecurityQuestion = ChecklistQuestion;
 export type SecurityResponse = {
   _id?: string;
   questionId: string;
+  answer?: string;
+  issue?: string | null;
+  createdAt?: string | number;
+  teamMemberId?: string | null;
+  teamMemberName?: string | null;
 };
 
 export type SignOff = {
@@ -156,8 +162,13 @@ export type TemperatureRound = {
 export type TemperatureReading = {
   _id: string;
   roundId: string;
+  equipmentId?: string;
+  equipmentName?: string | null;
   result: string;
   temperature: number;
+  createdAt?: string | number;
+  teamMemberId?: string | null;
+  teamMemberName?: string | null;
 };
 
 export type FoodCheck = {
@@ -196,7 +207,7 @@ export type DashboardData = {
   foodChecks: FoodCheck[];
   wastageRecords: WastageRecord[];
   cleaningTasks: Array<{ _id: string; name: string }>;
-  cleaningCompletions: Array<{ _id?: string; taskId: string; completedAt?: number; teamMemberName?: string }>;
+  cleaningCompletions: Array<{ _id?: string; taskId: string; completedAt?: number | string; teamMemberId?: string | null; teamMemberName?: string }>;
   trainingRequirements: Array<{ _id: string; title: string }>;
   trainingCompletions: Array<{ _id?: string; requirementId: string; completedAt?: number; teamMemberName?: string }>;
   structuredTasks: StructuredTask[];

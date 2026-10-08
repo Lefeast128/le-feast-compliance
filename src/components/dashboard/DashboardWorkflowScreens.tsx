@@ -4,12 +4,13 @@ import {
   Choice,
   Modal,
   TemperatureInput,
-  Top,
 } from "@/components/dashboard/DashboardPrimitives";
 import type {
   ProbeProduct,
   TeamMember,
 } from "@/components/dashboard/dashboard-types";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
@@ -154,7 +155,13 @@ export function ChecklistScreen({
 }: ChecklistScreenProps) {
   return (
     <div className="min-h-screen bg-[#f6f7f5]">
-      <Top title={title} onBack={onBack} />
+      <OperationalHeader
+        title={title}
+        eyebrow="Daily checks"
+        date={operationalDateLabel()}
+        progress={{ complete: index, total }}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-xl px-5 py-10">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
           Question {index + 1} of {total}
@@ -267,7 +274,14 @@ export function SecurityScreen({
   const last = index + 1 === total;
   return (
     <div className="min-h-screen bg-[#f6f7f5]">
-      <Top title={`${session} Security Check`} onBack={onBack} />
+      <OperationalHeader
+        title={`${session} Security Check`}
+        eyebrow="Daily checks"
+        date={operationalDateLabel()}
+        subtitle="Complete each security question and sign off the session."
+        progress={{ complete: index, total }}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-xl px-5 py-10">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
           Question {index + 1} of {total}

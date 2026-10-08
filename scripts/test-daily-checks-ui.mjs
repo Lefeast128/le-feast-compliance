@@ -12,6 +12,9 @@ import {
 const journeySource = await readFile(new URL("../src/components/dashboard/DailyChecksJourney.tsx", import.meta.url), "utf8");
 const dashboardTodaySource = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
 const dashboardSource = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
+const checklistSource = await readFile(new URL("../src/components/InlineChecklist.tsx", import.meta.url), "utf8");
+const recordsSource = await readFile(new URL("../src/components/dashboard/OperationalRecordsView.tsx", import.meta.url), "utf8");
+const headerSource = await readFile(new URL("../src/components/dashboard/OperationalHeader.tsx", import.meta.url), "utf8");
 
 const base = {
   equipmentCount: 4,
@@ -94,6 +97,15 @@ for (const destination of ["temperature", "checklist", "security", "cleaning", "
   assert.match(dashboardSource, new RegExp(`kind: \\\"${destination}\\\"`), `${destination} records have a dedicated view`);
 }
 assert.match(dashboardSource, /OperationalRecordsView/, "completed checks render their own record view");
+assert.match(checklistSource, /<OperationalHeader/, "checklists use the shared mobile-safe header");
+assert.match(headerSource, /of \{progress\.total\} \{progressLabel\}/, "header separates progress from title and date");
+assert.match(headerSource, /env\(safe-area-inset-top\)/, "focused headers respect the safe-area inset");
+assert.match(headerSource, /break-words text-lg font-bold/, "long checklist titles wrap without clipping");
+assert.doesNotMatch(headerSource, /truncate text-sm font-semibold/, "checklist title is no longer truncated into the date");
+assert.match(recordsSource, /structuredTaskResponses/, "record views include structured responses");
+assert.match(recordsSource, /equipmentName \?\? equipment\?\.name/, "temperature records prefer stored equipment names");
+assert.match(recordsSource, /No response evidence available\./, "record views do not fabricate missing answers");
+assert.doesNotMatch(recordsSource, /\?\? response\?\.responseValue \?\? "Recorded"/, "record views avoid generic unsupported answers");
 
 assert.deepEqual(
   getIssueAttentionTaskIds({

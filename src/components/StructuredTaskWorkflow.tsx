@@ -6,10 +6,12 @@ import type {
   StructuredTaskResponse,
   TeamMember,
 } from "@/components/dashboard/dashboard-types";
-import { AlertTriangle, Check, ChevronLeft } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import { useMemo, useState } from "react";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 
 type Props = {
   locationId: string;
@@ -80,6 +82,14 @@ export default function StructuredTaskWorkflow({
     stepsFor(task)
       .filter((step) => step.required !== false)
       .every((step) => Boolean(responseFor(task._id, step.id))),
+  );
+  const totalRequiredSteps = areaTasks.reduce(
+    (total, task) => total + stepsFor(task).filter((step) => step.required !== false).length,
+    0,
+  );
+  const completedRequiredSteps = areaTasks.reduce(
+    (total, task) => total + stepsFor(task).filter((step) => step.required !== false && responseFor(task._id, step.id)).length,
+    0,
   );
   const isSignable = area !== "cleaning";
   const areaLabel =
@@ -173,29 +183,18 @@ export default function StructuredTaskWorkflow({
 
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
-      <header className="border-b border-black/[0.07] bg-white">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ChevronLeft className="size-5" />
-          </Button>
-          <div>
-            <p className="font-semibold">{areaLabel}</p>
-            <p className="text-xs text-[#89918b]">
-              {locationName} · Complete tasks in any order
-            </p>
-          </div>
-        </div>
-      </header>
+      <OperationalHeader
+        title={areaLabel}
+        eyebrow="Operational checks"
+        date={operationalDateLabel()}
+        subtitle={`${locationName} · Complete tasks in any order`}
+        progress={{ complete: completedRequiredSteps, total: totalRequiredSteps }}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-3xl space-y-5 px-4 py-7 sm:px-6">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-            Structured task
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold">{areaLabel}</h1>
-          <p className="mt-2 text-sm text-[#727a74]">
-            Each step can be completed by the team member who carried it out.
-          </p>
-        </div>
+        <p className="text-sm leading-6 text-[#727a74]">
+          Each step can be completed by the team member who carried it out.
+        </p>
         <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
         {areaTasks.map((task) => {
           const steps = stepsFor(task);
