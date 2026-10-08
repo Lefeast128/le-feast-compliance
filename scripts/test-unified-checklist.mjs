@@ -53,7 +53,9 @@ assert.match(component, /aria-controls=\{taskPanelId\}/, "expanded checklist row
 assert.match(component, /fixed inset-x-0 bottom-0/, "bulk review uses a safe-area-aware bottom action area");
 assert.match(component, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]/, "checklist content reserves space for action UI and safe areas");
 assert.match(component, /Default for new answers and tasks/, "default staff attribution is explained once at the top");
+assert.match(component, /MemberSelect label="Change person"/, "expanded items expose a discreet staff override");
 assert.match(component, /Recorded step responses/, "completed detailed tasks retain an expandable evidence view");
+assert.match(component, /animate-in fade-in-0 slide-in-from-top-1/, "expanded panels use a restrained progressive disclosure animation");
 assert.match(component, /transition-transform duration-200 motion-reduce:transition-none/, "row expansion respects reduced motion");
 assert.match(component, /Confirm simple tasks/);
 assert.match(component, /Yes/);
