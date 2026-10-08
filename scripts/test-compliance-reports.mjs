@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { asOfIssue, evaluatedDays, reportDateRange, sectionCompletion } from "../src/server/reports/calculations.ts";
-import { hasCorrectiveActionEvidence } from "../src/server/compliance/corrective-action.ts";
+import { hasCorrectiveActionEvidence, hasCorrectiveActionOnDay } from "../src/server/compliance/corrective-action.ts";
 import { currentMonthRange, last30DaysRange, previousMonthRange } from "../src/lib/compliance-reports.ts";
 
 const reportService = await readFile(new URL("../src/server/reports/service.ts", import.meta.url), "utf8");
@@ -83,13 +83,37 @@ assert.match(reportService, /rechecksRecorded/);
 assert.match(reportService, /resolvedInRange/);
 assert.match(reportService, /updatedInRange/);
 assert.match(reportService, /recheckedInRange/);
-assert.match(reportService, /hasCorrectiveActionEvidence/);
-assert.match(historyService, /hasCorrectiveActionEvidence/);
+assert.match(reportService, /hasCorrectiveActionOnDay/);
+assert.match(historyService, /hasCorrectiveActionOnDay/);
+assert.doesNotMatch(reportService, /inLocalDay\(issue, "createdAt", day\.date, location\.timezone\).*hasCorrectiveActionEvidence/);
+assert.doesNotMatch(historyService, /inLocalDay\(issue, "createdAt", from, location\.timezone\).*hasCorrectiveActionEvidence/);
 assert.equal(hasCorrectiveActionEvidence({}), false, "failed detection alone is not corrective action evidence");
 assert.equal(hasCorrectiveActionEvidence({ action: "", updates: [] }), false, "issue creation without an action is not corrective action evidence");
 assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "resolution", note: "Resolved" }] }), false, "resolution alone is not corrective action evidence");
 assert.equal(hasCorrectiveActionEvidence({ responseAction: "Door checked" }), true, "recorded response action is corrective action evidence");
 assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "immediate_action", note: "Food moved" }] }), true, "immediate action update is corrective action evidence");
 assert.equal(hasCorrectiveActionEvidence({ updates: [{ updateType: "further_action", note: "Maintenance reported" }] }), true, "further action update is corrective action evidence");
+
+const timezone = "Europe/London";
+const monday = "2026-07-13";
+const tuesday = "2026-07-14";
+const failedMonday = { issues: [{ createdAt: new Date("2026-07-13T09:00:00Z"), action: "Fridge door checked" }], updates: [], checklistResponses: [], probes: [] };
+assert.equal(hasCorrectiveActionOnDay({ date: monday, timezone, ...failedMonday }), false, "Monday failure without action has no corrective-action indicator");
+
+const tuesdayAction = { updates: [{ createdAt: new Date("2026-07-14T09:00:00Z"), updateType: "immediate_action", note: "Fridge door checked" }] };
+assert.equal(hasCorrectiveActionOnDay({ date: tuesday, timezone, ...tuesdayAction }), true, "Tuesday corrective action appears on Tuesday");
+assert.equal(hasCorrectiveActionOnDay({ date: monday, timezone, ...tuesdayAction }), false, "Tuesday corrective action does not retroactively mark Monday");
+
+const failedProbeAction = { probes: [{ createdAt: new Date("2026-07-14T10:00:00Z"), action: "Food moved to another fridge" }] };
+assert.equal(hasCorrectiveActionOnDay({ date: tuesday, timezone, ...failedProbeAction }), true, "immediate failed-probe action appears on its recording day");
+
+const failedChecklistAction = { checklistResponses: [{ createdAt: new Date("2026-07-14T11:00:00Z"), action: "Manager informed" }] };
+assert.equal(hasCorrectiveActionOnDay({ date: tuesday, timezone, ...failedChecklistAction }), true, "checklist corrective action appears on its recording day");
+
+const resolutionOnly = { updates: [{ createdAt: new Date("2026-07-14T12:00:00Z"), updateType: "resolution", note: "Resolved" }] };
+assert.equal(hasCorrectiveActionOnDay({ date: tuesday, timezone, ...resolutionOnly }), false, "resolution without corrective action has no corrective-action indicator");
+assert.equal(hasCorrectiveActionOnDay({ date: monday, timezone, updates: [], checklistResponses: [], probes: [] }), false, "daily completion remains independent of corrective-action evidence");
+assert.equal(days[0].complete, true, "daily completion remains complete independently of corrective-action evidence");
+assert.equal({ result: "fail", temperature: 9.3 }.result, "fail", "original failed reading remains failed");
 
 console.log("Compliance report tests passed, including corrective-action evidence regressions");

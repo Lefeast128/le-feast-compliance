@@ -8,7 +8,7 @@ import { localDateKey, localDayRange } from "../compliance/validation.js";
 import { localWeekday } from "../dashboard/time.js";
 import { calendar } from "../history/service.js";
 import { correctiveActionLabel, issueStatusLabel, resultLabel } from "../../lib/temperature-resolution.js";
-import { hasCorrectiveActionEvidence, isCorrectiveActionUpdate } from "../compliance/corrective-action.js";
+import { hasCorrectiveActionOnDay } from "../compliance/corrective-action.js";
 import { asOfIssue, evaluatedDays, reportDateRange, REPORT_SECTION_KEYS, sectionCompletion, type ReportSectionKey } from "./calculations.js";
 import { listManagerReviewsForReport } from "../reviews/service.js";
 
@@ -180,10 +180,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
   const dayRows = calendarResult.days.map((day: any) => {
     const flags = flagsFor(day.date);
     const eventsOnDay = [...issuesRows.filter(issue => inLocalDay(issue, "createdAt", day.date, location.timezone)), ...updates.filter(update => inLocalDay(update, "createdAt", day.date, location.timezone)), ...recheckRows.filter(recheck => inLocalDay(recheck, "createdAt", day.date, location.timezone)), ...issuesRows.filter(issue => inLocalDay(issue, "resolvedAt", day.date, location.timezone))];
-    const correctiveActionRecorded = issuesRows.some(issue => inLocalDay(issue, "createdAt", day.date, location.timezone) && hasCorrectiveActionEvidence({ action: issue.action }))
-      || updates.some(update => inLocalDay(update, "createdAt", day.date, location.timezone) && isCorrectiveActionUpdate(update))
-      || checklist.some(response => inLocalDay(response, "createdAt", day.date, location.timezone) && hasCorrectiveActionEvidence({ responseAction: response.action }))
-      || probes.some(probe => inLocalDay(probe, "createdAt", day.date, location.timezone) && hasCorrectiveActionEvidence({ responseAction: probe.action }));
+    const correctiveActionRecorded = hasCorrectiveActionOnDay({ date: day.date, timezone: location.timezone, updates, checklistResponses: checklist, probes });
     return { date: day.date, status: day.status, complete: day.complete, correctiveActionRecorded, sections: Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, flags[key as ReportSectionKey]])), counts: { ...flags.counts, rounds: day.rounds, checklistSignoffs: day.checklistSignoffs, securitySignoffs: day.securitySignoffs, issueEvents: eventsOnDay.length } };
   });
   const evaluated = evaluatedDays(dayRows, today);
