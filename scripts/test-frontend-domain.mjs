@@ -55,7 +55,7 @@ assert.match(dashboard, /DashboardToday/);
 assert.doesNotMatch(dashboard, /@ts-nocheck/);
 assert.doesNotMatch(dashboard, /if\s*\(false\)/);
 assert.match(dashboardToday, /StaffWastageModal/);
-assert.match(dashboardToday, /onLocationChange/);
+assert.doesNotMatch(dashboardToday, /onLocationChange/);
 assert.match(dashboardWorkflows, /ProbeModal/);
 assert.match(dashboardWorkflows, /ChecklistScreen/);
 assert.match(dashboardWorkflows, /SecurityScreen/);

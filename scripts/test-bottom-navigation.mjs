@@ -5,6 +5,7 @@ const primitives = await readFile(new URL("../src/components/dashboard/Dashboard
 const dashboard = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
 const today = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
 const library = await readFile(new URL("../src/components/LibraryView.tsx", import.meta.url), "utf8");
+const taskCard = await readFile(new URL("../src/components/dashboard/DailyTaskCard.tsx", import.meta.url), "utf8");
 const workflows = await readFile(new URL("../src/components/dashboard/DashboardWorkflowScreens.tsx", import.meta.url), "utf8");
 const taskIssueModal = await readFile(new URL("../src/components/TaskIssueModal.tsx", import.meta.url), "utf8");
 
@@ -20,7 +21,9 @@ assert.match(primitives, /active:scale-\[0\.94\]/, "tabs provide touch feedback"
 assert.match(primitives, /aria-current=\{active === key \? "page" : undefined\}/, "current tab is announced semantically");
 assert.match(primitives, /focus-visible:ring-2/, "keyboard focus remains visible");
 assert.match(primitives, /safe-area-inset-bottom/, "navigation respects the bottom safe area");
-assert.match(primitives, /backdrop-blur-xl/, "navigation uses translucent blur treatment");
+assert.match(primitives, /backdrop-blur-2xl/, "navigation uses translucent blur treatment");
+assert.match(primitives, /bg-white\/\[0\.64\]/, "navigation has a translucent glass surface");
+assert.match(primitives, /border-white\/75/, "navigation has a visible glass border");
 assert.match(primitives, /fixed inset-x-0 bottom-0 z-20/, "navigation sits below modal overlays");
 assert.match(primitives, /fixed inset-0 z-30/, "shared modal backdrop sits above navigation");
 assert.match(workflows, /<Modal/, "food probe uses the shared modal layer");
@@ -37,5 +40,13 @@ assert.match(dashboard, /if \(workflows\.cleaningList\)/, "focused cleaning work
 assert.match(dashboard, /if \(workflows\.checklistList\)/, "focused checklist workflows remain outside the main navigation shell");
 assert.match(dashboard, /if \(workflows\.security/, "focused security workflows remain outside the main navigation shell");
 assert.match(primitives, /canUseManagement \? \[\["Admin"/, "Admin is only added for authorised users");
+assert.match(primitives, /export function Header\(\{ onLogout \}/, "dashboard header keeps logout only");
+const headerBlock = primitives.slice(primitives.indexOf("export function Header"), primitives.indexOf("export function BottomNavigation"));
+assert.doesNotMatch(headerBlock, /Calendar|Training|Admin|Store/, "dashboard header does not duplicate navigation or store selection");
+assert.match(headerBlock, /aria-label="Log out"/, "logout remains accessible");
+assert.match(taskCard, /<button[\s\S]*aria-label=\{`\$\{task\.actionLabel\}: \$\{task\.title\}`\}/, "the entire task card is the action");
+assert.match(taskCard, /<ChevronRight/, "task card has a navigation arrow");
+assert.doesNotMatch(taskCard, /Step \$\{step\}|step:\s*number|<Button/, "task cards have no numbered marker or separate action button");
+assert.match(taskCard, /icon === "temperature"/, "task cards use section icons");
 
 console.log("Bottom navigation tests passed");

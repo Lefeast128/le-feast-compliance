@@ -9,12 +9,10 @@ import {
   getProgressPercent,
   type DailyTaskModel,
 } from "@/components/dashboard/daily-checks-model";
-import { Header } from "@/components/dashboard/DashboardPrimitives";
 import { ProbeModal } from "@/components/dashboard/DashboardWorkflowScreens";
 import type {
   DashboardData,
   DashboardIssue,
-  DashboardLocation,
   DashboardView,
   Equipment,
   ManagerReviewStatus,
@@ -25,21 +23,16 @@ import {
   buildWastagePayload,
   type WastagePickerProduct,
 } from "@/lib/wastage-picker";
+import { Header } from "@/components/dashboard/DashboardPrimitives";
 import type { Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 
 export type DashboardTodayProps = {
   dashboard: DashboardData;
   active: DashboardData;
-  locations?: DashboardLocation[];
-  locationId: string | null;
-  onLocationChange: (locationId: string) => void;
-  onAdmin: () => void;
   onManagerReviews: () => void;
   canUseManagement: boolean;
   managerReviewStatus?: ManagerReviewStatus | null;
-  onCalendar: () => void;
-  onTraining: () => void;
   onLogout: () => void | Promise<void>;
   todayLabel: string;
   currentUserName: string;
@@ -97,15 +90,9 @@ export type DashboardTodayProps = {
 export default function DashboardToday({
   dashboard,
   active,
-  locations,
-  locationId,
-  onLocationChange,
-  onAdmin,
   onManagerReviews,
   canUseManagement,
   managerReviewStatus,
-  onCalendar,
-  onTraining,
   onLogout,
   todayLabel,
   currentUserName,
@@ -242,16 +229,7 @@ export default function DashboardToday({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f6f7f5] pb-24 text-[#171918]">
-      <Header
-        locations={locations?.length ? locations : [dashboard.location]}
-        locationId={dashboard.location._id ?? locationId}
-        onLocationChange={onLocationChange}
-        onAdmin={onAdmin}
-        onCalendar={onCalendar}
-        onTraining={onTraining}
-        onLogout={onLogout}
-        canUseManagement={canUseManagement}
-      />
+      <Header onLogout={onLogout} />
       <DailyChecksJourney
         locationName={dashboard.location.name}
         todayLabel={todayLabel}

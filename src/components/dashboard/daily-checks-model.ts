@@ -187,16 +187,6 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       required: true,
     },
     {
-      id: "opening-checklist",
-      title: "Opening checklist",
-      description: "Confirm the store is ready to open safely.",
-      detail: input.openingComplete ? "All questions and sign-off complete" : "Questions still to complete",
-      icon: "checklist",
-      status: getTaskStatus({ complete: input.openingComplete, attention: issueAttention("opening-checklist") }),
-      actionLabel: input.openingComplete ? "View checklist" : "Start opening checklist",
-      required: true,
-    },
-    {
       id: "am-security",
       title: "AM security check",
       description: "Complete the morning security questions.",
@@ -204,6 +194,16 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       icon: "security",
       status: getTaskStatus({ complete: input.amSecurityComplete, attention: issueAttention("am-security") }),
       actionLabel: input.amSecurityComplete ? "View security check" : "Start AM security",
+      required: true,
+    },
+    {
+      id: "opening-checklist",
+      title: "Opening checklist",
+      description: "Confirm the store is ready to open safely.",
+      detail: input.openingComplete ? "All questions and sign-off complete" : "Questions still to complete",
+      icon: "checklist",
+      status: getTaskStatus({ complete: input.openingComplete, attention: issueAttention("opening-checklist") }),
+      actionLabel: input.openingComplete ? "View checklist" : "Start opening checklist",
       required: true,
     },
     {
@@ -231,30 +231,6 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       required: false,
     },
     {
-      id: "additional-checks",
-      title: "Additional checks",
-      description: "Complete recurring checks due today.",
-      detail: input.additionalDue ? `${input.additionalCompleted} of ${input.additionalDue} complete` : "Nothing due today",
-      icon: "additional",
-      status: input.additionalDue
-        ? getTaskStatus({ complete: input.additionalCompleted >= input.additionalDue, attention: issueAttention("additional-checks") })
-        : issueAttention("additional-checks")
-          ? getTaskStatus({ complete: false, attention: true })
-          : "not-scheduled",
-      actionLabel: "Open additional checks",
-      required: false,
-    },
-    {
-      id: "wastage",
-      title: "Wastage",
-      description: "Record today's food wastage or confirm no waste.",
-      detail: input.wastageCount ? `${input.wastageCount} records today` : "No records today",
-      icon: "wastage",
-      status: "not-started",
-      actionLabel: "Record wastage",
-      required: false,
-    },
-    {
       id: "pm-temperature",
       title: "PM fridge temperatures",
       description: "Record the evening temperature round.",
@@ -262,6 +238,16 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       icon: "temperature",
       status: getTaskStatus({ complete: input.pmComplete, inProgress: input.pmInProgress, dueLater: !input.pmComplete, attention: issueAttention("pm-temperature") }),
       actionLabel: input.pmComplete ? "View readings" : "Start PM temperatures",
+      required: true,
+    },
+    {
+      id: "pm-security",
+      title: "PM security check",
+      description: "Complete the evening security questions.",
+      detail: input.pmSecurityComplete ? "Completed" : "Due later today",
+      icon: "security",
+      status: getTaskStatus({ complete: input.pmSecurityComplete, dueLater: !input.pmSecurityComplete, attention: issueAttention("pm-security") }),
+      actionLabel: input.pmSecurityComplete ? "View security check" : "Start PM security",
       required: true,
     },
     {
@@ -275,14 +261,28 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       required: true,
     },
     {
-      id: "pm-security",
-      title: "PM security check",
-      description: "Complete the evening security questions.",
-      detail: input.pmSecurityComplete ? "Completed" : "Due later today",
-      icon: "security",
-      status: getTaskStatus({ complete: input.pmSecurityComplete, dueLater: !input.pmSecurityComplete, attention: issueAttention("pm-security") }),
-      actionLabel: input.pmSecurityComplete ? "View security check" : "Start PM security",
-      required: true,
+      id: "wastage",
+      title: "Wastage",
+      description: "Record today's food wastage or confirm no waste.",
+      detail: input.wastageCount ? `${input.wastageCount} records today` : "No records today",
+      icon: "wastage",
+      status: "not-started",
+      actionLabel: "Record wastage",
+      required: false,
+    },
+    {
+      id: "additional-checks",
+      title: "Additional checks",
+      description: "Complete recurring checks due today.",
+      detail: input.additionalDue ? `${input.additionalCompleted} of ${input.additionalDue} complete` : "Nothing due today",
+      icon: "additional",
+      status: input.additionalDue
+        ? getTaskStatus({ complete: input.additionalCompleted >= input.additionalDue, attention: issueAttention("additional-checks") })
+        : issueAttention("additional-checks")
+          ? getTaskStatus({ complete: false, attention: true })
+          : "not-scheduled",
+      actionLabel: "Open additional checks",
+      required: false,
     },
   ];
 }

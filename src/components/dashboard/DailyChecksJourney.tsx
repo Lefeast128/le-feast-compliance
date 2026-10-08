@@ -51,6 +51,8 @@ export function DailyChecksJourney({
   onIssueSelected: (issue: DashboardIssue) => void;
   onReportIssue: () => void;
 }) {
+  const additionalTask = tasks.find((task) => task.id === "additional-checks");
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 sm:px-8 sm:py-10">
       <div className="mb-7 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
@@ -100,11 +102,24 @@ export function DailyChecksJourney({
           <span className="text-xs font-semibold text-[#89918b]">Tap any step to continue</span>
         </div>
         <ol className="relative space-y-3 before:absolute before:bottom-8 before:left-[1.35rem] before:top-8 before:w-px before:bg-[#dfe3dd] sm:space-y-4">
-          {tasks.map((task, index) => (
-            <DailyTaskCard key={task.id} task={task} step={index + 1} onAction={() => onTaskAction(task)} />
+          {tasks.filter((task) => task.id !== "additional-checks").map((task) => (
+            <DailyTaskCard key={task.id} task={task} onAction={() => onTaskAction(task)} />
           ))}
         </ol>
       </section>
+
+      {additionalTask && (
+        <section className="mt-6" aria-labelledby="additional-checks-heading">
+          <div className="mb-3">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Separate checks</p>
+            <h2 id="additional-checks-heading" className="mt-1 text-lg font-semibold">Additional checks</h2>
+          </div>
+          <DailyTaskCard
+            task={additionalTask}
+            onAction={() => onTaskAction(additionalTask)}
+          />
+        </section>
+      )}
 
       <section className="mt-8" aria-labelledby="issues-heading">
         <div className="mb-4 flex items-center justify-between gap-4">

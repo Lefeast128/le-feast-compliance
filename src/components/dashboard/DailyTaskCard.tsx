@@ -1,15 +1,14 @@
-import { Button } from "@/components/ui/button";
 import { dailyTaskStatusLabel, type DailyTaskIcon, type DailyTaskModel, type DailyTaskStatus } from "@/components/dashboard/daily-checks-model";
 import { Check, ChevronRight, CircleAlert, ClipboardCheck, FileCheck2, ShieldCheck, Sparkles, Thermometer, Trash2, Utensils } from "lucide-react";
 
-function TaskIcon({ icon, complete }: { icon: DailyTaskIcon; complete: boolean }) {
-  if (complete) return <Check className="size-5" strokeWidth={2.5} />;
+function TaskIcon({ icon }: { icon: DailyTaskIcon }) {
   if (icon === "temperature") return <Thermometer className="size-5" />;
   if (icon === "probe") return <Utensils className="size-5" />;
   if (icon === "cleaning") return <Sparkles className="size-5" />;
   if (icon === "additional") return <ClipboardCheck className="size-5" />;
   if (icon === "security") return <ShieldCheck className="size-5" />;
   if (icon === "wastage") return <Trash2 className="size-5" />;
+  if (icon === "checklist") return <ClipboardCheck className="size-5" />;
   return <FileCheck2 className="size-5" />;
 }
 
@@ -35,11 +34,9 @@ const markerStyles: Record<DailyTaskStatus, string> = {
 
 export function DailyTaskCard({
   task,
-  step,
   onAction,
 }: {
   task: DailyTaskModel;
-  step: number;
   onAction: () => void;
 }) {
   const complete = task.status === "completed" || task.status === "completed-attention";
@@ -48,38 +45,30 @@ export function DailyTaskCard({
   const optional = !task.required && !complete && !attention && task.status !== "not-scheduled";
   const visibleStatus = dailyTaskStatusLabel(task);
   return (
-    <li className={`relative rounded-3xl border p-4 shadow-[0_5px_18px_rgba(23,25,24,0.04)] transition sm:p-5 ${optional ? "border-black/[0.06] bg-[#fbfcfa]" : statusStyles[task.status]}`}>
-      <div className="flex items-start gap-4">
-        <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold ${optional ? "border-[#dfe3dd] bg-[#f1f2ef] text-[#89918b]" : markerStyles[task.status]}`} aria-label={`Step ${step}: ${visibleStatus}`}>
-          {complete ? <TaskIcon icon={task.icon} complete /> : step}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-lg font-semibold tracking-tight text-[#202522]">{task.title}</p>
-              <p className="mt-1 text-sm leading-6 text-[#727a74]">{task.description}</p>
-            </div>
-            <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${complete && !attention ? "bg-[#e4f2e8] text-[#2d7951]" : attention ? "bg-[#fff0ed] text-[#a13f34]" : "bg-[#fff7dc] text-[#8a6b12]"}`} aria-hidden="true">
-              <TaskIcon icon={task.icon} complete={false} />
+    <li className={`relative rounded-3xl border shadow-[0_5px_18px_rgba(23,25,24,0.04)] transition ${optional ? "border-black/[0.06] bg-[#fbfcfa]" : statusStyles[task.status]}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label={`${task.actionLabel}: ${task.title}`}
+        onClick={onAction}
+        className="group relative block min-h-[7.75rem] w-full rounded-3xl p-4 text-left outline-none transition-[transform,box-shadow,background-color] duration-200 hover:shadow-[0_8px_24px_rgba(23,25,24,0.08)] focus-visible:ring-2 focus-visible:ring-[#202522] focus-visible:ring-inset active:scale-[0.99] disabled:cursor-default disabled:hover:shadow-none disabled:active:scale-100 sm:min-h-[7.5rem] sm:p-5 motion-reduce:transition-none"
+      >
+        <div className="flex items-start gap-3 pr-8 sm:gap-4">
+          <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border ${optional ? "border-[#dfe3dd] bg-[#f1f2ef] text-[#89918b]" : markerStyles[task.status]}`} aria-hidden="true">
+            <TaskIcon icon={task.icon} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-lg font-semibold tracking-tight text-[#202522]">{task.title}</p>
+            <p className="mt-1 line-clamp-2 text-sm leading-5 text-[#727a74]">{task.description}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold">
+              <span className={complete && !attention ? "text-[#2d7951]" : attention ? "text-[#a13f34]" : "text-[#727a74]"}>{visibleStatus}</span>
+              <span className="text-[#a0a7a1]">·</span>
+              <span className="text-[#89918b]">{task.detail}</span>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-semibold">
-            <span className={complete && !attention ? "text-[#2d7951]" : attention ? "text-[#a13f34]" : "text-[#727a74]"}>{visibleStatus}</span>
-            <span className="text-[#a0a7a1]">·</span>
-            <span className="text-[#89918b]">{task.detail}</span>
-          </div>
-          <Button
-            type="button"
-            disabled={disabled}
-            variant={complete || disabled || optional ? "outline" : "default"}
-            className={`mt-4 h-11 w-full justify-between font-semibold sm:w-auto sm:min-w-48 ${complete && !attention ? "bg-white text-[#202522]" : disabled || optional ? "bg-white text-[#4e5851]" : attention ? "bg-white text-[#a13f34] ring-1 ring-[#e5aaa2] hover:bg-[#fff8f6]" : "bg-[#ffde56] text-[#171717] hover:bg-[#f7d363]"}`}
-            onClick={onAction}
-          >
-            {task.actionLabel}
-            <ChevronRight className="ml-2 size-4" />
-          </Button>
         </div>
-      </div>
+        <ChevronRight className={`absolute bottom-4 right-4 size-5 transition-transform group-hover:translate-x-0.5 ${complete && !attention ? "text-[#2d7951]" : attention ? "text-[#a13f34]" : "text-[#89918b]"}`} aria-hidden="true" />
+      </button>
     </li>
   );
 }

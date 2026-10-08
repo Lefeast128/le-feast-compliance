@@ -42,6 +42,18 @@ assert.equal(getTaskStatus({ complete: true, attention: true }), "completed-atte
 
 const zero = buildDailyTaskModels(base);
 assert.equal(zero.filter((task) => task.required).length, 6);
+assert.deepEqual(zero.map((task) => task.id), [
+  "am-temperature",
+  "am-security",
+  "opening-checklist",
+  "food-probes",
+  "cleaning",
+  "pm-temperature",
+  "pm-security",
+  "closing-checklist",
+  "wastage",
+  "additional-checks",
+]);
 assert.equal(zero.find((task) => task.id === "am-temperature")?.status, "not-started");
 assert.equal(zero.find((task) => task.id === "pm-temperature")?.status, "due-later");
 assert.equal(zero.find((task) => task.id === "additional-checks")?.status, "not-started");
