@@ -11,6 +11,7 @@ import TemperatureRoundEntry from "@/components/TemperatureRoundEntry";
 import StructuredTaskWorkflow from "@/components/StructuredTaskWorkflow";
 import CalendarView from "@/components/dashboard/CalendarView";
 import DashboardToday, { type DashboardTodayProps } from "@/components/dashboard/DashboardToday";
+import { BottomNavigation } from "@/components/dashboard/DashboardPrimitives";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
 import { useDashboardWorkflows } from "@/components/dashboard/useDashboardWorkflows";
 import type { CalendarDay, DashboardData, DashboardLocation, DashboardView, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
@@ -76,14 +77,8 @@ export default function Dashboard() {
   if (workflows.cleaningList) return <InlineCleaning key={dashboard.location._id} locationName={dashboard.location.name} tasks={workflows.active?.cleaningTasks ?? []} completions={workflows.active?.cleaningCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeCleaning} onIssue={workflows.reportCleaningIssue} onBack={() => workflows.setCleaningList(false)} />;
   if (workflows.checklistList) return <InlineChecklist key={`${dashboard.location._id}:${workflows.checklistList}`} title={workflows.checklistList === "opening" ? "Opening checklist" : "Closing checklist"} questions={workflows.active?.checklists[workflows.checklistList].questions ?? []} responses={workflows.active?.checklists[workflows.checklistList].responses ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeChecklistQuestion} onIssue={workflows.saveChecklistIssue} onSignOff={workflows.signOffChecklistTask} onBack={() => workflows.setChecklistList(null)} />;
   if (workflows.security && workflows.currentSecurityQuestion) return <SecurityScreen session={workflows.security} question={workflows.currentSecurityQuestion.question} index={workflows.securityIndex} total={workflows.active?.security[workflows.security].length ?? 0} teamMembers={dashboard.teamMembers} teamMemberId={workflows.securityTeamMemberId} setTeamMemberId={workflows.setSecurityTeamMemberId} issue={workflows.securityIssue} setIssue={workflows.setSecurityIssue} onSave={workflows.saveSecurity} onBack={() => { workflows.setSecurity(null); workflows.setSecurityTeamMemberId(""); }} />;
-  if (view === "calendar") return <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />;
   if (view === "day") return <MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => setView("calendar")} />;
-  if (view === "training") return <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />;
-  if (view === "library") return <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => setView("today")} onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} />;
   if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
-  if (view === "admin") return capabilities.canUseManagement
-    ? <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />
-    : <AccessDenied />;
   if (view === "managerReviews") return capabilities.canViewManagerReviews
     ? <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} />
     : <AccessDenied />;
@@ -101,7 +96,6 @@ export default function Dashboard() {
     managerReviewStatus,
     onCalendar: () => setView("calendar"),
     onTraining: () => setView("training"),
-    onLibrary: () => setView("library"),
     onLogout: logout,
     todayLabel: dateLabel(),
     currentUserName: user?.name || user?.email || "Current user",
@@ -112,5 +106,17 @@ export default function Dashboard() {
     structuredTasks: workflows.active?.structuredTasks ?? [],
     onOpenStructuredTask: setStructuredTaskArea,
   };
-  return <DashboardToday {...todayProps} />;
+  const mainView = view === "calendar"
+    ? <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />
+    : view === "training"
+      ? <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />
+      : view === "library"
+        ? <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => setView("today")} />
+        : view === "admin"
+          ? capabilities.canUseManagement
+            ? <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />
+            : <AccessDenied />
+          : <DashboardToday {...todayProps} />;
+  const activeNavigation = view === "calendar" || view === "training" || view === "library" || view === "admin" ? view : "today";
+  return <div className="min-h-screen bg-[#f6f7f5] pb-[calc(6.5rem+env(safe-area-inset-bottom))]">{mainView}<BottomNavigation onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
 }

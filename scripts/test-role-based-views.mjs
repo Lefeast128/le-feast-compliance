@@ -42,7 +42,7 @@ const checks = [
   () => assert.match(header, /onCalendar/),
   () => assert.match(header, /onLogout/),
   () => assert.match(today, /canUseManagement &&/),
-  () => assert.match(dashboard, /if \(view === "admin"\) return capabilities\.canUseManagement/),
+  () => assert.match(dashboard, /view === "admin"[\s\S]*capabilities\.canUseManagement/),
   () => assert.match(dashboard, /if \(view === "managerReviews"\) return capabilities\.canViewManagerReviews/),
   () => assert.match(admin, /OrganisationAdmin/),
   () => assert.match(organisationAdmin, /UserAccessAdmin/),
