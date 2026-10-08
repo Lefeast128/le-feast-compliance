@@ -16,7 +16,7 @@ assert.match(workflow, /pendingAmRound/);
 assert.match(workflow, /pendingPmRound/);
 assert.doesNotMatch(workflow, /useEffect\(\(\) => \{\s*if \(!active \|\| round\) return;\s*const pending/);
 assert.match(workflow, /roundReadings/);
-assert.match(workflow, /existingReadings: roundReadings/);
+assert.match(workflow, /existingReadings: readingsBeforeSubmit/);
 assert.match(workflow, /setRoundCompleterId/);
 assert.doesNotMatch(workflow.slice(workflow.indexOf("async function saveTemperatureActions"), workflow.indexOf("async function saveProbe")), /completeRound\(/, "saving the final corrective action must not silently complete the round");
 assert.match(workflow, /linkedIssue\?\.updates\?\.find/);

@@ -137,11 +137,35 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   }
 
   async function completeTemperatureRound(teamMemberId: string) {
-    if (!dashboard || !round || !teamMemberId || roundSubmittingRef.current || roundEquipment.some(item => !temperatures[item._id])) return;
+    if (!dashboard || !round || !teamMemberId || roundSubmittingRef.current) return;
     roundSubmittingRef.current = true;
     setRoundCompleterId(teamMemberId);
     setRoundSubmitting(true);
     try {
+      let readingsBeforeSubmit = roundReadings;
+      if (roundId) {
+        try {
+          const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+          const latestRound = latest.rounds.find(item => item._id === roundId);
+          const latestReadings = latest.readings.filter(reading => reading.roundId === roundId);
+          if (latestRound?.completedAt) {
+            toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+            resetForLocation();
+            return;
+          }
+          const merged = new Map([...roundReadings, ...latestReadings].map(reading => [reading.equipmentId, reading]));
+          readingsBeforeSubmit = [...merged.values()];
+          setRoundReadings(readingsBeforeSubmit);
+          setTemperatures(current => ({ ...current, ...Object.fromEntries(latestReadings.map(reading => [reading.equipmentId, String(reading.temperature)])) }));
+        } catch (error) {
+          toast.error("Temperature round could not be refreshed", { description: error instanceof Error ? error.message : "Please retry." });
+          return;
+        }
+      }
+      if (roundEquipment.some(item => !readingsBeforeSubmit.some(reading => reading.equipmentId === item._id) && !temperatures[item._id])) {
+        toast.error("Enter every remaining fridge reading before completing the round");
+        return;
+      }
       const result = await submitTemperatureRound({
         roundId,
         locationId: dashboard.location._id,
@@ -149,7 +173,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
         teamMemberId,
         equipment: roundEquipment,
         temperatures,
-        existingReadings: roundReadings,
+        existingReadings: readingsBeforeSubmit,
         startRound,
         recordTemperature,
         completeRound,
