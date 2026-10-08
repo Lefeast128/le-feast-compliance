@@ -186,13 +186,11 @@ export default function DashboardToday({
         else void beginRound("PM");
         break;
       case "opening-checklist":
-        if (structuredTasks.some(task => task.area === "opening" && task.taskType === "with_steps")) onOpenStructuredTask("opening");
-        else if (openingComplete) viewTodayRecords();
+        if (openingComplete) viewTodayRecords();
         else setChecklistList("opening");
         break;
       case "closing-checklist":
-        if (structuredTasks.some(task => task.area === "closing" && task.taskType === "with_steps")) onOpenStructuredTask("closing");
-        else if (closingComplete) viewTodayRecords();
+        if (closingComplete) viewTodayRecords();
         else setChecklistList("closing");
         break;
       case "am-security":

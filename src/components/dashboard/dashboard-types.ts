@@ -65,6 +65,7 @@ export type ChecklistQuestion = {
   question: string;
   description?: string | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: StructuredStep[];
 };
 
@@ -84,6 +85,7 @@ export type StructuredTask = {
   title: string;
   description?: string | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: StructuredStep[];
   centralItemId?: string | null;
   frequency?: string;
@@ -108,6 +110,11 @@ export type ChecklistResponse = {
   _id?: string;
   questionId: string;
   answer: "yes" | "no" | "na" | string;
+  action?: string | null;
+  problem?: string | null;
+  teamMemberId?: string | null;
+  teamMemberName?: string | null;
+  createdAt?: number | string;
 };
 
 export type ChecklistState = {

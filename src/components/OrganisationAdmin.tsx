@@ -48,6 +48,7 @@ type OperationalTask = {
   nextDueAt?: string | null;
   fields?: FieldDefinition[] | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: TaskStep[];
   locationIds: string[];
   stores: string[];
@@ -84,6 +85,7 @@ type OrganisationControls = {
     allocationMode: "all" | "selected";
     description?: string | null;
     taskType?: "simple" | "with_steps";
+    completionMode?: "question" | "task";
     steps?: TaskStep[];
   }>;
   operationalTasks: OperationalTask[];
@@ -211,6 +213,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">(
     "simple",
   );
+  const [taskCompletionMode, setTaskCompletionMode] = useState<"question" | "task">("question");
   const [taskSteps, setTaskSteps] = useState<TaskStep[]>([]);
   const [taskAllStores, setTaskAllStores] = useState(true);
   const [taskStores, setTaskStores] = useState<Record<string, boolean>>({});
@@ -245,6 +248,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskNextDue(new Date().toISOString().slice(0, 10));
     setTaskFields(emptyFields());
     setTaskTaskType("simple");
+    setTaskCompletionMode("question");
     setTaskSteps([]);
     setTaskAllStores(true);
     setTaskStores({});
@@ -293,6 +297,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     );
     setTaskFields(item.fields ?? emptyFields());
     setTaskTaskType(item.taskType ?? "simple");
+    setTaskCompletionMode(item.completionMode ?? (item.kind === "cleaning" ? "task" : "question"));
     setTaskSteps(item.steps ?? []);
     setTaskAllStores(item.allocationMode === "all");
     setTaskStores(Object.fromEntries(item.locationIds.map((id) => [id, true])));
@@ -490,12 +495,14 @@ export default function OrganisationAdmin({ onBack }: Props) {
       body.question = taskQuestion.trim();
       body.description = taskDescription;
       body.taskType = taskTaskType;
+      body.completionMode = taskTaskType === "simple" ? taskCompletionMode : undefined;
       body.steps = taskTaskType === "with_steps" ? taskSteps : [];
     }
     if (taskType === "cleaning") {
       body.name = taskName.trim();
       body.description = taskDescription;
       body.taskType = taskTaskType;
+      body.completionMode = taskTaskType === "simple" ? taskCompletionMode : undefined;
       body.steps = taskTaskType === "with_steps" ? taskSteps : [];
       body.frequency = taskFrequency;
       body.weekdays = taskWeekdays;
@@ -531,6 +538,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
             question: taskQuestion.trim(),
             description: taskDescription,
             taskType: taskTaskType,
+            completionMode: taskTaskType === "simple" ? taskCompletionMode : undefined,
             steps: taskTaskType === "with_steps" ? taskSteps : [],
             allStores: taskAllStores,
             locationIds,
@@ -1035,6 +1043,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="with_steps">Task with steps</option>
                     </select>
                   </label>
+                  {taskTaskType === "simple" && (
+                    <label className="text-sm font-semibold">
+                      Simple check behaviour
+                      <select value={taskCompletionMode} onChange={(event) => setTaskCompletionMode(event.target.value as "question" | "task")} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
+                        <option value="question">Question (Yes / No)</option>
+                        <option value="task">Simple completion task</option>
+                      </select>
+                    </label>
+                  )}
                   {taskTaskType === "with_steps" && (
                     <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
                       <div className="flex items-center justify-between">
@@ -1217,6 +1234,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="with_steps">Task with steps</option>
                     </select>
                   </label>
+                  {taskTaskType === "simple" && (
+                    <label className="text-sm font-semibold">
+                      Simple completion behaviour
+                      <select value={taskCompletionMode} onChange={(event) => setTaskCompletionMode(event.target.value as "question" | "task")} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
+                        <option value="task">Simple completion task</option>
+                        <option value="question">Question (Yes / No)</option>
+                      </select>
+                    </label>
+                  )}
                   {taskTaskType === "with_steps" && (
                     <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
                       <div className="flex items-center justify-between">

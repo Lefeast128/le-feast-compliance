@@ -42,7 +42,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   const completeAdditionalMutation = useRestMutation(restApi.additional.complete);
   const completeTrainingRequirement = useRestMutation(restApi.compliance.completeTrainingRequirement);
-  const signOffChecklist = useRestMutation(restApi.compliance.signOffChecklist);
+  const signOffStructuredTask = useRestMutation(restApi.compliance.signOffStructuredTask);
   const signOffSecurity = useRestMutation(restApi.compliance.signOffSecurity);
   const addIssueUpdate = useRestMutation(restApi.compliance.addIssueUpdate);
   const completeCleaningTask = useRestMutation(restApi.compliance.completeCleaningTask);
@@ -89,11 +89,13 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmComplete = !!pmRound;
   const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
-    if (!tasks.some(task => task.taskType === "with_steps")) return legacyComplete;
+    if (!tasks.some(task => task.taskType === "with_steps" || task.completionMode === "task")) return legacyComplete;
     const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
     const complete = tasks.every(task => task.taskType === "with_steps"
       ? (task.steps ?? []).filter(step => step.required !== false).every(step => responses.some(response => response.taskId === task._id && response.stepId === step.id))
-      : responses.some(response => response.taskId === task._id && response.stepId === "simple") || legacyResponses.some(response => response.questionId === task._id));
+      : task.completionMode === "task"
+        ? responses.some(response => response.taskId === task._id && response.stepId === "simple")
+        : responses.some(response => response.taskId === task._id && response.stepId === "simple") || legacyResponses.some(response => response.questionId === task._id));
     return complete && signedOff;
   };
   const openingComplete = structuredComplete("opening", active?.checklists.opening.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening")), (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening"));
@@ -197,7 +199,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   async function signOffChecklistTask(teamMemberId: string) {
     if (!dashboard || !checklistList || !teamMemberId) return;
-    await signOffChecklist({ locationId: dashboard.location._id, checklist: checklistList, teamMemberId });
+    await signOffStructuredTask({ locationId: dashboard.location._id, area: checklistList, teamMemberId });
     toast.success(`${checklistList === "opening" ? "Opening" : "Closing"} Food Safety complete`);
     setChecklistList(null);
   }

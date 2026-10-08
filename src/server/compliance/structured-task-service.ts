@@ -76,6 +76,12 @@ function taskTypeOf(input: Record<string, unknown>, existing?: TaskRow): Structu
   return value as StructuredTaskType;
 }
 
+function completionModeOf(input: Record<string, unknown>, existing?: TaskRow) {
+  const value = input.completionMode ?? existing?.completionMode ?? ("name" in (existing ?? {}) ? "task" : "question");
+  if (value !== "task" && value !== "question") throw new ApiError(422, "Completion mode is invalid");
+  return value as "task" | "question";
+}
+
 function rowTitle(row: TaskRow) {
   return "name" in row ? row.name : row.question;
 }
@@ -97,6 +103,7 @@ function dto(row: TaskRow) {
     name: "name" in row ? row.name : undefined,
     description: row.description,
     taskType: (row.taskType ?? "simple") as StructuredTaskType,
+    completionMode: row.completionMode ?? ("name" in row ? "task" : "question"),
     steps: (row.steps ?? []) as StructuredStepDefinition[],
     checklist: "checklist" in row ? row.checklist : undefined,
     session: "session" in row ? row.session : undefined,
@@ -140,6 +147,7 @@ export async function updateLocalStructuredTask(context: AuthContext, input: Rec
   const location = await locationFor(context, existing.locationId);
   if (existing.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard tasks are controlled centrally");
   const type = taskTypeOf(input, existing);
+  const completionMode = type === "with_steps" ? "question" : completionModeOf(input, existing);
   const steps = validateStructuredSteps(input.steps ?? existing.steps, type);
   const description = input.description === undefined ? existing.description : (input.description === null ? null : text(input.description, "Description"));
   const table = areaTable(parsedArea);
@@ -147,7 +155,7 @@ export async function updateLocalStructuredTask(context: AuthContext, input: Rec
   const at = new Date();
   return db().transaction(async tx => {
     await tx.update(table).set({ active: false, deactivatedAt: at } as never).where(eq(table.id, existing.id));
-    const common = { active: true, versionRootId, order: existing.order, description, taskType: type, steps };
+    const common = { active: true, versionRootId, order: existing.order, description, taskType: type, completionMode, steps };
     let row: unknown;
     if (parsedArea === "cleaning") {
       const current = existing as typeof cleaningTasks.$inferSelect;
@@ -247,7 +255,9 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
     const structured = await tx.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, parsedArea), eq(structuredTaskResponses.dateKey, dateKey)));
     const complete = tasks.every(task => task.taskType === "with_steps"
       ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structured.some(response => response.taskId === task.id && response.stepId === step.id))
-      : structured.some(response => response.taskId === task.id && response.stepId === "simple") || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id));
+      : task.completionMode === "task"
+        ? structured.some(response => response.taskId === task.id && response.stepId === "simple")
+        : structured.some(response => response.taskId === task.id && response.stepId === "simple") || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id));
     if (!complete) throw new ApiError(422, "Every active task must be completed before sign-off");
     const [signoff] = area === "opening" || area === "closing"
       ? await tx.insert(checklistSignOffs).values({ locationId, checklist: area, dateKey, completedAt: new Date(), completedBy: context.user.id, teamMemberId: memberId }).onConflictDoNothing({ target: [checklistSignOffs.locationId, checklistSignOffs.checklist, checklistSignOffs.dateKey] }).returning({ id: checklistSignOffs.id })

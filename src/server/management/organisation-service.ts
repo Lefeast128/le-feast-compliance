@@ -97,6 +97,7 @@ function checklistDto(row: typeof centralChecklistItems.$inferSelect, storeNames
     question: row.question,
     description: row.description,
     taskType: row.taskType,
+    completionMode: row.completionMode,
     steps: row.steps,
     checklist: row.checklist,
     active: row.active,
@@ -117,6 +118,7 @@ function operationalDto(row: typeof centralOperationalItems.$inferSelect, storeN
     question: row.question,
     description: row.description,
     taskType: row.taskType,
+    completionMode: row.completionMode,
     steps: row.steps,
     frequency: row.frequency,
     interval: row.interval,
@@ -265,11 +267,13 @@ export async function updateCentralTraining(context: AuthContext, publicationId:
 
 function checklistValues(input: Record<string, unknown>) {
   const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
+  const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "question", "completionMode", ["question", "task"] as const);
   return {
     checklist: requireEnum(input.checklist, "checklist", ["opening", "closing"] as const),
     question: requireString(input.question, "Question"),
     description: textOrNull(input.description, "Description"),
     taskType,
+    completionMode,
     steps: validateStructuredSteps(input.steps, taskType),
   };
 }
@@ -283,7 +287,7 @@ export async function publishCentralChecklist(context: AuthContext, input: Recor
     const rows = [];
     for (const store of stores) {
       const existing = await tx.select({ id: checklistQuestions.id }).from(checklistQuestions).where(and(eq(checklistQuestions.locationId, store.id), eq(checklistQuestions.checklist, values.checklist), eq(checklistQuestions.active, true)));
-      const [row] = await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: existing.length, active: true, centralItemId: item.id }).returning();
+      const [row] = await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: existing.length, active: true, centralItemId: item.id }).returning();
       rows.push(row);
     }
     await audit(tx, null, context.user.id, "central_checklist_created", JSON.stringify({ centralItemId: item.id, locationIds: stores.map(store => store.id), checklist: values.checklist }));
@@ -298,7 +302,7 @@ export async function updateCentralChecklist(context: AuthContext, itemId: strin
   if (!existing) throw new ApiError(404, "Central checklist item not found");
   if (input.retire === true) return retireCentralChecklist(context, itemId);
   const stores = await selectedLocations(context, input.locationIds ?? existing.locationIds, allocationMode(input, existing.allocationMode) === "all");
-  const values = checklistValues({ checklist: input.checklist ?? existing.checklist, question: input.question ?? existing.question, description: input.description ?? existing.description, taskType: input.taskType ?? existing.taskType, steps: input.steps ?? existing.steps });
+  const values = checklistValues({ checklist: input.checklist ?? existing.checklist, question: input.question ?? existing.question, description: input.description ?? existing.description, taskType: input.taskType ?? existing.taskType, completionMode: input.completionMode ?? existing.completionMode, steps: input.steps ?? existing.steps });
   return db().transaction(async tx => {
     await tx.update(centralChecklistItems).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, existing.allocationMode), updatedAt: new Date() }).where(eq(centralChecklistItems.id, existing.id));
     const current = await tx.select().from(checklistQuestions).where(eq(checklistQuestions.centralItemId, existing.id));
@@ -306,14 +310,14 @@ export async function updateCentralChecklist(context: AuthContext, itemId: strin
     for (const old of current) {
       if (!selected.has(old.locationId)) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
-      } else if (old.active && (old.question !== values.question || old.checklist !== values.checklist || old.description !== values.description || old.taskType !== values.taskType || JSON.stringify(old.steps) !== JSON.stringify(values.steps))) {
+      } else if (old.active && (old.question !== values.question || old.checklist !== values.checklist || old.description !== values.description || old.taskType !== values.taskType || old.completionMode !== values.completionMode || JSON.stringify(old.steps) !== JSON.stringify(values.steps))) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
-        await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: existing.id });
+        await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: existing.id });
       }
     }
     for (const store of stores.filter(item => !current.some(row => row.locationId === item.id && row.active))) {
       const rows = await tx.select({ id: checklistQuestions.id }).from(checklistQuestions).where(and(eq(checklistQuestions.locationId, store.id), eq(checklistQuestions.checklist, values.checklist), eq(checklistQuestions.active, true)));
-      await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: rows.length, active: true, centralItemId: existing.id });
+      await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: rows.length, active: true, centralItemId: existing.id });
     }
     const previous = new Set(existing.locationIds ?? []);
     const selectedLocationIds = new Set(stores.map(store => store.id));
@@ -366,11 +370,13 @@ function operationalValues(input: Record<string, unknown>, kind: OperationalKind
     const weekdays = input.weekdays === undefined ? [] : input.weekdays;
     if (!Array.isArray(weekdays) || weekdays.some(day => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6)) throw new ApiError(400, "weekdays must contain values from 0 to 6");
     const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
-    return { name: requireString(input.name, "Name"), description: textOrNull(input.description, "Description"), taskType, steps: validateStructuredSteps(input.steps, taskType), frequency, weekdays: weekdays as number[] };
+    const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "task", "completionMode", ["question", "task"] as const);
+    return { name: requireString(input.name, "Name"), description: textOrNull(input.description, "Description"), taskType, completionMode, steps: validateStructuredSteps(input.steps, taskType), frequency, weekdays: weekdays as number[] };
   }
   if (kind === "security_am" || kind === "security_pm") {
     const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
-    return { session: (kind === "security_am" ? "AM" : "PM") as "AM" | "PM", question: requireString(input.question, "Question"), description: textOrNull(input.description, "Description"), taskType, steps: validateStructuredSteps(input.steps, taskType) };
+    const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "question", "completionMode", ["question", "task"] as const);
+    return { session: (kind === "security_am" ? "AM" : "PM") as "AM" | "PM", question: requireString(input.question, "Question"), description: textOrNull(input.description, "Description"), taskType, completionMode, steps: validateStructuredSteps(input.steps, taskType) };
   }
   const frequency = requireEnum(input.frequency, "frequency", additionalFrequencies);
   const nextDueAt = new Date(typeof input.nextDueAt === "string" || typeof input.nextDueAt === "number" ? input.nextDueAt : NaN);
@@ -394,17 +400,17 @@ async function operationalSource(context: AuthContext, centralItemId: string) {
 
 async function insertOperationalRow(tx: Transaction, kind: OperationalKind, locationId: string, sourceId: string, values: Record<string, unknown>, order: number, versionRootId?: string) {
   if (kind === "cleaning") {
-    return tx.insert(cleaningTasks).values({ locationId, name: values.name, description: values.description, taskType: values.taskType, steps: values.steps, frequency: values.frequency, weekdays: values.weekdays, order, versionRootId, active: true, centralItemId: sourceId } as typeof cleaningTasks.$inferInsert).returning();
+    return tx.insert(cleaningTasks).values({ locationId, name: values.name, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, frequency: values.frequency, weekdays: values.weekdays, order, versionRootId, active: true, centralItemId: sourceId } as typeof cleaningTasks.$inferInsert).returning();
   }
   if (kind === "security_am" || kind === "security_pm") {
-    return tx.insert(securityQuestions).values({ locationId, session: values.session, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order, versionRootId, active: true, centralItemId: sourceId } as typeof securityQuestions.$inferInsert).returning();
+    return tx.insert(securityQuestions).values({ locationId, session: values.session, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order, versionRootId, active: true, centralItemId: sourceId } as typeof securityQuestions.$inferInsert).returning();
   }
   return tx.insert(additionalRequirements).values({ locationId, title: values.title, description: values.description, frequency: values.frequency, interval: values.interval, weekdays: values.weekdays, dayOfMonth: values.dayOfMonth, nextDueAt: values.nextDueAt, fields: values.fields, order, versionRootId, active: true, centralItemId: sourceId } as typeof additionalRequirements.$inferInsert).returning();
 }
 
 function operationalChanged(kind: OperationalKind, row: Record<string, unknown>, values: Record<string, unknown>) {
-  if (kind === "cleaning") return row.name !== values.name || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.frequency !== values.frequency || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays);
-  if (kind === "security_am" || kind === "security_pm") return row.question !== values.question || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.session !== values.session;
+  if (kind === "cleaning") return row.name !== values.name || row.description !== values.description || row.taskType !== values.taskType || row.completionMode !== values.completionMode || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.frequency !== values.frequency || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays);
+  if (kind === "security_am" || kind === "security_pm") return row.question !== values.question || row.description !== values.description || row.taskType !== values.taskType || row.completionMode !== values.completionMode || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.session !== values.session;
   return row.title !== values.title || row.description !== values.description || row.frequency !== values.frequency || row.interval !== values.interval || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays) || row.dayOfMonth !== values.dayOfMonth || String(row.nextDueAt) !== String(values.nextDueAt) || JSON.stringify(row.fields) !== JSON.stringify(values.fields);
 }
 

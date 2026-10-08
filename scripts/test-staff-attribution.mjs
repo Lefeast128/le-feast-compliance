@@ -28,10 +28,10 @@ assert.match(service, /checklistResponses\)\.values\([\s\S]*?teamMemberId: input
 assert.match(service, /securityResponses\)\.values\([\s\S]*?teamMemberId: input\.teamMemberId[\s\S]*?returning\(\{ id: securityResponses\.id \}\)/);
 assert.match(service, /if \(input\.answer === "no" && !input\.action\?\.trim\(\)\) throw new ApiError\(422, "A corrective action is required"\)/);
 
-assert.match(checklist, /workflowTeamMemberId/);
-assert.match(checklist, /questionMemberOverrides/);
-assert.match(checklist, /onComplete\(question\._id, questionMemberId\)/);
-assert.match(checklist, /disabled=\{!questionMemberId\}/);
+assert.match(checklist, /workflowMemberId/);
+assert.match(checklist, /overrides/);
+assert.match(checklist, /saveStructured\(\{ locationId, area: checklist, taskId/);
+assert.match(checklist, /disabled=\{!memberFor\(task\._id\)\}/);
 assert.match(dashboardSource, /questionId, answer: "yes", teamMemberId/);
 assert.match(dashboardSource, /questionId: dashboard\.location\._id|questionId: currentSecurityQuestion\._id/);
 assert.match(dashboardSource, /teamMemberId: securityTeamMemberId/);

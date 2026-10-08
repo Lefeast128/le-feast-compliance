@@ -237,6 +237,7 @@ export default function AdminStoreOverview({
           name: data.name,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
           frequency: data.frequency,
           weekdays: data.weekdays,
@@ -247,6 +248,7 @@ export default function AdminStoreOverview({
           name: data.name,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
           frequency: data.frequency,
           weekdays: data.weekdays,
@@ -259,6 +261,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
       else
@@ -268,6 +271,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
     } else if (editor.kind === "product") {
@@ -297,6 +301,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
       else
@@ -306,6 +311,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
     } else if (editor.kind === "training") {

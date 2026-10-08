@@ -126,9 +126,9 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   const weekday = localWeekday(now, location.timezone);
   const cleaningData = cleaningTaskRows.filter(task => dueCleaning(task, weekday));
   const structuredTasks = [
-    ...checklistQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.checklist, title: row.question, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
-    ...cleaningData.map(row => ({ id: row.id, locationId: row.locationId, area: "cleaning" as const, title: row.name, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order, frequency: row.frequency, weekdays: row.weekdays })),
-    ...securityQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.session === "AM" ? "security_am" as const : "security_pm" as const, title: row.question, description: row.description, taskType: row.taskType, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
+    ...checklistQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.checklist, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
+    ...cleaningData.map(row => ({ id: row.id, locationId: row.locationId, area: "cleaning" as const, title: row.name, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order, frequency: row.frequency, weekdays: row.weekdays })),
+    ...securityQuestionRows.map(row => ({ id: row.id, locationId: row.locationId, area: row.session === "AM" ? "security_am" as const : "security_pm" as const, title: row.question, description: row.description, taskType: row.taskType, completionMode: row.completionMode, steps: row.steps, centralItemId: row.centralItemId, order: row.order })),
   ];
   const currentVersions = trainingRequirementRows.length ? await db.select().from(trainingDocumentVersions).where(inArray(trainingDocumentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
   const contentVersions = trainingRequirementRows.length ? await db.select().from(trainingContentVersions).where(inArray(trainingContentVersions.requirementId, trainingRequirementRows.map(requirement => requirement.id))) : [];
