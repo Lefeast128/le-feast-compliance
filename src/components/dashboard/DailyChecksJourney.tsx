@@ -114,10 +114,12 @@ export function DailyChecksJourney({
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Separate checks</p>
             <h2 id="additional-checks-heading" className="mt-1 text-lg font-semibold">Additional checks</h2>
           </div>
-          <DailyTaskCard
-            task={additionalTask}
-            onAction={() => onTaskAction(additionalTask)}
-          />
+          <ul className="m-0 list-none p-0">
+            <DailyTaskCard
+              task={additionalTask}
+              onAction={() => onTaskAction(additionalTask)}
+            />
+          </ul>
         </section>
       )}
 

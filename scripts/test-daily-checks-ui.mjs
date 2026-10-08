@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   buildDailyTaskModels,
   dailyTaskStatusLabel,
@@ -7,6 +8,8 @@ import {
   getProgressPercent,
   getTaskStatus,
 } from "../src/components/dashboard/daily-checks-model.ts";
+
+const journeySource = await readFile(new URL("../src/components/dashboard/DailyChecksJourney.tsx", import.meta.url), "utf8");
 
 const base = {
   equipmentCount: 4,
@@ -78,6 +81,9 @@ const additionalIssueWithNothingDue = buildDailyTaskModels({ ...base, additional
 assert.equal(additionalIssueWithNothingDue?.status, "attention");
 assert.equal(additionalIssueWithNothingDue?.detail, "Nothing due today");
 assert.equal(dailyTaskStatusLabel(additionalIssueWithNothingDue), "Requires attention");
+const additionalSection = journeySource.slice(journeySource.indexOf('aria-labelledby="additional-checks-heading"'), journeySource.indexOf('aria-labelledby="issues-heading"'));
+assert.match(additionalSection, /<ul[^>]*>[\s\S]*<DailyTaskCard[\s\S]*<\/ul>/, "additional checks card has a valid list container");
+assert.doesNotMatch(additionalSection, /<\/div>\s*<DailyTaskCard/, "additional checks card is not a direct section child");
 
 assert.deepEqual(
   getIssueAttentionTaskIds({
