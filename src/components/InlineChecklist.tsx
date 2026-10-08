@@ -7,6 +7,7 @@ import {
   isSimpleCompletionTask,
   type UnifiedItem,
 } from "@/lib/unified-checklist";
+import { checklistIsReadyToSignOff } from "@/lib/checklist-autocomplete";
 import type {
   ChecklistResponse,
   StructuredStep,
@@ -17,12 +18,11 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Circle,
   Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
@@ -96,7 +96,7 @@ export default function InlineChecklist({
   const [selectedSimple, setSelectedSimple] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
-  const [signOffMemberId, setSignOffMemberId] = useState("");
+  const autoSignOffRef = useRef(false);
   const [localLegacyResponses, setLocalLegacyResponses] = useState<
     ChecklistResponse[]
   >([]);
@@ -176,6 +176,25 @@ export default function InlineChecklist({
     eligibleSimpleTasks.length > 0 &&
     eligibleSimpleTasks.every((task) => selectedSimple.includes(task._id));
 
+  async function maybeAutoSignOff(
+    nextLegacy: typeof legacy,
+    nextStructured: typeof structured,
+    memberId: string,
+  ) {
+    if (!checklistIsReadyToSignOff(tasks, nextLegacy, nextStructured) || autoSignOffRef.current) return;
+    autoSignOffRef.current = true;
+    setSaving("signoff");
+    try {
+      await onSignOff(memberId);
+      toast.success("Checklist complete", { description: "All required items are recorded." });
+    } catch (error) {
+      autoSignOffRef.current = false;
+      toast.error("Checklist could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
+  }
+
   function updateOverride(key: string, value: string) {
     setOverrides((current) => ({ ...current, [key]: value }));
   }
@@ -204,9 +223,7 @@ export default function InlineChecklist({
         value: "confirmed",
         teamMemberId: memberId,
       });
-      setLocalStructuredResponses((current) => [
-        ...current,
-        {
+      const newResponse: StructuredTaskResponse = {
           _id: `local-${task._id}-simple`,
           taskArea: checklist,
           taskId: task._id,
@@ -218,10 +235,12 @@ export default function InlineChecklist({
           teamMemberId: memberId,
           taskVersionRootId: task.versionRootId,
           taskDefinitionKey: task.definitionKey,
-        },
-      ]);
+        };
+      const nextStructured = [...structured, { taskId: newResponse.taskId, stepId: newResponse.stepId, taskVersionRootId: newResponse.taskVersionRootId, taskDefinitionKey: newResponse.taskDefinitionKey }];
+      setLocalStructuredResponses((current) => [...current, newResponse]);
       setSelectedSimple((current) => current.filter((id) => id !== task._id));
       setExpandedTaskId(null);
+      await maybeAutoSignOff(legacy, nextStructured, memberId);
       toast.success("Task completed");
     } finally {
       setSaving(null);
@@ -249,9 +268,7 @@ export default function InlineChecklist({
         action: issue?.action,
         teamMemberId: memberId,
       });
-      setLocalLegacyResponses((current) => [
-        ...current,
-        {
+      const newResponse: ChecklistResponse = {
           _id: `local-${task._id}`,
           questionId: task._id,
           answer,
@@ -261,10 +278,12 @@ export default function InlineChecklist({
           createdAt: new Date().toISOString(),
           questionVersionRootId: task.versionRootId,
           questionDefinitionKey: task.definitionKey,
-        },
-      ]);
+        };
+      const nextLegacy = [...legacy, { questionId: newResponse.questionId, questionVersionRootId: newResponse.questionVersionRootId, questionDefinitionKey: newResponse.questionDefinitionKey }];
+      setLocalLegacyResponses((current) => [...current, newResponse]);
       setIssueOpen(null);
       setExpandedTaskId(null);
+      await maybeAutoSignOff(nextLegacy, structured, memberId);
       toast.success(
         answer === "no" ? "Issue and action recorded" : "Answer recorded",
       );
@@ -330,9 +349,7 @@ export default function InlineChecklist({
         problem: issue?.problem,
         action: issue?.action,
       });
-      setLocalStructuredResponses((current) => [
-        ...current,
-        {
+      const newResponse: StructuredTaskResponse = {
           _id: `local-${task._id}-${step.id}`,
           taskArea: checklist,
           taskId: task._id,
@@ -344,10 +361,12 @@ export default function InlineChecklist({
           teamMemberId: memberId,
           taskVersionRootId: task.versionRootId,
           taskDefinitionKey: task.definitionKey,
-        },
-      ]);
+        };
+      const nextStructured = [...structured, { taskId: newResponse.taskId, stepId: newResponse.stepId, taskVersionRootId: newResponse.taskVersionRootId, taskDefinitionKey: newResponse.taskDefinitionKey }];
+      setLocalStructuredResponses((current) => [...current, newResponse]);
       setIssueOpen(null);
       setValues((current) => ({ ...current, [key]: "" }));
+      await maybeAutoSignOff(legacy, nextStructured, memberId);
       toast.success("Step recorded");
     } finally {
       setSaving(null);
@@ -395,6 +414,8 @@ export default function InlineChecklist({
     setSaving("bulk");
     let savedCount = 0;
     const unsaved = new Set(plan.map((entry) => entry.taskId));
+    const bulkResponses = [...structured];
+    let lastSavedMemberId = "";
     try {
       for (const entry of plan) {
         const task = tasks.find((candidate) => candidate._id === entry.taskId);
@@ -426,11 +447,14 @@ export default function InlineChecklist({
             taskDefinitionKey: task?.definitionKey,
           },
         ]);
+        bulkResponses.push({ taskId: entry.taskId, stepId: "simple", taskVersionRootId: task.versionRootId, taskDefinitionKey: task.definitionKey });
+        lastSavedMemberId = entry.teamMemberId;
         unsaved.delete(entry.taskId);
         savedCount += 1;
       }
       setSelectedSimple([]);
       setBulkOpen(false);
+      await maybeAutoSignOff(legacy, bulkResponses, lastSavedMemberId || workflowMemberId || plan[0]?.teamMemberId || "");
       toast.success(`${savedCount} task${savedCount === 1 ? "" : "s"} completed`);
     } catch (error) {
       setSelectedSimple([...unsaved]);
@@ -443,17 +467,6 @@ export default function InlineChecklist({
               : "The remaining tasks were not saved.",
         },
       );
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function signOff() {
-    const memberId = signOffMemberId || workflowMemberId;
-    if (!progress.allComplete || !memberId || saving) return;
-    setSaving("signoff");
-    try {
-      await onSignOff(memberId);
     } finally {
       setSaving(null);
     }
@@ -492,7 +505,7 @@ export default function InlineChecklist({
             return <section key={task._id} className={`overflow-hidden rounded-2xl border bg-white shadow-[0_2px_10px_rgba(23,25,24,0.035)] transition-shadow ${issue ? "border-[#efc8c3] shadow-[0_2px_12px_rgba(182,71,56,0.08)]" : complete ? "border-[#cfe3d5]" : "border-black/[0.07]"}`}>
               <div className="flex min-h-16 items-center gap-3 px-3 py-3 sm:px-4">
                 {isSimpleCompletionTask(task) && !complete ? <input type="checkbox" checked={selectedSimple.includes(task._id)} onChange={(event) => setSelectedSimple((current) => event.target.checked ? [...new Set([...current, task._id])] : current.filter((id) => id !== task._id))} aria-label={`Select ${task.title} for bulk completion`} className="size-5 shrink-0 rounded border-black/[0.2] accent-[#2d7951] focus-visible:ring-2 focus-visible:ring-[#ffde56]" /> : <span className={`flex size-8 shrink-0 items-center justify-center rounded-full ${issue ? "bg-[#fff0ed] text-[#b64738]" : complete ? "bg-[#eaf6ed] text-[#2d7951]" : "bg-[#f1f3ef] text-[#89918b]"}`} aria-hidden="true">{issue ? <AlertTriangle className="size-4" /> : complete ? <Check className="size-4" /> : <span className="text-xs font-bold">{index + 1}</span>}</span>}
-                <button type="button" onClick={() => toggleTask(task._id)} aria-expanded={expanded} aria-controls={taskPanelId} className="min-w-0 flex-1 rounded-lg py-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#ffde56]">
+                <button type="button" onClick={task.taskType === "with_steps" ? () => toggleTask(task._id) : undefined} aria-expanded={task.taskType === "with_steps" ? expanded : undefined} aria-controls={task.taskType === "with_steps" ? taskPanelId : undefined} className="min-w-0 flex-1 rounded-lg py-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#ffde56]">
                   <span className="block truncate text-sm font-semibold text-[#202522] sm:text-base">{task.title}</span>
                   <span className={`mt-0.5 block text-xs font-medium ${issue ? "text-[#b64738]" : complete ? "text-[#2d7951]" : "text-[#727a74]"}`}>{status}{task.taskType === "with_steps" && !issue && !complete ? " to go" : ""}</span>
                 </button>
@@ -501,7 +514,7 @@ export default function InlineChecklist({
                   <Button type="button" disabled={!memberFor(task._id) || saving === task._id} className="h-10 rounded-xl bg-[#2d7951] px-3 text-xs text-white hover:bg-[#246442]" onClick={() => void saveQuestion(task, "yes")}>Yes</Button>
                   <Button type="button" variant="outline" disabled={!memberFor(task._id)} className="h-10 rounded-xl border-[#c9a94d] px-3 text-xs text-[#7b651a]" onClick={() => { setExpandedTaskId(task._id); setIssueOpen(task._id); }}>Report issue</Button>
                 </div>}
-                <ChevronDown className={`size-4 shrink-0 text-[#89918b] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+                {task.taskType === "with_steps" && <ChevronRight className={`size-4 shrink-0 text-[#89918b] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`} aria-hidden="true" />}
               </div>
 
               {expanded && <div id={taskPanelId} className="animate-in fade-in-0 slide-in-from-top-1 border-t border-black/[0.06] bg-[#fbfcfa] px-3 pb-4 pt-3 duration-200 motion-reduce:animate-none sm:px-4">
@@ -523,11 +536,6 @@ export default function InlineChecklist({
           })}
         </div>
 
-        <section className="rounded-2xl border border-black/[0.07] bg-white p-4 shadow-[0_4px_16px_rgba(23,25,24,0.04)] sm:p-5">
-          <div className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 size-5 shrink-0 text-[#2d7951]" /><div><p className="font-semibold">Checklist sign-off</p><p className="mt-1 text-sm leading-5 text-[#727a74]">Sign off once every configured item has been answered or completed.</p></div></div>
-          <select value={signOffMemberId || workflowMemberId} onChange={(event) => setSignOffMemberId(event.target.value)} className="mt-4 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm outline-none focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40" aria-label="Signed off by"><option value="">Select team member</option>{teamMembers.map((member) => <option key={member._id} value={member._id}>{member.name}</option>)}</select>
-          <Button type="button" disabled={!progress.allComplete || !(signOffMemberId || workflowMemberId) || saving === "signoff"} className="mt-3 h-11 w-full rounded-xl bg-[#ffde56] font-semibold text-[#171717] hover:bg-[#f4d34d]" onClick={() => void signOff()}>{saving === "signoff" ? <Loader2 className="mx-auto size-5 animate-spin" /> : <>Complete {title}<Check className="ml-2 size-4" /></>}</Button>
-        </section>
         <Button variant="outline" className="h-11 w-full rounded-xl" onClick={onBack}>View all checks<ChevronRight className="ml-2 size-4" /></Button>
       </main>
 

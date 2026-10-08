@@ -49,8 +49,8 @@ const [component, workflow, dashboard, schema, migration, structuredService, che
   readFile("src/components/dashboard/StaffAttribution.tsx", "utf8"),
 ]);
 assert.match(component, /Select all simple tasks/);
-assert.match(component, /aria-expanded=\{expanded\}/, "checklist rows progressively disclose their controls");
-assert.match(component, /aria-controls=\{taskPanelId\}/, "expanded checklist rows expose an accessible panel relationship");
+assert.match(component, /aria-expanded=\{task\.taskType === "with_steps" \? expanded : undefined\}/, "only detailed checklist rows progressively disclose their controls");
+assert.match(component, /aria-controls=\{task\.taskType === "with_steps" \? taskPanelId : undefined\}/, "expanded detailed rows expose an accessible panel relationship");
 assert.match(component, /fixed inset-x-0 bottom-0/, "bulk review uses a safe-area-aware bottom action area");
 assert.match(component, /pb-\[calc\(7rem\+env\(safe-area-inset-bottom\)\)\]/, "checklist content reserves space for action UI and safe areas");
 assert.match(component, /<ActiveStaffControl/, "default staff attribution is explained once at the top");

@@ -7,7 +7,8 @@ import type {
   TeamMember,
 } from "@/components/dashboard/dashboard-types";
 import { AlertTriangle, Check } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
@@ -49,9 +50,10 @@ export default function StructuredTaskWorkflow({
   const [members, setMembers] = useState<Record<string, string>>({});
   const [issues, setIssues] = useState<Record<string, IssueDraft>>({});
   const [issueOpen, setIssueOpen] = useState<string | null>(null);
-  const [signOffMember, setSignOffMember] = useState("");
   const [activeMemberId, setActiveMemberId] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const autoSignOffRef = useRef(false);
   const [localResponses, setLocalResponses] = useState<
     Record<string, StructuredTaskResponse>
   >({});
@@ -78,11 +80,6 @@ export default function StructuredTaskWorkflow({
             required: true,
           },
         ];
-  const allStepsComplete = areaTasks.every((task) =>
-    stepsFor(task)
-      .filter((step) => step.required !== false)
-      .every((step) => Boolean(responseFor(task._id, step.id))),
-  );
   const totalRequiredSteps = areaTasks.reduce(
     (total, task) => total + stepsFor(task).filter((step) => step.required !== false).length,
     0,
@@ -92,6 +89,17 @@ export default function StructuredTaskWorkflow({
     0,
   );
   const isSignable = area !== "cleaning";
+  const allStepsCompleteFor = (candidateResponses: Record<string, StructuredTaskResponse>) => areaTasks.every((task) =>
+    stepsFor(task)
+      .filter((step) => step.required !== false)
+      .every((step) => Boolean(
+        responses.find((response) =>
+          response.taskArea === area &&
+          response.stepId === step.id &&
+          (response.taskId === task._id || versionedChecklistResponseMatches(task, response)),
+        ) ?? candidateResponses[`${task._id}:${step.id}`],
+      )),
+  );
   const areaLabel =
     area === "cleaning"
       ? "Cleaning"
@@ -122,9 +130,7 @@ export default function StructuredTaskWorkflow({
         problem: issue?.problem,
         action: issue?.action,
       });
-      setLocalResponses((current) => ({
-        ...current,
-        [key]: {
+      const nextResponse: StructuredTaskResponse = {
           _id: `local-${key}`,
           taskArea: area,
           taskId: task._id,
@@ -136,10 +142,21 @@ export default function StructuredTaskWorkflow({
           dateKey: new Date().toISOString().slice(0, 10),
           createdAt: new Date().toISOString(),
           teamMemberId: memberId,
-        },
-      }));
+        };
+      const nextLocalResponses = { ...localResponses, [key]: nextResponse };
+      setLocalResponses(nextLocalResponses);
       setValues((current) => ({ ...current, [key]: "" }));
       setIssueOpen(null);
+      if (isSignable && allStepsCompleteFor(nextLocalResponses) && !autoSignOffRef.current) {
+        autoSignOffRef.current = true;
+        try {
+          await signOff({ locationId, area, teamMemberId: memberId });
+          setCompletedAt(new Date().toISOString());
+        } catch (error) {
+          autoSignOffRef.current = false;
+          toast.error("Checklist could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+        }
+      }
       return result;
     } finally {
       setSaving(null);
@@ -171,16 +188,6 @@ export default function StructuredTaskWorkflow({
     }
   }
 
-  async function completeSignOff() {
-    if (!signOffMember || !allStepsComplete) return;
-    setSaving("signoff");
-    try {
-      await signOff({ locationId, area, teamMemberId: signOffMember });
-    } finally {
-      setSaving(null);
-    }
-  }
-
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
       <OperationalHeader
@@ -196,6 +203,7 @@ export default function StructuredTaskWorkflow({
           Each step can be completed by the team member who carried it out.
         </p>
         <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
+        {completedAt && <section className="rounded-2xl border border-[#b9dfc5] bg-[#f3fbf5] p-4 text-[#2d7951]" role="status"><div className="flex items-start gap-3"><Check className="mt-0.5 size-5 shrink-0" /><div><p className="font-semibold">Checklist complete</p><p className="mt-1 text-sm">Completed at {responseTime(completedAt)}. All required steps are recorded.</p><Button type="button" variant="outline" className="mt-3 border-[#9bcaaa] text-[#2d7951]" onClick={onBack}>View all checks</Button></div></div></section>}
         {areaTasks.map((task) => {
           const steps = stepsFor(task);
           const requiredSteps = steps.filter((step) => step.required !== false);
@@ -433,39 +441,6 @@ export default function StructuredTaskWorkflow({
             </section>
           );
         })}
-        {isSignable && (
-          <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
-            <h2 className="font-semibold">
-              {area.startsWith("security_")
-                ? "Security sign-off"
-                : "Checklist sign-off"}
-            </h2>
-            <p className="mt-1 text-sm text-[#727a74]">
-              Sign off once every required step is complete.
-            </p>
-            <select
-              value={signOffMember}
-              onChange={(event) => setSignOffMember(event.target.value)}
-              className="mt-4 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-            >
-              <option value="">Signed off by…</option>
-              {teamMembers.map((member) => (
-                <option key={member._id} value={member._id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-            <Button
-              disabled={
-                !allStepsComplete || !signOffMember || saving === "signoff"
-              }
-              className="mt-4 h-12 w-full bg-[#ffde56] text-[#171717]"
-              onClick={() => void completeSignOff()}
-            >
-              Complete sign-off <Check className="ml-2 size-4" />
-            </Button>
-          </section>
-        )}
         {!areaTasks.length && (
           <p className="rounded-2xl bg-white p-5 text-sm text-[#727a74]">
             No structured tasks are due here today.
