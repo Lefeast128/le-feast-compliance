@@ -96,4 +96,66 @@ const retry = await submitTemperatureRound({
 assert.equal(retry.issues.length, 0, "partial retry completes without a duplicate reading");
 assert.deepEqual(retryReadings, ["fridge-2"], "retry does not submit a reading that was already saved");
 
+let reconciliationCalls = 0;
+const conflict = await submitTemperatureRound({
+  roundId: "round-conflict",
+  locationId: "location-1",
+  session: "AM",
+  teamMemberId: "member-1",
+  equipment: [{ _id: "fridge-1", name: "Main fridge" }],
+  temperatures: { "fridge-1": "9" },
+  recordTemperature: async () => {
+    const error = new Error("This fridge already has a reading in this round");
+    error.status = 409;
+    throw error;
+  },
+  reconcileReading: async ({ roundId, equipmentId }) => {
+    reconciliationCalls += 1;
+    assert.equal(roundId, "round-conflict");
+    assert.equal(equipmentId, "fridge-1");
+    return {
+      reading: { equipmentId, result: "fail", issueId: "issue-conflict", temperature: 9, teamMemberId: "member-original", createdAt: "2026-10-08T08:00:00.000Z" },
+      issue: { issueId: "issue-conflict", actionRecorded: false },
+    };
+  },
+  startRound: async () => "round-conflict",
+  completeRound: async () => { throw new Error("an unresolved reconciled issue cannot complete"); },
+});
+assert.equal(reconciliationCalls, 1, "409 responses reconcile against the authoritative server reading");
+assert.equal(conflict.savedReadings[0].teamMemberId, "member-original", "reconciliation preserves the original reading attribution");
+assert.equal(conflict.issues[0].issueId, "issue-conflict", "reconciled failures remain outstanding until action is recorded");
+assert.match(conflict.savedReadings[0].createdAt, /^2026-10-08/, "reconciliation preserves the original reading timestamp");
+
+let unresolvedCompletionCalls = 0;
+await submitTemperatureRound({
+  roundId: "round-existing-failure",
+  locationId: "location-1",
+  session: "PM",
+  teamMemberId: "member-2",
+  equipment: [{ _id: "fridge-1", name: "Main fridge" }],
+  temperatures: { "fridge-1": "9" },
+  existingReadings: [{ equipmentId: "fridge-1", result: "fail", issueId: "issue-existing" }],
+  existingIssues: [{ _id: "fridge-1", name: "Main fridge", issueId: "issue-existing", temperature: 9, actionRecorded: false }],
+  startRound: async () => "round-existing-failure",
+  recordTemperature: async () => { throw new Error("the existing reading must not be resubmitted"); },
+  completeRound: async () => { unresolvedCompletionCalls += 1; },
+});
+assert.equal(unresolvedCompletionCalls, 0, "a resumed failed reading without action cannot complete the round");
+
+let actionRecordedCompletionCalls = 0;
+await submitTemperatureRound({
+  roundId: "round-existing-action",
+  locationId: "location-1",
+  session: "PM",
+  teamMemberId: "member-2",
+  equipment: [{ _id: "fridge-1", name: "Main fridge" }],
+  temperatures: { "fridge-1": "9" },
+  existingReadings: [{ equipmentId: "fridge-1", result: "fail", issueId: "issue-existing" }],
+  existingIssues: [{ _id: "fridge-1", name: "Main fridge", issueId: "issue-existing", temperature: 9, actionRecorded: true }],
+  startRound: async () => "round-existing-action",
+  recordTemperature: async () => { throw new Error("the existing reading must not be resubmitted"); },
+  completeRound: async () => { actionRecordedCompletionCalls += 1; },
+});
+assert.equal(actionRecordedCompletionCalls, 1, "a resumed failed reading with recorded action can complete the round without a recheck");
+
 console.log("Lazy temperature round tests passed: open/cancel are local-only, submission uses one shared round, completion and failed-reading paths preserve the round ID");

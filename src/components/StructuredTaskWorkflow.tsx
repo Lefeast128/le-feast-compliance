@@ -21,6 +21,7 @@ type Props = {
   tasks: StructuredTask[];
   responses: StructuredTaskResponse[];
   teamMembers: TeamMember[];
+  signOffRecorded?: boolean;
   onBack: () => void;
 };
 type IssueDraft = { problem: string; action: string };
@@ -41,6 +42,7 @@ export default function StructuredTaskWorkflow({
   tasks,
   responses,
   teamMembers,
+  signOffRecorded = false,
   onBack,
 }: Props) {
   const save = useRestMutation(restApi.compliance.saveStructuredTaskResponse);
@@ -108,6 +110,23 @@ export default function StructuredTaskWorkflow({
         : area === "security_pm"
           ? "PM Security"
           : `${area[0].toUpperCase()}${area.slice(1)} checklist`;
+  const needsSignOffRecovery = isSignable && allStepsCompleteFor(localResponses) && !signOffRecorded && !completedAt;
+
+  async function recordCompletion(memberId: string) {
+    if (!isSignable || !memberId || autoSignOffRef.current) return;
+    autoSignOffRef.current = true;
+    setSaving("signoff");
+    try {
+      await signOff({ locationId, area, teamMemberId: memberId });
+      setCompletedAt(new Date().toISOString());
+      toast.success("Checklist complete", { description: "All required steps are recorded." });
+    } catch (error) {
+      autoSignOffRef.current = false;
+      toast.error("Checklist could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
+  }
 
   async function saveStep(
     task: StructuredTask,
@@ -147,16 +166,7 @@ export default function StructuredTaskWorkflow({
       setLocalResponses(nextLocalResponses);
       setValues((current) => ({ ...current, [key]: "" }));
       setIssueOpen(null);
-      if (isSignable && allStepsCompleteFor(nextLocalResponses) && !autoSignOffRef.current) {
-        autoSignOffRef.current = true;
-        try {
-          await signOff({ locationId, area, teamMemberId: memberId });
-          setCompletedAt(new Date().toISOString());
-        } catch (error) {
-          autoSignOffRef.current = false;
-          toast.error("Checklist could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
-        }
-      }
+      if (isSignable && allStepsCompleteFor(nextLocalResponses)) await recordCompletion(memberId);
       return result;
     } finally {
       setSaving(null);
@@ -203,6 +213,13 @@ export default function StructuredTaskWorkflow({
           Each step can be completed by the team member who carried it out.
         </p>
         <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
+        {needsSignOffRecovery && <section className="rounded-2xl border border-[#f0d98a] bg-[#fffdf1] p-4" role="status">
+          <p className="font-semibold text-[#5f5115]">All checklist steps are recorded</p>
+          <p className="mt-1 text-sm text-[#796513]">Finish recording completion to update Daily Checks.</p>
+          <Button type="button" disabled={!activeMemberId || saving === "signoff"} className="mt-3 h-11 bg-[#ffde59] text-[#202522] hover:bg-[#f4d34b]" onClick={() => void recordCompletion(activeMemberId)}>
+            {saving === "signoff" ? "Recording…" : "Finish recording completion"}
+          </Button>
+        </section>}
         {completedAt && <section className="rounded-2xl border border-[#b9dfc5] bg-[#f3fbf5] p-4 text-[#2d7951]" role="status"><div className="flex items-start gap-3"><Check className="mt-0.5 size-5 shrink-0" /><div><p className="font-semibold">Checklist complete</p><p className="mt-1 text-sm">Completed at {responseTime(completedAt)}. All required steps are recorded.</p><Button type="button" variant="outline" className="mt-3 border-[#9bcaaa] text-[#2d7951]" onClick={onBack}>View all checks</Button></div></div></section>}
         {areaTasks.map((task) => {
           const steps = stepsFor(task);

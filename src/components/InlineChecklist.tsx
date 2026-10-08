@@ -44,6 +44,7 @@ type Props = {
   structuredResponses: StructuredTaskResponse[];
   teamMembers: TeamMember[];
   onSignOff: (teamMemberId: string) => Promise<void>;
+  signOffRecorded?: boolean;
   onBack: () => void;
 };
 type IssueDraft = { problem: string; action: string };
@@ -76,6 +77,7 @@ export default function InlineChecklist({
   structuredResponses,
   teamMembers,
   onSignOff,
+  signOffRecorded = false,
   onBack,
 }: Props) {
   const saveLegacy = useRestMutation(restApi.compliance.saveChecklistResponse);
@@ -175,6 +177,7 @@ export default function InlineChecklist({
   const allSimpleSelected =
     eligibleSimpleTasks.length > 0 &&
     eligibleSimpleTasks.every((task) => selectedSimple.includes(task._id));
+  const needsSignOffRecovery = progress.allComplete && !signOffRecorded;
 
   async function maybeAutoSignOff(
     nextLegacy: typeof legacy,
@@ -193,6 +196,11 @@ export default function InlineChecklist({
     } finally {
       setSaving(null);
     }
+  }
+
+  async function finishRecordingCompletion() {
+    if (!workflowMemberId || saving || !needsSignOffRecovery) return;
+    await maybeAutoSignOff(legacy, structured, workflowMemberId);
   }
 
   function updateOverride(key: string, value: string) {
@@ -484,6 +492,14 @@ export default function InlineChecklist({
 
       <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
         <ActiveStaffControl teamMembers={teamMembers} value={workflowMemberId} onChange={setWorkflowMemberId} />
+
+        {needsSignOffRecovery && <section className="rounded-2xl border border-[#f0d98a] bg-[#fffdf1] p-4" role="status">
+          <p className="font-semibold text-[#5f5115]">All checklist items are recorded</p>
+          <p className="mt-1 text-sm text-[#796513]">Finish recording completion to update Daily Checks.</p>
+          <Button type="button" disabled={!workflowMemberId || saving === "signoff"} className="mt-3 h-11 bg-[#ffde59] text-[#202522] hover:bg-[#f4d34b]" onClick={() => void finishRecordingCompletion()}>
+            {saving === "signoff" ? "Recording…" : "Finish recording completion"}
+          </Button>
+        </section>}
 
         {eligibleSimpleTasks.length > 0 && <div className="flex items-center justify-between gap-3 px-1">
           <p className="text-xs text-[#727a74]">{selectedSimple.length > 0 ? `${selectedSimple.length} simple task${selectedSimple.length === 1 ? "" : "s"} selected` : "Simple tasks can be selected together."}</p>

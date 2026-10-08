@@ -21,6 +21,7 @@ import { ApiError } from "./errors.js";
 import { localDateKey, localDayRange } from "../dashboard/time.js";
 import { activeMember } from "./shared.js";
 import { id, locationFor, text } from "../management/shared.js";
+import type { Transaction } from "../management/shared.js";
 import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
 
 export const structuredAreas = ["opening", "closing", "cleaning", "security_am", "security_pm"] as const;
@@ -136,6 +137,44 @@ function responseMatchesTask(task: TaskRow, response: { taskId: string }, versio
   if (response.taskId === task.id) return true;
   const previous = versionsById.get(response.taskId);
   return Boolean(previous && checklistVersionRoot(previous) === checklistVersionRoot(task) && checklistDefinitionKey(previous) === checklistDefinitionKey(task));
+}
+
+/**
+ * Complete a checklist in the same transaction as its final response. The
+ * client still requests sign-off for compatibility, but completion must not
+ * depend on a second network request succeeding after the answer is saved.
+ */
+export async function maybeAutoSignOffStructuredChecklist(
+  tx: Transaction,
+  input: { locationId: string; area: StructuredTaskArea; dateKey: string; timezone: string; completedBy: string; teamMemberId: string },
+) {
+  if (input.area === "cleaning") return false;
+  const checklist = input.area === "opening" || input.area === "closing" ? input.area : null;
+  const tasks = checklist
+    ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, input.locationId), eq(checklistQuestions.checklist, checklist), eq(checklistQuestions.active, true)))
+    : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, input.locationId), eq(securityQuestions.session, input.area === "security_am" ? "AM" : "PM"), eq(securityQuestions.active, true)));
+  if (!tasks.length) return false;
+  const versionTasks = checklist
+    ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, input.locationId), eq(checklistQuestions.checklist, checklist)))
+    : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, input.locationId), eq(securityQuestions.session, input.area === "security_am" ? "AM" : "PM")));
+  const versionsById = new Map(versionTasks.map(task => [task.id, task as TaskRow]));
+  const { start, end } = localDayRange(Date.parse(`${input.dateKey}T12:00:00Z`), input.timezone);
+  const legacyResponses = checklist
+    ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, input.locationId), eq(checklistResponses.checklist, checklist), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
+    : await tx.select({ questionId: securityResponses.questionId }).from(securityResponses).where(and(eq(securityResponses.locationId, input.locationId), eq(securityResponses.session, input.area === "security_am" ? "AM" : "PM"), gte(securityResponses.createdAt, new Date(start)), lt(securityResponses.createdAt, new Date(end))));
+  const structuredResponses = await tx.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, input.locationId), eq(structuredTaskResponses.taskArea, input.area), eq(structuredTaskResponses.dateKey, input.dateKey)));
+  const complete = tasks.every(task => task.taskType === "with_steps"
+    ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structuredResponses.some(response => response.taskId === task.id && response.stepId === step.id) || structuredResponses.some(response => response.stepId === step.id && responseMatchesTask(task as TaskRow, response, versionsById)))
+    : task.completionMode === "task"
+      ? structuredResponses.some(response => response.taskId === task.id && response.stepId === "simple") || structuredResponses.some(response => response.stepId === "simple" && responseMatchesTask(task as TaskRow, response, versionsById))
+      : structuredResponses.some(response => response.taskId === task.id && response.stepId === "simple") || structuredResponses.some(response => response.stepId === "simple" && responseMatchesTask(task as TaskRow, response, versionsById)) || legacyResponses.some(response => response.questionId === task.id || (versionsById.has(response.questionId) && responseMatchesTask(task as TaskRow, { taskId: response.questionId }, versionsById))));
+  if (!complete) return false;
+  if (checklist) {
+    await tx.insert(checklistSignOffs).values({ locationId: input.locationId, checklist, dateKey: input.dateKey, completedAt: new Date(), completedBy: input.completedBy, teamMemberId: input.teamMemberId }).onConflictDoNothing({ target: [checklistSignOffs.locationId, checklistSignOffs.checklist, checklistSignOffs.dateKey] });
+  } else {
+    await tx.insert(securitySignOffs).values({ locationId: input.locationId, session: input.area === "security_am" ? "AM" : "PM", dateKey: input.dateKey, completedAt: new Date(), completedBy: input.completedBy, teamMemberId: input.teamMemberId }).onConflictDoNothing({ target: [securitySignOffs.locationId, securitySignOffs.session, securitySignOffs.dateKey] });
+  }
+  return true;
 }
 
 async function findActiveTask(area: StructuredTaskArea, rawTaskId: unknown, locationId: string, executor = db()): Promise<TaskRow> {
@@ -259,6 +298,7 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
       if (issueId) await tx.insert(issueUpdates).values({ issueId, locationId, updateType: "immediate_action", note: action, status: "monitoring", createdBy: context.user.id, teamMemberId: memberId });
     }
     const [response] = await tx.insert(structuredTaskResponses).values({ locationId, taskArea: area, taskId: row.id, stepId: step.id, responseType: step.responseType, responseValue: value, dateKey, createdBy: context.user.id, teamMemberId: memberId }).returning();
+    await maybeAutoSignOffStructuredChecklist(tx, { locationId, area: area as StructuredTaskArea, dateKey, timezone: location[0].timezone, completedBy: context.user.id, teamMemberId: memberId });
     return { responseId: response.id, issueId, taskId: row.id, stepId: step.id };
   });
 }

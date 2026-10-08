@@ -21,6 +21,15 @@ assert.equal(checklistIsReadyToSignOff(items, legacy, structured), true, "legacy
 assert.equal(checklistIsReadyToSignOff(items, legacy, structured.slice(0, 1)), false, "required steps prevent early automatic completion");
 assert.equal(checklistIsReadyToSignOff(items, [], structured), false, "an unanswered question cannot be signed off");
 assert.match(await (await import("node:fs/promises")).readFile(new URL("../src/components/InlineChecklist.tsx", import.meta.url), "utf8"), /maybeAutoSignOff/);
+assert.match(await (await import("node:fs/promises")).readFile(new URL("../src/components/InlineChecklist.tsx", import.meta.url), "utf8"), /Finish recording completion/);
 assert.doesNotMatch(await (await import("node:fs/promises")).readFile(new URL("../src/components/InlineChecklist.tsx", import.meta.url), "utf8"), /Checklist sign-off/);
-assert.doesNotMatch(await (await import("node:fs/promises")).readFile(new URL("../src/components/StructuredTaskWorkflow.tsx", import.meta.url), "utf8"), /Complete sign-off/);
+const structuredWorkflow = await (await import("node:fs/promises")).readFile(new URL("../src/components/StructuredTaskWorkflow.tsx", import.meta.url), "utf8");
+assert.match(structuredWorkflow, /Finish recording completion/);
+const structuredServiceSource = await (await import("node:fs/promises")).readFile(new URL("../src/server/compliance/structured-task-service.ts", import.meta.url), "utf8");
+const checklistServiceSource = await (await import("node:fs/promises")).readFile(new URL("../src/server/compliance/checklist-service.ts", import.meta.url), "utf8");
+const securityServiceSource = await (await import("node:fs/promises")).readFile(new URL("../src/server/compliance/security-service.ts", import.meta.url), "utf8");
+assert.match(structuredServiceSource, /maybeAutoSignOffStructuredChecklist/);
+assert.match(checklistServiceSource, /maybeAutoSignOffStructuredChecklist\(tx/);
+assert.match(securityServiceSource, /maybeAutoSignOffStructuredChecklist\(tx/);
+assert.match(structuredServiceSource, /onConflictDoNothing/);
 console.log("Checklist auto-completion tests passed: mixed legacy/structured evidence, required-step gating and no redundant sign-off controls");

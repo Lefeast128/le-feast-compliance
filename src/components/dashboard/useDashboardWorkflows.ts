@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
 import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember, TemperatureReading } from "@/components/dashboard/dashboard-types";
-import { submitTemperatureRound } from "@/components/dashboard/temperature-round";
+import { submitTemperatureRound, type ExistingTemperatureIssue } from "@/components/dashboard/temperature-round";
 import { isItemComplete } from "@/lib/unified-checklist";
 
 type WorkflowArgs = {
@@ -91,27 +91,33 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pendingPmRound = active?.rounds.find(item => item.session === "PM" && !item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
-  const hydratePendingRound = (pending: NonNullable<typeof pendingAmRound>) => {
-    if (!active) return;
-    const readings = active.readings.filter(reading => reading.roundId === pending._id);
+  const temperatureIssueState = (source: DashboardData, targetRoundId: string) => {
+    const readings = source.readings.filter(reading => reading.roundId === targetRoundId);
     const failed = readings.filter(reading => reading.result === "fail");
     const recoveredIssues = failed.flatMap(reading => {
-      const issue = active.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
-      const item = active.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
+      const issue = source.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
+      const item = source.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
       return issue && item ? [{ ...item, issueId: issue._id, temperature: reading.temperature }] : [];
     });
+    const progress = Object.fromEntries(recoveredIssues.map(issue => {
+      const linkedIssue = source.issues.find(item => item._id === issue.issueId);
+      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
+    }));
+    const existingIssues: ExistingTemperatureIssue[] = recoveredIssues.map(issue => ({ ...issue, actionRecorded: Boolean(progress[issue.issueId]?.actionsSaved) }));
+    return { readings, recoveredIssues, progress, existingIssues };
+  };
+  const hydratePendingRound = (pending: NonNullable<typeof pendingAmRound>, source: DashboardData) => {
+    const state = temperatureIssueState(source, pending._id);
+    const { readings, recoveredIssues, progress } = state;
     setRound(pending.session);
     setRoundId(pending._id);
     setRoundCompleterId(pending.teamMemberId ?? null);
-    setRoundEquipment([...active.equipment]);
+    setRoundEquipment([...source.equipment]);
     setRoundReadings(readings);
     setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
     setRoundIssues(recoveredIssues);
-    setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
-      const linkedIssue = active.issues.find(item => item._id === issue.issueId);
-      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
-      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
-    })));
+    setIssueProgress(progress);
   };
   const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
@@ -126,14 +132,20 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmSecurityComplete = structuredComplete("security_pm", active?.securityResponses.PM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "PM")), (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM"));
   const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
 
-  function beginRound(session: "AM" | "PM") {
+  async function beginRound(session: "AM" | "PM") {
     if (!dashboard) return;
-    const pending = active?.rounds.find(item => item.session === session && !item.completedAt);
+    let source = dashboard;
+    try {
+      source = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+    } catch (error) {
+      toast.error("Temperature round could not be refreshed", { description: error instanceof Error ? error.message : "Please retry." });
+    }
+    const pending = source.rounds.find(item => item.session === session && !item.completedAt);
     if (pending) {
-      hydratePendingRound(pending);
+      hydratePendingRound(pending, source);
       return;
     }
-    setRoundId(null); setRoundEquipment([...equipment]); setRoundReadings([]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
+    setRoundId(null); setRoundEquipment([...source.equipment]); setRoundReadings([]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
   }
 
   async function completeTemperatureRound(teamMemberId: string) {
@@ -155,6 +167,9 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
           }
           const merged = new Map([...roundReadings, ...latestReadings].map(reading => [reading.equipmentId, reading]));
           readingsBeforeSubmit = [...merged.values()];
+          const latestTemperatureState = temperatureIssueState(latest, roundId);
+          setRoundIssues(latestTemperatureState.recoveredIssues);
+          setIssueProgress(latestTemperatureState.progress);
           setRoundReadings(readingsBeforeSubmit);
           setTemperatures(current => ({ ...current, ...Object.fromEntries(latestReadings.map(reading => [reading.equipmentId, String(reading.temperature)])) }));
         } catch (error) {
@@ -166,18 +181,61 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
         toast.error("Enter every remaining fridge reading before completing the round");
         return;
       }
-      const result = await submitTemperatureRound({
-        roundId,
-        locationId: dashboard.location._id,
-        session: round,
-        teamMemberId,
-        equipment: roundEquipment,
-        temperatures,
-        existingReadings: readingsBeforeSubmit,
-        startRound,
-        recordTemperature,
-        completeRound,
-      });
+      let result: Awaited<ReturnType<typeof submitTemperatureRound>>;
+      try {
+        const runSubmission = async () => {
+          const authoritativeIssues: ExistingTemperatureIssue[] = roundId
+            ? temperatureIssueState(await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData, roundId).existingIssues
+            : roundIssues.map(issue => ({ ...issue, actionRecorded: Boolean(issueProgress[issue.issueId]?.actionsSaved) }));
+          const result = await submitTemperatureRound({
+            roundId,
+            locationId: dashboard.location._id,
+            session: round,
+            teamMemberId,
+            equipment: roundEquipment,
+            temperatures,
+            existingReadings: readingsBeforeSubmit,
+            existingIssues: authoritativeIssues,
+            reconcileReading: async ({ roundId: authoritativeRoundId, equipmentId }) => {
+              const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+              const reading = latest.readings.find(item => item.roundId === authoritativeRoundId && item.equipmentId === equipmentId);
+              if (!reading) return null;
+              const linkedIssue = latest.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
+              const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+              return {
+                reading: { equipmentId, issueId: linkedIssue?._id ?? null, result: reading.result, temperature: reading.temperature, teamMemberId: reading.teamMemberId, createdAt: reading.createdAt },
+                issue: linkedIssue ? { issueId: linkedIssue._id, actionRecorded: Boolean(update) } : undefined,
+              };
+            },
+            startRound,
+            recordTemperature,
+            completeRound,
+          });
+          return result;
+        };
+        result = await runSubmission();
+      } catch (error) {
+        try {
+          const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+          const latestRound = latest.rounds.find(item => item._id === (roundId ?? ""));
+          if (latestRound?.completedAt) {
+            toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+            resetForLocation();
+            return;
+          }
+          if (roundId) {
+            const latestTemperatureState = temperatureIssueState(latest, roundId);
+            setRoundReadings(latestTemperatureState.readings);
+            setTemperatures(Object.fromEntries(latestTemperatureState.readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+            setRoundIssues(latestTemperatureState.recoveredIssues);
+            setIssueProgress(latestTemperatureState.progress);
+          }
+        } catch {
+          // Keep the existing local state so the user can retry without losing input.
+        }
+        toast.error("Temperature round could not be completed", { description: error instanceof Error ? error.message : "Refresh and retry." });
+        return;
+      }
       setRoundId(result.roundId);
       if (result.savedReadings.length) {
         const recoveredReadings: TemperatureReading[] = result.savedReadings.map(reading => ({
@@ -186,8 +244,8 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
           equipmentId: reading.equipmentId,
           result: reading.result ?? "pass",
           temperature: reading.temperature,
-          teamMemberId,
-          createdAt: new Date().toISOString(),
+          teamMemberId: reading.teamMemberId ?? teamMemberId,
+          createdAt: reading.createdAt ?? new Date().toISOString(),
         }));
         setRoundReadings(current => [...current, ...recoveredReadings].filter((reading, index, all) => all.findIndex(candidate => candidate.equipmentId === reading.equipmentId) === index));
       }
@@ -207,7 +265,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   }
 
   async function saveTemperatureActions(issueId: string, action: string, note: string, teamMemberId: string) {
-    if (!issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
+    if (!dashboard || !issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
     if (action === "Other" && !note.trim()) return;
     issueActionSubmittingRef.current.add(issueId);
     try {
@@ -217,6 +275,18 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       setIssueProgress(nextProgress);
       toast.success("Corrective action recorded");
     } catch (error) {
+      try {
+        const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+        const linkedIssue = latest.issues.find(item => item._id === issueId);
+        const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+        if (update) {
+          setIssueProgress(current => ({ ...current, [issueId]: { ...current[issueId], action, note, actionMemberId: update.teamMemberId ?? teamMemberId, actionsSaved: true } }));
+          toast.success("Corrective action recorded", { description: "The saved server record was reconciled." });
+          return;
+        }
+      } catch {
+        // Preserve the local form so the user can retry after reconnecting.
+      }
       toast.error("Corrective action could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       issueActionSubmittingRef.current.delete(issueId);
@@ -324,6 +394,22 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
       setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({});
     } catch (error) {
+      try {
+        const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+        const latestRound = latest.rounds.find(item => item._id === roundId);
+        if (latestRound?.completedAt) {
+          toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+          resetForLocation();
+          return;
+        }
+        const latestTemperatureState = temperatureIssueState(latest, roundId);
+        setRoundReadings(latestTemperatureState.readings);
+        setTemperatures(Object.fromEntries(latestTemperatureState.readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+        setRoundIssues(latestTemperatureState.recoveredIssues);
+        setIssueProgress(latestTemperatureState.progress);
+      } catch {
+        // Keep the recovery screen and its local inputs available for retry.
+      }
       toast.error("Temperature round could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       roundSubmittingRef.current = false;

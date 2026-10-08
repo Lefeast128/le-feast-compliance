@@ -5,6 +5,7 @@ import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, locationFor, now } from "./shared.js";
 import { localDateKey, localDayRange, requireEnum } from "./validation.js";
+import { maybeAutoSignOffStructuredChecklist } from "./structured-task-service.js";
 
 export async function saveSecurityResponse(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; questionId: string; issue?: string; teamMemberId: string }) {
   requireEnum(input.session, "session", ["AM", "PM"] as const);
@@ -12,8 +13,15 @@ export async function saveSecurityResponse(context: AuthContext, input: { locati
   const [question] = await db.select().from(securityQuestions).where(and(eq(securityQuestions.id, input.questionId), eq(securityQuestions.locationId, location.id))).limit(1);
   if (!question) throw new ApiError(422, "Security question does not belong to this location"); if (question.session !== input.session) throw new ApiError(422, "Security question does not match this session"); if (!question.active) throw new ApiError(422, "This configuration version is no longer active");
   if (question.completionMode === "task") throw new ApiError(422, "Simple completion tasks must use the structured task workflow");
-  const range = localDayRange(Date.now(), location.timezone); const existing = await db.select({ id: securityResponses.id }).from(securityResponses).where(and(eq(securityResponses.locationId, location.id), eq(securityResponses.session, input.session), eq(securityResponses.questionId, question.id), gte(securityResponses.createdAt, new Date(range.start)), lt(securityResponses.createdAt, new Date(range.end)))); if (existing.length) throw new ApiError(409, "Security question already answered today");
-  const [response] = await db.insert(securityResponses).values({ locationId: location.id, session: input.session, questionId: question.id, answer: "yes", issue: input.issue?.trim() || null, createdAt: now(), createdBy: context.user.id, teamMemberId: input.teamMemberId ?? null }).returning({ id: securityResponses.id }); return { responseId: response.id };
+  const range = localDayRange(Date.now(), location.timezone);
+  return db.transaction(async (tx) => {
+    const existing = await tx.select({ id: securityResponses.id }).from(securityResponses).where(and(eq(securityResponses.locationId, location.id), eq(securityResponses.session, input.session), eq(securityResponses.questionId, question.id), gte(securityResponses.createdAt, new Date(range.start)), lt(securityResponses.createdAt, new Date(range.end))));
+    if (existing.length) throw new ApiError(409, "Security question already answered today");
+    const timestamp = now();
+    const [response] = await tx.insert(securityResponses).values({ locationId: location.id, session: input.session, questionId: question.id, answer: "yes", issue: input.issue?.trim() || null, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId ?? null }).returning({ id: securityResponses.id });
+    await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.session === "AM" ? "security_am" : "security_pm", dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
+    return { responseId: response.id };
+  });
 }
 export async function signOffSecurity(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; teamMemberId: string }) {
   requireEnum(input.session, "session", ["AM", "PM"] as const);

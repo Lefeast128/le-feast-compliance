@@ -5,6 +5,7 @@ import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, locationFor, now } from "./shared.js";
 import { localDateKey, localDayRange, requireEnum, requireUuid } from "./validation.js";
+import { maybeAutoSignOffStructuredChecklist } from "./structured-task-service.js";
 
 export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string }) {
   requireEnum(input.checklist, "checklist", ["opening", "closing"] as const); requireEnum(input.answer, "answer", ["yes", "no", "na"] as const);
@@ -27,6 +28,7 @@ export async function saveChecklistResponse(context: AuthContext, input: { locat
       const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Food safety", title: `${input.checklist} checklist: ${question.question}`, description: input.problem?.trim() || question.question, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId!, action: input.action!.trim() }).returning({ id: issues.id });
       await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: input.action!.trim(), status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId! });
     }
+    await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.checklist, dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
     return { responseId: response.id };
   });
 }
