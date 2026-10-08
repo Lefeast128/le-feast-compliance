@@ -88,6 +88,30 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
+  useEffect(() => {
+    if (!active || round) return;
+    const pending = active.rounds.find(item => !item.completedAt);
+    if (!pending) return;
+    const readings = active.readings.filter(reading => reading.roundId === pending._id);
+    if (!readings.length) return;
+    const failed = readings.filter(reading => reading.result === "fail");
+    const recoveredIssues = failed.flatMap(reading => {
+      const issue = active.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
+      const item = active.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
+      return issue && item ? [{ ...item, issueId: issue._id, temperature: reading.temperature }] : [];
+    });
+    setRound(pending.session);
+    setRoundId(pending._id);
+    setRoundCompleterId(pending.teamMemberId ?? null);
+    setRoundEquipment([...active.equipment]);
+    setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+    setRoundIssues(recoveredIssues);
+    setIssueProgress(Object.fromEntries(recoveredIssues.map(issue => {
+      const linkedIssue = active.issues.find(item => item._id === issue.issueId);
+      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
+    })));
+  }, [active, round]);
   const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
     const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
@@ -248,6 +272,13 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     toast.success("Additional check completed");
   }
 
+  async function completeRecoveredTemperatureRound() {
+    if (!dashboard || !round || !roundId || !roundCompleterId) return;
+    await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId: roundCompleterId });
+    toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
+    setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
+  }
+
   function resetForLocation() {
     roundSubmittingRef.current = false;
     setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
@@ -264,6 +295,6 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
     issueOpen, setIssueOpen, issueSelected, setIssueSelected,
-    beginRound, completeTemperatureRound, saveTemperatureActions, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
+    beginRound, completeTemperatureRound, saveTemperatureActions, completeRecoveredTemperatureRound, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
   };
 }

@@ -59,6 +59,14 @@ export type DashboardIssue = {
   sourceTemperatureReadingId?: string | null;
   sourceFoodCheckId?: string | null;
   sourceAdditionalCompletionId?: string | null;
+  updates?: Array<{
+    updateType?: string;
+    note?: string;
+    status?: string;
+    createdAt?: string | number;
+    teamMemberId?: string | null;
+    teamMemberName?: string | null;
+  }>;
 };
 
 export type ChecklistQuestion = {

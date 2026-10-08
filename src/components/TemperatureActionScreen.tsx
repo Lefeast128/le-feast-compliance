@@ -18,13 +18,15 @@ type Props = {
   issueProgress: Record<string, IssueProgress>;
   setIssueProgress: (value: any) => void;
   onSaveActions: (issueId: any, action: string, note: string, teamMemberId: any) => Promise<void>;
+  onCompleteRound: () => Promise<void>;
   onBack: () => void;
 };
 
 const options = ["Fridge door checked", "Fridge settings checked", "Food moved to another fridge", "Food removed from sale", "Food discarded", "Manager informed", "Fridge taken out of use", "Maintenance reported", "Other"];
 const emptyProgress: IssueProgress = { action: "", note: "", actionMemberId: "", actionsSaved: false };
 
-export default function TemperatureActionScreen({ session, issues, teamMembers, issueProgress, setIssueProgress, onSaveActions, onBack }: Props) {
+export default function TemperatureActionScreen({ session, issues, teamMembers, issueProgress, setIssueProgress, onSaveActions, onCompleteRound, onBack }: Props) {
+  const allActionsSaved = issues.length > 0 && issues.every((issue: any) => issueProgress[issue.issueId]?.actionsSaved);
   return <div className="min-h-screen bg-[#fff8f6]">
     <OperationalHeader title="Corrective action" eyebrow={`${session} fridge temperatures`} date={operationalDateLabel()} subtitle="Record what happened for each failed fridge." onBack={onBack} />
     <main className="mx-auto max-w-2xl px-5 py-10">
@@ -47,6 +49,7 @@ export default function TemperatureActionScreen({ session, issues, teamMembers, 
           </div>;
         })}
       </div>
+      {allActionsSaved && <Button className="mt-6 h-12 w-full bg-[#2d7951] text-white" onClick={() => void onCompleteRound()}>Complete temperature round</Button>}
     </main>
   </div>;
 }
