@@ -234,7 +234,7 @@ export default function AdditionalChecksView({
                   </label>
                 )}
                 {hasFailedValue && <label className="block text-sm font-semibold">
-                  Corrective action taken
+                  Corrective Action Taken
                   <textarea required value={reference} onChange={(event) => setReference(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" placeholder="Describe what was done to address the failed reading" />
                 </label>}
                 <StaffAttributionLine value={member || activeMemberId} teamMembers={teamMembers} onChange={setMember} label="Change person for this additional check" />

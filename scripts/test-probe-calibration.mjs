@@ -19,7 +19,7 @@ const [service, view, admin, history] = await Promise.all([
 assert.match(service, /additionalFieldFailed/);
 assert.match(service, /correctiveNote/);
 assert.match(service, /Corrective action is required for a failed additional check/);
-assert.match(view, /Corrective action taken/);
+assert.match(view, /Corrective Action Taken/);
 assert.match(view, /Acceptable range/);
 assert.match(view, /hasFailedValue/);
 assert.match(admin, /Acceptable minimum/);
