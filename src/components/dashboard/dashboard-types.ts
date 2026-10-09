@@ -220,6 +220,18 @@ export type DashboardData = {
   trainingCompletions: Array<{ _id?: string; requirementId: string; completedAt?: number; teamMemberName?: string }>;
   structuredTasks: StructuredTask[];
   structuredTaskResponses: StructuredTaskResponse[];
+  additionalRequirements?: Array<{
+    _id: string;
+    id?: string;
+    versionRootId?: string | null;
+    nextDueAt: string | number;
+  }>;
+  additionalCompletions?: Array<{
+    requirementId?: string;
+    requirementRootId?: string | null;
+    nextDueAt?: string | number | null;
+    scheduledDueAt?: string | number | null;
+  }>;
 };
 
 export type IssueProgress = {

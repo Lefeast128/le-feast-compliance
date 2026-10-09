@@ -40,7 +40,7 @@
     "test:temperature-range": "node --import=tsx/esm scripts/test-temperature-range.mjs",
     "test:user-access": "node scripts/test-user-access.mjs",
     "test:role-based-views": "node --import=tsx/esm scripts/test-role-based-views.mjs",
-    "test:manager-reviews": "node --import=tsx/esm scripts/test-manager-reviews.mjs",
+    "test:manager-reviews": "node --import=tsx/esm scripts/test-manager-reviews.mjs && node --import=tsx/esm scripts/test-manager-action-centre.mjs",
     "test:temperature-controls": "node --import=tsx/esm scripts/test-temperature-controls.mjs",
     "test:wastage-category-picker": "node --import=tsx/esm scripts/test-wastage-category-picker.mjs",
     "test:wastage-catalogue": "node scripts/test-wastage-catalogue.mjs",

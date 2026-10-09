@@ -1,8 +1,10 @@
 import IssueDetail from "@/components/IssueDetail";
+import type { DashboardData } from "@/components/dashboard/dashboard-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { buildManagerActionCentre, type ManagerActionCentre, type ManagerActionStatus } from "@/lib/manager-action-centre";
 import { restApi, useRestMutation, useRestQuery } from "@/lib/rest-domain";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, ChevronRight, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, ChevronRight, Clock3, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -26,7 +28,7 @@ type Issue = {
 type Period = { reviewType: string; start: string | null; end: string | null; status: "complete" | "due" | "overdue" | "up_to_date"; daysUntilDue: number; available: boolean; nextAvailableAfter: string | null; completed: boolean; summary: { issuesRaised: number; issuesResolved: number; outstandingIssues: number; openIssues?: number; monitoringIssues?: number; correctiveActions?: number; rechecks?: number; resolutionActivity?: number; failedTemperatureChecks: number; failedProbeChecks: number; otherIssues: number; repeatProblems: Array<{ label: string; count: number }> } };
 type Review = { id: string; reviewType: string; periodStart: string; periodEnd: string; completedAt: string; completedBy: string; summary: Period["summary"]; seriousProblems: boolean | null; details: string | null; actionTaken: string | null; answers: Record<string, string> | null };
 type ReviewResponse = { location: { id: string; name: string; timezone: string }; teamMembers: Array<{ _id: string; name: string }>; periods: { weekly: Period; four_weekly: Period }; currentIssues: Issue[]; resolvedIssues: Issue[]; reviewHistory: Review[] };
-type Props = { locationId: string; locations: Location[]; onBack: () => void };
+type Props = { locationId: string; locations: Location[]; onBack: () => void; onOpenDailyChecks?: () => void };
 
 const locationIdOf = (location: Location) => location._id ?? location.id ?? "";
 const timeLabel = (value: string | null | undefined, timeZone: string) => value ? new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Time not recorded";
@@ -35,6 +37,25 @@ const periodStatusLabel = (period: Period) => period.status === "complete" ? "Co
 const issueStatusPresentation = (status: string) => status === "monitoring"
   ? { label: "Monitoring", className: "border-[#ead797] bg-[#fff9e8] text-[#8a6513]", icon: AlertTriangle }
   : { label: "Open", className: "border-[#efc8c3] bg-[#fff3f1] text-[#a13d32]", icon: XCircle };
+
+const actionStatusPresentation = (status: ManagerActionStatus) => {
+  if (status === "complete") return { label: "Complete", className: "border-[#bfe3c9] bg-[#effaf1] text-[#216c45]", icon: CheckCircle2 };
+  if (status === "overdue") return { label: "Overdue", className: "border-[#efc8c3] bg-[#fff3f1] text-[#a13d32]", icon: XCircle };
+  if (status === "not_due") return { label: "Not due yet", className: "border-[#dfe3dd] bg-[#f4f5f3] text-[#727a74]", icon: Clock3 };
+  return { label: status === "due" ? "Due" : "Incomplete", className: "border-[#ead797] bg-[#fff9e8] text-[#8a6513]", icon: AlertTriangle };
+};
+
+function ActionCentreCard({ label, detail, status, count, onOpen }: { label: string; detail: string; status: ManagerActionStatus; count?: string; onOpen?: () => void }) {
+  const presentation = actionStatusPresentation(status);
+  const Icon = presentation.icon;
+  return <div className="rounded-xl border border-black/[0.07] bg-white p-4">
+    <div className="flex items-start justify-between gap-3">
+      <div><p className="font-semibold">{label}</p><p className="mt-1 text-sm text-[#727a74]">{detail}</p></div>
+      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${presentation.className}`}><Icon className="size-3.5" aria-hidden="true" />{count ?? presentation.label}</span>
+    </div>
+    {onOpen && <Button variant="outline" size="sm" className="mt-3" onClick={onOpen}>Open Daily Checks <ChevronRight className="ml-1 size-4" /></Button>}
+  </div>;
+}
 
 const FSA_QUESTIONS = [
   "Have you reviewed your safe methods?",
@@ -51,7 +72,7 @@ const FSA_QUESTIONS = [
   "Are prove-it checks being completed regularly and recorded?",
 ];
 
-export default function ManagerReviews({ locationId, locations, onBack }: Props) {
+export default function ManagerReviews({ locationId, locations, onBack, onOpenDailyChecks }: Props) {
   const [activeLocationId, setActiveLocationId] = useState(locationId);
   const [revision, setRevision] = useState(0);
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
@@ -61,8 +82,10 @@ export default function ManagerReviews({ locationId, locations, onBack }: Props)
   const [actionTaken, setActionTaken] = useState("");
   const [answers, setAnswers] = useState<Record<string, "yes" | "no">>(() => Object.fromEntries(FSA_QUESTIONS.map((_, index) => [String(index + 1), "yes"])) as Record<string, "yes" | "no">);
   const data = useRestQuery<ReviewResponse>(`manager-reviews:${activeLocationId}:${revision}`, () => restApi.managerReviews.list({ locationId: activeLocationId }), Boolean(activeLocationId));
+  const dashboard = useRestQuery<DashboardData>(`manager-action-centre:${activeLocationId}:${revision}`, () => restApi.compliance.dashboard({ locationId: activeLocationId }), Boolean(activeLocationId));
   const complete = useRestMutation(restApi.managerReviews.complete);
   const addIssueUpdate = useRestMutation(restApi.compliance.addIssueUpdate);
+  const actionCentre: ManagerActionCentre | null = dashboard ? buildManagerActionCentre(dashboard) : null;
 
   const selectedIssueForDetail = selectedIssue ? {
     ...selectedIssue,
@@ -96,7 +119,7 @@ export default function ManagerReviews({ locationId, locations, onBack }: Props)
 
   const periodSummary = (period: Period) => <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5"><div className={`col-span-2 rounded-xl p-3 font-semibold sm:col-span-5 ${period.status === "overdue" ? "bg-[#fff8f6] text-[#a13d32]" : period.status === "up_to_date" ? "bg-[#fbfefb] text-[#2d7951]" : "bg-[#fafbf9]"}`}>{periodStatusLabel(period)}</div><div className="rounded-xl bg-[#fafbf9] p-3">Raised <b className="float-right">{period.summary.issuesRaised}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Resolved <b className="float-right">{period.summary.issuesResolved}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Outstanding <b className="float-right">{period.summary.outstandingIssues}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Actions / rechecks <b className="float-right">{(period.summary.correctiveActions ?? 0) + (period.summary.rechecks ?? 0)}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed temperatures <b className="float-right">{period.summary.failedTemperatureChecks}</b></div><div className="rounded-xl bg-[#fafbf9] p-3">Failed probes <b className="float-right">{period.summary.failedProbeChecks}</b></div></div>;
 
-  const attentionCount = data ? data.currentIssues.length + [data.periods.weekly, data.periods.four_weekly].filter(period => period.status === "due" || period.status === "overdue").length : 0;
+  const attentionCount = data ? data.currentIssues.length + [data.periods.weekly, data.periods.four_weekly].filter(period => period.status === "due" || period.status === "overdue").length + (actionCentre?.required.filter(item => item.status !== "complete").length ?? 0) + (actionCentre?.cleaning.incomplete ?? 0) + (actionCentre?.additional.incomplete ?? 0) : 0;
   const navigation = [
     ["Current issues", "current-issues"],
     ["Resolved", "resolved-issues"],
@@ -113,6 +136,22 @@ export default function ManagerReviews({ locationId, locations, onBack }: Props)
       {data && <>
         <section className="rounded-2xl border border-[#ead797] bg-[#fffdf4] p-5" aria-label="Manager review summary"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">At a glance</p><h1 className="mt-1 text-2xl font-semibold">Manager review summary</h1><p className="mt-2 text-sm text-[#727a74]">{attentionCount ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} need attention` : "No current review actions need attention"}</p></div><ClipboardCheck className="size-6 text-[#8a6513]" /></div><div className="mt-5 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"><div className="rounded-xl bg-white p-3"><span className="block text-xs text-[#89918b]">Open / monitoring</span><b className="mt-1 block text-lg">{data.currentIssues.length}</b></div><div className="rounded-xl bg-white p-3"><span className="block text-xs text-[#89918b]">Resolved</span><b className="mt-1 block text-lg">{data.resolvedIssues.length}</b></div><div className="rounded-xl bg-white p-3"><span className="block text-xs text-[#89918b]">Weekly</span><b className="mt-1 block text-lg">{periodStatusLabel(data.periods.weekly)}</b></div><div className="rounded-xl bg-white p-3"><span className="block text-xs text-[#89918b]">4-week</span><b className="mt-1 block text-lg">{periodStatusLabel(data.periods.four_weekly)}</b></div></div></section>
         <nav className="rounded-2xl border border-black/[0.07] bg-white p-3" aria-label="Manager review sections"><div className="flex flex-wrap gap-2">{navigation.map(([label, id]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-xl border border-black/[0.08] px-3 text-sm font-semibold text-[#4e5851] transition hover:bg-[#fafbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffde56]">{label}<ChevronRight className="ml-1 size-4" aria-hidden="true" /></a>)}</div></nav>
+        <section id="action-centre" className="scroll-mt-24 rounded-2xl border border-[#ead797] bg-[#fffdf4] p-5" aria-label="Manager action centre">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Action centre</p><h2 className="mt-1 text-2xl font-semibold">What needs attention today</h2><p className="mt-2 text-sm text-[#727a74]">Required work is shown separately from issues that need follow-up.</p></div>
+            {onOpenDailyChecks && <Button variant="outline" onClick={onOpenDailyChecks}>Open Daily Checks <ChevronRight className="ml-2 size-4" /></Button>}
+          </div>
+          {actionCentre ? <>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{actionCentre.required.map(item => <ActionCentreCard key={item.id} label={item.label} detail={item.detail} status={item.status} onOpen={item.status !== "complete" ? onOpenDailyChecks : undefined} />)}</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`rounded-xl border p-4 ${actionCentre.failedTemperatures ? "border-[#efc8c3] bg-[#fff3f1]" : "border-black/[0.07] bg-white"}`}><p className="font-semibold">Failed temperatures</p><p className="mt-1 text-sm text-[#727a74]">{actionCentre.failedTemperatures ? `${actionCentre.failedTemperatures} reading${actionCentre.failedTemperatures === 1 ? "" : "s"} need follow-up.` : "No failed readings need follow-up."}</p><a href="#current-issues" className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-[#8f3a31] underline-offset-4 hover:underline">Review issues <ChevronRight className="ml-1 size-4" /></a></div>
+              <div className={`rounded-xl border p-4 ${actionCentre.unresolvedIssues ? "border-[#efc8c3] bg-[#fff8f6]" : "border-black/[0.07] bg-white"}`}><p className="font-semibold">Issues needing action</p><p className="mt-1 text-sm text-[#727a74]">{actionCentre.unresolvedIssues ? `${actionCentre.unresolvedIssues} open or monitoring issue${actionCentre.unresolvedIssues === 1 ? "" : "s"}.` : "No unresolved issues."}</p><a href="#current-issues" className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-[#8f3a31] underline-offset-4 hover:underline">Review issues <ChevronRight className="ml-1 size-4" /></a></div>
+              <ActionCentreCard label="Cleaning" detail={actionCentre.cleaning.due ? `${actionCentre.cleaning.complete} of ${actionCentre.cleaning.due} due jobs complete.` : "No cleaning jobs are scheduled today."} status={actionCentre.cleaning.due === 0 ? "not_due" : actionCentre.cleaning.incomplete ? "due" : "complete"} count={actionCentre.cleaning.due === 0 ? "Nothing due" : undefined} onOpen={actionCentre.cleaning.incomplete ? onOpenDailyChecks : undefined} />
+              <ActionCentreCard label="Additional checks" detail={actionCentre.additional.due ? `${actionCentre.additional.complete} of ${actionCentre.additional.due} due checks complete.` : "No additional checks are due today."} status={actionCentre.additional.due === 0 ? "not_due" : actionCentre.additional.overdue ? "overdue" : actionCentre.additional.incomplete ? "due" : "complete"} count={actionCentre.additional.due === 0 ? "Nothing due" : undefined} onOpen={actionCentre.additional.incomplete ? onOpenDailyChecks : undefined} />
+            </div>
+            {!actionCentre.required.some(item => item.status !== "complete") && !actionCentre.failedTemperatures && !actionCentre.unresolvedIssues && !actionCentre.cleaning.incomplete && !actionCentre.additional.incomplete && <p className="mt-4 rounded-xl border border-[#cfe3d5] bg-[#fbfefb] p-4 text-sm font-semibold text-[#2d7951]">No outstanding operational actions for this store.</p>}
+          </> : <p className="mt-5 rounded-xl bg-white p-4 text-sm text-[#727a74]">Loading today&apos;s operational status…</p>}
+        </section>
         <section id="current-issues" className="scroll-mt-24 rounded-2xl border border-black/[0.07] bg-white p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Current issues</p><h1 className="mt-1 text-2xl font-semibold">Open and monitoring</h1></div><ClipboardCheck className="size-6 text-[#89918b]" /></div><div className="mt-5 space-y-3">{data.currentIssues.map(issue => { const presentation = issueStatusPresentation(issue.status); const StatusIcon = presentation.icon; return <div key={issue.id} className={`rounded-xl p-4 ${issue.status === "monitoring" ? "bg-[#fffdf4]" : "bg-[#fff8f6]"}`}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{issue.title}</p><p className="mt-1 text-sm text-[#727a74]">{issue.description}</p><p className="mt-2 text-xs text-[#89918b]">{issue.category} · {issue.createdByName ?? "Not recorded"} · {timeLabel(issue.createdAt, data.location.timezone)}</p></div><span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${presentation.className}`}><StatusIcon className="size-3.5" aria-hidden="true" />{presentation.label}</span></div>{issue.latestAction && <p className="mt-3 text-sm"><b>Latest action:</b> {issue.latestAction}</p>}{issue.latestRecheck && <p className="mt-1 text-sm"><b>Latest recheck:</b> {issue.latestRecheck.temperature}°C · {issue.latestRecheck.result}</p>}<Button variant="outline" size="sm" className="mt-3" onClick={() => setSelectedIssue(issue)}>View issue</Button></div>; })}{!data.currentIssues.length && <p className="text-sm text-[#727a74]">No current issues.</p>}</div></section>
 
         <section id="resolved-issues" className="scroll-mt-24 rounded-2xl border border-black/[0.07] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Resolved issues</p><h2 className="mt-1 text-2xl font-semibold">Completed audit journeys</h2><div className="mt-5 space-y-3">{data.resolvedIssues.map(issue => <div key={issue.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fafbf9] p-4"><div><p className="font-semibold">{issue.title}</p><p className="mt-1 text-sm text-[#727a74]">Resolved · {issue.createdByName ?? "Not recorded"} · {timeLabel(issue.createdAt, data.location.timezone)}</p></div><div className="flex items-center gap-3"><span className="inline-flex items-center gap-1.5 rounded-full border border-[#bfe3c9] bg-[#effaf1] px-3 py-1 text-xs font-semibold text-[#216c45]"><CheckCircle2 className="size-3.5" aria-hidden="true" />Resolved</span><Button variant="outline" size="sm" onClick={() => setSelectedIssue(issue)}>View issue</Button></div></div>)}{!data.resolvedIssues.length && <p className="text-sm text-[#727a74]">No resolved issues recorded.</p>}</div></section>
