@@ -6,6 +6,7 @@ import { additionalRequirements, auditEvents, centralChecklistItems, centralOper
 import { audit, db, type Transaction } from "./shared.js";
 import { validateStructuredSteps } from "../compliance/structured-task-service.js";
 import { validateAdditionalSchedule } from "../additional/scheduling.js";
+import { allocatedStoresMissingActiveRows, type AllocationRow } from "../../shared/admin-allocation.js";
 
 const trainingCategories = ["northern_rail", "food_safety", "security", "equipment", "alcohol", "company_procedure", "other"] as const;
 const trainingAudiences = ["all_team", "managers_only", "selected_people"] as const;
@@ -307,15 +308,22 @@ export async function updateCentralChecklist(context: AuthContext, itemId: strin
     await tx.update(centralChecklistItems).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, existing.allocationMode), updatedAt: new Date() }).where(eq(centralChecklistItems.id, existing.id));
     const current = await tx.select().from(checklistQuestions).where(eq(checklistQuestions.centralItemId, existing.id));
     const selected = new Set(stores.map(store => store.id));
+    const versionedLocations = new Set<string>();
     for (const old of current) {
       if (!selected.has(old.locationId)) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
       } else if (old.active && (old.question !== values.question || old.checklist !== values.checklist || old.description !== values.description || old.taskType !== values.taskType || old.completionMode !== values.completionMode || JSON.stringify(old.steps) !== JSON.stringify(values.steps))) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
         await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: existing.id });
+        versionedLocations.add(old.locationId);
       }
     }
-    for (const store of stores.filter(item => !current.some(row => row.locationId === item.id && row.active))) {
+    const missingStores = allocatedStoresMissingActiveRows(
+      stores.map((store) => store.id),
+      current,
+      versionedLocations,
+    );
+    for (const store of stores.filter((item) => missingStores.includes(item.id))) {
       const rows = await tx.select({ id: checklistQuestions.id }).from(checklistQuestions).where(and(eq(checklistQuestions.locationId, store.id), eq(checklistQuestions.checklist, values.checklist), eq(checklistQuestions.active, true)));
       await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: rows.length, active: true, centralItemId: existing.id });
     }
@@ -455,6 +463,7 @@ export async function updateCentralOperationalTask(context: AuthContext, central
     await tx.update(centralOperationalItems).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, source.allocationMode), updatedAt: new Date() } as Partial<CentralOperationalInsert>).where(eq(centralOperationalItems.id, source.id));
     const current = await centralOperationalRows(kind, source.id, tx);
     const selected = new Set(stores.map(store => store.id));
+    const versionedLocations = new Set<string>();
     for (const old of current as Array<Record<string, unknown>>) {
       if (!selected.has(String(old.locationId))) {
         await (kind === "cleaning" ? tx.update(cleaningTasks) : kind === "security_am" || kind === "security_pm" ? tx.update(securityQuestions) : tx.update(additionalRequirements)).set({ active: false, deactivatedAt: new Date() }).where(eq(kind === "cleaning" ? cleaningTasks.id : kind === "security_am" || kind === "security_pm" ? securityQuestions.id : additionalRequirements.id, String(old.id)));
@@ -462,9 +471,15 @@ export async function updateCentralOperationalTask(context: AuthContext, central
         const table = kind === "cleaning" ? cleaningTasks : kind === "security_am" || kind === "security_pm" ? securityQuestions : additionalRequirements;
         await tx.update(table).set({ active: false, deactivatedAt: new Date() }).where(eq(table.id, String(old.id)));
         await insertOperationalRow(tx, kind, String(old.locationId), source.id, values, Number(old.order), String(old.versionRootId ?? old.id));
+        versionedLocations.add(String(old.locationId));
       }
     }
-    for (const store of stores.filter(item => !(current as Array<Record<string, unknown>>).some(row => row.locationId === item.id && row.active))) {
+    const missingStores = allocatedStoresMissingActiveRows(
+      stores.map((store) => store.id),
+      current as Array<AllocationRow>,
+      versionedLocations,
+    );
+    for (const store of stores.filter((item) => missingStores.includes(item.id))) {
       const existing = kind === "cleaning"
         ? await tx.select({ id: cleaningTasks.id }).from(cleaningTasks).where(eq(cleaningTasks.locationId, store.id))
         : kind === "security_am" || kind === "security_pm"
