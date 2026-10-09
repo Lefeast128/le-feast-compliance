@@ -1540,6 +1540,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       variant="ghost"
                       size="icon"
                       className="text-[#b64738]"
+                      aria-label={`Retire ${taskLabel(item.kind)}: ${item.name ?? item.title ?? item.question ?? "item"}`}
+                      title="Retire organisation standard"
                       onClick={() => void retire("operational", item.id)}
                     >
                       <Trash2 className="size-4" />

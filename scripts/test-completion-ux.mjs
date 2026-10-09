@@ -14,7 +14,7 @@ assert.match(checklist, /aria-label=\{`Mark \$\{task\.title\} complete`\}/);
 assert.match(checklist, /Select all simple tasks/);
 assert.match(checklist, /Confirm simple tasks/);
 assert.match(checklist, /Answer recorded/);
-assert.match(cleaning, /aria-label="Mark complete"/);
+assert.match(cleaning, /aria-label=\{`Mark \$\{task\.name\} complete`\}/);
 assert.match(cleaning, /onIssue/);
 assert.match(security, /aria-label="Mark complete"/);
 console.log("Completion UX tests passed");

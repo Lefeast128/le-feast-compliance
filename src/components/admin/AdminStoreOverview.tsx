@@ -175,6 +175,16 @@ export default function AdminStoreOverview({
     setEditor({ kind: "security", item, session: item.session });
   }
 
+  async function removeSecurityQuestion(item: AdminSecurityQuestion) {
+    if (!window.confirm("Remove this security question? Historical answers and audit evidence will be preserved.")) return;
+    try {
+      await deleteSecurity({ questionId: item._id });
+      toast.success("Security question removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to remove security question");
+    }
+  }
+
   async function move(
     kind: "question" | "wastage",
     id: string,
@@ -708,8 +718,11 @@ export default function AdminStoreOverview({
                           )}
                         </span>
                         {item.centralItemId ? (
-                          <span className="text-xs font-semibold text-[#477152]">
-                            Organisation standard
+                          <span className="text-right text-xs font-semibold text-[#477152]">
+                            <span className="block">Organisation standard</span>
+                            <span className="mt-1 block font-normal text-[#727a74]">
+                              Managed in Organisation Admin
+                            </span>
                           </span>
                         ) : (
                           <div className="flex gap-1">
@@ -724,9 +737,9 @@ export default function AdminStoreOverview({
                               variant="ghost"
                               size="icon"
                               className="text-[#b64738]"
-                              onClick={() =>
-                                deleteSecurity({ questionId: item._id })
-                              }
+                              aria-label={`Remove ${item.question}`}
+                              title="Remove security question"
+                              onClick={() => void removeSecurityQuestion(item)}
                             >
                               <Trash2 className="size-4" />
                             </Button>
