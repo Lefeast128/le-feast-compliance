@@ -250,6 +250,8 @@ export default function InlineChecklist({
       setExpandedTaskId(null);
       await maybeAutoSignOff(legacy, nextStructured, memberId);
       toast.success("Task completed");
+    } catch (error) {
+      toast.error("Task could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }
@@ -295,6 +297,8 @@ export default function InlineChecklist({
       toast.success(
         answer === "no" ? "Issue and action recorded" : "Answer recorded",
       );
+    } catch (error) {
+      toast.error("Answer could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }
@@ -321,6 +325,8 @@ export default function InlineChecklist({
         [task._id]: { problem: "", action: "" },
       }));
       toast.success("Issue reported");
+    } catch (error) {
+      toast.error("Issue could not be reported", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }
@@ -376,6 +382,8 @@ export default function InlineChecklist({
       setValues((current) => ({ ...current, [key]: "" }));
       await maybeAutoSignOff(legacy, nextStructured, memberId);
       toast.success("Step recorded");
+    } catch (error) {
+      toast.error("Step could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }
@@ -402,6 +410,8 @@ export default function InlineChecklist({
         [key]: { problem: "", action: "" },
       }));
       toast.success("Issue reported");
+    } catch (error) {
+      toast.error("Issue could not be reported", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }

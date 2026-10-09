@@ -204,6 +204,9 @@ export default function StructuredTaskWorkflow({
       setIssueOpen(null);
       if (isSignable && allStepsCompleteFor(nextLocalResponses)) await recordCompletion(memberId);
       return result;
+    } catch (error) {
+      toast.error("This response could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
+      return undefined;
     } finally {
       setSaving(null);
     }
@@ -234,6 +237,8 @@ export default function StructuredTaskWorkflow({
         ...current,
         [key]: { problem: "", action: "" },
       }));
+    } catch (error) {
+      toast.error("The issue could not be reported", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(null);
     }
@@ -418,7 +423,8 @@ export default function StructuredTaskWorkflow({
                                       void saveStep(task, step, step.responseType === "confirm" ? "confirmed" : selectedValue)
                                     }
                                   >
-                                    <Check className="size-6" />
+                                    {saving === key ? "Saving…" : step.responseType === "confirm" ? "Complete" : "Save response"}
+                                    <Check className="ml-2 size-5" />
                                   </Button>
                                   <Button
                                     type="button"

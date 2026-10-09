@@ -49,6 +49,20 @@ export function ProbeModal({
   const holdMinutes = selected?.holdMinutes ?? 2;
   const currentlyFailed = Boolean(temperature) && Number(temperature) < minimum;
   const [teamMemberId, setTeamMemberId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(teamMemberId);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Please check the details and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <Modal
       title={failed ? "Record probe recheck" : "Record food probe"}
@@ -105,14 +119,15 @@ export function ProbeModal({
         </div>
       )}
       <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing probe as" /></div>
+      {error && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
       <Button
         aria-label="Mark complete"
-        disabled={!product || !quantity.trim() || !temperature || !teamMemberId}
+        disabled={saving || !product || !quantity.trim() || !temperature || !teamMemberId}
         className="mt-7 h-14 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
-        onClick={() => onSave(teamMemberId)}
+        onClick={() => void handleSave()}
       >
-        <span className="sr-only">Mark complete</span>
-        <Check className="size-6" />
+        {saving ? "Saving…" : failed ? "Record recheck" : "Record probe"}
+        <Check className="ml-2 size-5" />
       </Button>
     </Modal>
   );
@@ -272,6 +287,20 @@ export function SecurityScreen({
   onBack,
 }: SecurityScreenProps) {
   const last = index + 1 === total;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "The answer could not be saved. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="min-h-screen bg-[#f6f7f5]">
       <OperationalHeader
@@ -312,14 +341,15 @@ export function SecurityScreen({
             </div>
           </>
         )}
+        {error && <p role="alert" className="mt-6 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
         <Button
-          aria-label="Mark complete"
+          aria-label={last ? "Complete security check" : "Save security answer"}
           className="mt-10 h-16 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
-          onClick={onSave}
-          disabled={!teamMemberId}
+          onClick={() => void handleSave()}
+          disabled={saving || !teamMemberId}
         >
-          <span className="sr-only">Mark complete</span>
-          <Check className="size-6" />
+          {saving ? "Saving…" : last ? "Complete security check" : "Save answer"}
+          <Check className="ml-2 size-5" />
         </Button>
       </main>
     </div>

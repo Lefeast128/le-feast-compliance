@@ -48,6 +48,8 @@ export default function TrainingView({
     requirement: any;
     member: any;
   } | null>(null);
+  const [acknowledgementSaving, setAcknowledgementSaving] = useState(false);
+  const [acknowledgementError, setAcknowledgementError] = useState<string | null>(null);
   const activeTeamMembers = teamMembers.filter(
     (member) => member.active !== false,
   );
@@ -115,12 +117,20 @@ export default function TrainingView({
     : [];
 
   async function confirmAcknowledgement() {
-    if (!acknowledgementTarget) return;
-    await onComplete(
-      acknowledgementTarget.requirement._id,
-      acknowledgementTarget.member._id,
-    );
-    setAcknowledgementTarget(null);
+    if (!acknowledgementTarget || acknowledgementSaving) return;
+    setAcknowledgementSaving(true);
+    setAcknowledgementError(null);
+    try {
+      await onComplete(
+        acknowledgementTarget.requirement._id,
+        acknowledgementTarget.member._id,
+      );
+      setAcknowledgementTarget(null);
+    } catch (completeError) {
+      setAcknowledgementError(completeError instanceof Error ? completeError.message : "The acknowledgement could not be saved. Please try again.");
+    } finally {
+      setAcknowledgementSaving(false);
+    }
   }
 
   return (
@@ -217,12 +227,10 @@ export default function TrainingView({
                         <Button
                           size="sm"
                           className="bg-[#ffde56] text-[#171717]"
-                          onClick={() =>
-                            setAcknowledgementTarget({
-                              requirement,
-                              member: selectedMemberRecord,
-                            })
-                          }
+                          onClick={() => {
+                            setAcknowledgementError(null);
+                            setAcknowledgementTarget({ requirement, member: selectedMemberRecord });
+                          }}
                         >
                           Acknowledge
                         </Button>
@@ -355,12 +363,10 @@ export default function TrainingView({
                         <Button
                           size="sm"
                           className="bg-[#ffde56] text-[#171717]"
-                          onClick={() =>
-                            setAcknowledgementTarget({
-                              requirement: selectedRequirement,
-                              member,
-                            })
-                          }
+                          onClick={() => {
+                            setAcknowledgementError(null);
+                            setAcknowledgementTarget({ requirement: selectedRequirement, member });
+                          }}
                         >
                           Acknowledge
                         </Button>
@@ -440,12 +446,14 @@ export default function TrainingView({
                   Cancel
                 </Button>
                 <Button
+                  disabled={acknowledgementSaving}
                   className="bg-[#ffde56] text-[#171717]"
                   onClick={confirmAcknowledgement}
                 >
-                  Complete Acknowledgement
+                  {acknowledgementSaving ? "Saving…" : "Complete Acknowledgement"}
                 </Button>
               </div>
+              {acknowledgementError && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{acknowledgementError}</p>}
             </div>
           </div>
         )}

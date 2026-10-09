@@ -35,6 +35,8 @@ export default function AdditionalChecksView({
   const [activeMemberId, setActiveMemberId] = useState("");
   const [certificate, setCertificate] = useState<File | null>(null);
   const [reference, setReference] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const selectedValues = selected ? values : {};
   const hasFailedValue = selected ? additionalCheckHasFailure(selected.fields, selectedValues) : false;
@@ -51,19 +53,27 @@ export default function AdditionalChecksView({
   }).length;
   async function submit() {
     const effectiveMember = member || activeMemberId;
-    if (!selected || !effectiveMember) return;
-    await onComplete({
-      requirementId: selected._id,
-      teamMemberId: effectiveMember,
-      answers: Object.entries(values).map(([key, value]) => ({ key, value })),
-      certificate,
-      certificateReference: reference,
-    });
-    setSelected(null);
-    setValues({});
-    setMember("");
-    setCertificate(null);
-    setReference("");
+    if (!selected || !effectiveMember || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onComplete({
+        requirementId: selected._id,
+        teamMemberId: effectiveMember,
+        answers: Object.entries(values).map(([key, value]) => ({ key, value })),
+        certificate,
+        certificateReference: reference,
+      });
+      setSelected(null);
+      setValues({});
+      setMember("");
+      setCertificate(null);
+      setReference("");
+    } catch (completeError) {
+      setError(completeError instanceof Error ? completeError.message : "This check could not be saved. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
   return (
     <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
@@ -104,6 +114,7 @@ export default function AdditionalChecksView({
               onClick={() => {
                 setSelected(requirement);
                 setValues({});
+                setError(null);
               }}
               className="flex w-full items-center justify-between rounded-2xl border border-black/[0.07] bg-white p-5 text-left"
             >
@@ -239,9 +250,11 @@ export default function AdditionalChecksView({
                 </label>}
                 <StaffAttributionLine value={member || activeMemberId} teamMembers={teamMembers} onChange={setMember} label="Change person for this additional check" />
               </div>
+              {error && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
               <Button
-                aria-label="Mark complete"
+                aria-label="Complete additional check"
                 disabled={
+                  saving ||
                   !(member || activeMemberId) ||
                   (hasFailedValue && !reference.trim()) ||
                   (selected.fields.some((field: any) => field.type === "pdf") &&
@@ -250,8 +263,8 @@ export default function AdditionalChecksView({
                 className="mt-7 h-14 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
                 onClick={submit}
               >
-                <span className="sr-only">Mark complete</span>
-                <Check className="size-6" />
+                {saving ? "Saving…" : "Complete check"}
+                <Check className="ml-2 size-5" />
               </Button>
               <Button
                 variant="outline"
