@@ -159,3 +159,49 @@
     min-height: 100dvh;
   }
 }
+
+@media print {
+  @page {
+    margin: 14mm 12mm;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .inspection-print-root > header,
+  .inspection-print-root > main > *:not(#inspection-pack),
+  .inspection-print-root > .print-hidden {
+    display: none !important;
+  }
+
+  .inspection-print-root > main {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #inspection-pack {
+    display: block !important;
+    width: 100% !important;
+    color: #171918 !important;
+  }
+
+  #inspection-pack > .inspection-pack-section,
+  #inspection-pack .inspection-pack-entry {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #inspection-pack h1,
+  #inspection-pack h2,
+  #inspection-pack h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  #inspection-pack .print\:hidden {
+    display: none !important;
+  }
+}

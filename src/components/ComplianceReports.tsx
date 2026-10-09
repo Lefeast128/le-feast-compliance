@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -179,6 +179,7 @@ export default function ComplianceReports({
   const [issueFilter, setIssueFilter] = useState<IssueFilter>("all");
   const [inspectionPack, setInspectionPack] = useState<any>(null);
   const [inspectionPackLoading, setInspectionPackLoading] = useState(false);
+  const inspectionPackRequest = useRef(0);
   const activeLocation = locations.find(
     (location) => locationIdOf(location) === activeLocationId,
   );
@@ -190,9 +191,11 @@ export default function ComplianceReports({
 
   useEffect(() => {
     if (!activeLocationId || !range.start || !range.end) return;
+    inspectionPackRequest.current += 1;
     let cancelled = false;
     setReport(null);
     setInspectionPack(null);
+    setInspectionPackLoading(false);
     setSelectedIssue(null);
     setActiveTab("overview");
     setError(null);
@@ -285,6 +288,7 @@ export default function ComplianceReports({
 
   const generateInspectionPack = async () => {
     if (!activeLocationId || !range.start || !range.end) return;
+    const requestId = ++inspectionPackRequest.current;
     setInspectionPackLoading(true);
     try {
       const value = await restApi.reports.inspectionPack({
@@ -292,13 +296,15 @@ export default function ComplianceReports({
         start: range.start,
         end: range.end,
       });
+      if (requestId !== inspectionPackRequest.current) return;
       setInspectionPack(value);
       setActiveTab("pack");
       toast.success("Inspection pack ready");
     } catch (reason) {
+      if (requestId !== inspectionPackRequest.current) return;
       toast.error(reason instanceof Error ? reason.message : "Unable to generate inspection pack");
     } finally {
-      setInspectionPackLoading(false);
+      if (requestId === inspectionPackRequest.current) setInspectionPackLoading(false);
     }
   };
 
@@ -523,7 +529,7 @@ export default function ComplianceReports({
     ].filter(Boolean).join(" · ") || "No cleaning scheduled";
     return (
       <article id="inspection-pack" className="space-y-5 print:bg-white">
-        <section className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-8">
+        <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8a6513]">Le Feast Compliance</p>
@@ -538,7 +544,7 @@ export default function ComplianceReports({
           </div>
         </section>
 
-        <section className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
+        <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Inspection overview</p><h2 className="mt-1 text-xl font-semibold">Completion and evidence coverage</h2></div>
             <StatusPill tone={overallTone}>{overallTone === "green" ? "Complete" : overallTone === "amber" ? "Corrective action recorded" : "Attention required"}</StatusPill>
@@ -557,32 +563,32 @@ export default function ComplianceReports({
           </div>
         </section>
 
-        <section className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
+        <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Exceptions and cleaning evidence</p>
           <h2 className="mt-1 text-xl font-semibold">What needs context</h2>
           <div className="mt-4 space-y-2">
-            {(packReport?.days ?? []).map((day: any) => <div key={day.date} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fafbf9] p-3 text-sm"><span>{reportDate(day.date, timeZone)}</span><span className="font-semibold text-[#727a74]">{day.cleaningStatus === "not_required" && !day.afterUseCleaningStatus ? "No cleaning scheduled" : cleaningLabel(day)}{day.correctiveActionRecorded ? " · Corrective action recorded" : ""}</span></div>)}
+            {(packReport?.days ?? []).map((day: any) => <div key={day.date} className="inspection-pack-entry flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fafbf9] p-3 text-sm"><span>{reportDate(day.date, timeZone)}</span><span className="font-semibold text-[#727a74]">{day.cleaningStatus === "not_required" && !day.afterUseCleaningStatus ? "No cleaning scheduled" : cleaningLabel(day)}{day.correctiveActionRecorded ? " · Corrective action recorded" : ""}</span></div>)}
             {missingEvidence.map((item: string) => <p key={item} className="rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#a13d32]">Missing or unverifiable evidence: {item}</p>)}
             {!missingEvidence.length && <p className="text-sm text-[#216c45]">No missing or unverifiable required evidence in this range.</p>}
           </div>
         </section>
 
-        <section className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
+        <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
           <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Issues and corrective actions</p><h2 className="mt-1 text-xl font-semibold">Outstanding and resolved issues</h2></div><span className="text-sm text-[#727a74]">{packReport?.issues?.rows?.length ?? 0} issues in evidence</span></div>
-          <div className="mt-4 space-y-3">{(packReport?.issues?.rows ?? []).map((issue: any) => <div key={issue.id} className="rounded-2xl border border-black/[0.06] bg-[#fafbf9] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{issue.title}</p><p className="mt-1 text-sm text-[#727a74]">{issue.originalLabel ?? issue.category}{issue.originalReading ? ` · ${issue.originalReading} · Failed` : ""}</p><p className="mt-1 text-sm text-[#727a74]">Corrective action: {issue.latestAction?.note ?? "Not recorded"}</p></div><StatusPill tone={issue.status === "resolved" ? "green" : issue.status === "monitoring" ? "amber" : "red"}>{issue.status === "resolved" ? "Resolved" : issue.status === "monitoring" ? "Monitoring" : "Open"}</StatusPill></div><p className="mt-2 text-xs text-[#89918b]">Reported by {issue.teamMemberName ?? "Not recorded"} · {localTime(issue.createdAt, timeZone)} · {issue.recheckCount ?? 0} rechecks</p></div>)}{!(packReport?.issues?.rows ?? []).length && <p className="text-sm text-[#727a74]">No issues recorded in this range.</p>}</div>
+          <div className="mt-4 space-y-3">{(packReport?.issues?.rows ?? []).map((issue: any) => <div key={issue.id} className="inspection-pack-entry rounded-2xl border border-black/[0.06] bg-[#fafbf9] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{issue.title}</p><p className="mt-1 text-sm text-[#727a74]">{issue.originalLabel ?? issue.category}{issue.originalReading ? ` · ${issue.originalReading} · Failed` : ""}</p><p className="mt-1 text-sm text-[#727a74]">Corrective action: {issue.latestAction?.note ?? "Not recorded"}</p></div><StatusPill tone={issue.status === "resolved" ? "green" : issue.status === "monitoring" ? "amber" : "red"}>{issue.status === "resolved" ? "Resolved" : issue.status === "monitoring" ? "Monitoring" : "Open"}</StatusPill></div><p className="mt-2 text-xs text-[#89918b]">Reported by {issue.teamMemberName ?? "Not recorded"} · {localTime(issue.createdAt, timeZone)} · {issue.recheckCount ?? 0} rechecks</p></div>)}{!(packReport?.issues?.rows ?? []).length && <p className="text-sm text-[#727a74]">No issues recorded in this range.</p>}</div>
         </section>
 
-        <section className="rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
+        <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-7">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Evidence chronology</p>
           <h2 className="mt-1 text-xl font-semibold">What happened, when and who recorded it</h2>
-          <div className="mt-5 space-y-3">{chronology.map((event: any) => <article key={event.id} className="rounded-2xl border border-black/[0.06] bg-[#fafbf9] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{event.title}</p><p className="mt-1 text-sm text-[#727a74]">{event.detail}</p></div>{event.result && <span className="text-sm font-semibold">{event.result}</span>}</div><p className="mt-2 text-xs text-[#89918b]">{localTime(event.occurredAt, timeZone)} · Recorded by {event.teamMemberName ?? "Not recorded"}</p></article>)}{!chronology.length && <p className="text-sm text-[#727a74]">No inspection activity recorded in this range.</p>}</div>
+          <div className="mt-5 space-y-3">{chronology.map((event: any) => <article key={event.id} className="inspection-pack-entry rounded-2xl border border-black/[0.06] bg-[#fafbf9] p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold">{event.title}</p><p className="mt-1 text-sm text-[#727a74]">{event.detail}</p></div>{event.result && <span className="text-sm font-semibold">{event.result}</span>}</div><p className="mt-2 text-xs text-[#89918b]">{localTime(event.occurredAt, timeZone)} · Recorded by {event.teamMemberName ?? "Not recorded"}</p></article>)}{!chronology.length && <p className="text-sm text-[#727a74]">No inspection activity recorded in this range.</p>}</div>
         </section>
       </article>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className={`min-h-screen bg-[#f6f7f5] text-[#171918] ${activeTab === "pack" ? "inspection-print-root" : ""}`}>
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <div>
@@ -651,7 +657,7 @@ export default function ComplianceReports({
           </>
         )}
       </main>
-      {selectedIssue && <IssueJourneyDialog issue={selectedIssue} timeZone={timeZone} onClose={() => setSelectedIssue(null)} />}
+      {selectedIssue && <div className="print-hidden"><IssueJourneyDialog issue={selectedIssue} timeZone={timeZone} onClose={() => setSelectedIssue(null)} /></div>}
     </div>
   );
 }
