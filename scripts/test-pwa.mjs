@@ -14,7 +14,7 @@ assert(manifest.start_url === "/", "manifest start URL");
 assert(manifest.scope === "/", "manifest scope");
 assert(manifest.display === "standalone", "manifest standalone display");
 assert(manifest.orientation === "any", "manifest orientation");
-assert(manifest.theme_color === "#ffde59", "manifest theme colour");
+assert(manifest.theme_color === "#FDDE56", "manifest theme colour");
 
 const iconSizes = new Set();
 for (const icon of manifest.icons) {
@@ -40,6 +40,7 @@ assert(index.includes('apple-mobile-web-app-capable" content="yes"'), "iOS capab
 assert(index.includes('apple-mobile-web-app-status-bar-style" content="default"'), "iOS status bar metadata");
 assert(index.includes('apple-touch-icon"'), "Apple touch icon link");
 assert(index.includes("viewport-fit=cover"), "safe-area viewport metadata");
+assert(index.includes('theme-color" content="#FDDE56"'), "official brand theme colour");
 
 const viteConfig = read("vite.config.ts");
 assert(viteConfig.includes('fileName: "sw.js"'), "production service worker emitted");
@@ -72,6 +73,7 @@ assert(apiClient.includes('["GET", "HEAD", "OPTIONS"]'), "read methods remain av
 assert(!apiClient.includes("indexedDB"), "no mutation queue in API client");
 
 const css = read("src/index.css");
+assert(css.includes("--brand-yellow: #FDDE56"), "shared brand yellow token");
 assert(css.includes("100dvh"), "dynamic viewport height");
 assert(css.includes("safe-area-inset"), "safe-area CSS support");
 

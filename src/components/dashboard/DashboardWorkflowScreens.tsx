@@ -245,7 +245,7 @@ export function ChecklistScreen({
           disabled={
             !teamMemberId || !answer || (answer === "no" && !action.trim())
           }
-          className="mt-7 h-14 w-full bg-[#f4c542] text-lg font-semibold text-[#171717]"
+          className="mt-7 h-14 w-full bg-brand-yellow text-lg font-semibold text-[#171717]"
           onClick={onSave}
         >
           {index + 1 === total ? "Complete check" : "Save & next question"}

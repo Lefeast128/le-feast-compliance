@@ -97,7 +97,7 @@ export default function AdditionalChecksView({
           </div>
           <div className="mt-3 h-2 rounded-full bg-[#e7e9e5]">
             <div
-              className="h-full rounded-full bg-[#ffde56]"
+              className="h-full rounded-full bg-brand-yellow"
               style={{
                 width: requirements.length
                   ? `${(doneCount / requirements.length) * 100}%`

@@ -636,7 +636,7 @@ export default function ComplianceReports({
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" disabled={Boolean(exporting)} onClick={() => downloadExport("csv")}><Download className="mr-2 size-4" />{exporting === "csv" ? "Preparing…" : "Download CSV"}</Button>
                   <Button variant="outline" disabled={Boolean(exporting)} onClick={() => downloadExport("xlsx")}><Download className="mr-2 size-4" />{exporting === "xlsx" ? "Preparing…" : "Download Excel"}</Button>
-                  <Button className="bg-[#ffde59] text-[#171918] hover:bg-[#f3cf3e]" disabled={inspectionPackLoading} onClick={generateInspectionPack}><ClipboardCheck className="mr-2 size-4" />{inspectionPackLoading ? "Generating…" : "Generate Inspection Pack"}</Button>
+                  <Button className="bg-brand-yellow text-[#171918] hover:bg-brand-yellow" disabled={inspectionPackLoading} onClick={generateInspectionPack}><ClipboardCheck className="mr-2 size-4" />{inspectionPackLoading ? "Generating…" : "Generate Inspection Pack"}</Button>
                 </div>
               </div>
             </section>

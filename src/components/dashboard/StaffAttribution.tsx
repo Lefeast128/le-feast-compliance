@@ -37,7 +37,7 @@ export function ActiveStaffControl({
             role="radio"
             aria-checked={value === member._id}
             onClick={() => onChange(member._id)}
-            className={`min-h-10 rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffde56] ${value === member._id ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#303631] hover:bg-[#fffdf4]"}`}
+            className={`min-h-10 rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow ${value === member._id ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#303631] hover:bg-[#fffdf4]"}`}
           >
             {member.name}
           </button>
@@ -45,7 +45,7 @@ export function ActiveStaffControl({
           <select
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            className="h-10 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm font-semibold outline-none focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40"
+            className="h-10 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm font-semibold outline-none focus:border-[#b49b2f] focus:ring-2 focus:ring-brand-yellow/40"
             aria-label="Active team member"
           >
             <option value="">Select team member</option>
@@ -84,7 +84,7 @@ export function StaffAttributionLine({
           onClick={() => setPickerOpen((current) => !current)}
           aria-expanded={pickerOpen}
           aria-label={label}
-          className="shrink-0 rounded-lg px-2 py-1 font-semibold text-[#796513] transition hover:bg-[#fff7c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffde56]"
+          className="shrink-0 rounded-lg px-2 py-1 font-semibold text-[#796513] transition hover:bg-[#fff7c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow"
         >
           Change
         </button>
@@ -94,7 +94,7 @@ export function StaffAttributionLine({
           autoFocus
           value={value}
           onChange={(event) => { onChange(event.target.value); setPickerOpen(false); }}
-          className="mt-2 h-10 w-full rounded-lg border border-black/[0.1] bg-white px-3 text-sm font-medium text-[#171918] outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-[#ffde56]/40"
+          className="mt-2 h-10 w-full rounded-lg border border-black/[0.1] bg-white px-3 text-sm font-medium text-[#171918] outline-none transition focus:border-[#b49b2f] focus:ring-2 focus:ring-brand-yellow/40"
           aria-label={label}
         >
           <option value="">Select team member</option>

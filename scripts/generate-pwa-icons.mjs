@@ -57,7 +57,7 @@ function rectangle(pixels, size, left, top, right, bottom, color) {
 
 function makeIcon(size, maskable) {
   const dark = [31, 36, 33];
-  const yellow = [255, 222, 89];
+  const yellow = [253, 222, 86];
   const white = [255, 255, 255];
   const pixels = Buffer.alloc(size * size * 4);
   for (let index = 0; index < pixels.length; index += 4) {

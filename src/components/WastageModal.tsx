@@ -71,7 +71,7 @@ export default function WastageModal({ products, teamMembers, loading, error, on
       <label className="mt-4 block text-sm font-semibold">Notes (optional)<textarea value={draft.notes} onChange={event => update("notes", event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3" placeholder="Reason or context" /></label>
       <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers.map(member => ({ _id: memberId(member), name: member.name }))} value={draft.teamMemberId} onChange={value => update("teamMemberId", value)} label="Recording wastage as" /></div>
       {saveError && <p className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{saveError}</p>}
-      <Button disabled={!canSave || saving} className="mt-7 h-14 w-full bg-[#f4c542] font-semibold text-[#171717]" onClick={submit}>{saving ? "Saving…" : draft.mode === "no_waste" ? "Save no waste" : "Save wastage record"}</Button>
+      <Button disabled={!canSave || saving} className="mt-7 h-14 w-full bg-brand-yellow font-semibold text-[#171717]" onClick={submit}>{saving ? "Saving…" : draft.mode === "no_waste" ? "Save no waste" : "Save wastage record"}</Button>
     </div>
   </div>;
 }

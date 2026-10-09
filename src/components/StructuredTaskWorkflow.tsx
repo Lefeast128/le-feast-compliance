@@ -272,7 +272,7 @@ export default function StructuredTaskWorkflow({
         {needsSignOffRecovery && <section className="rounded-2xl border border-[#f0d98a] bg-[#fffdf1] p-4" role="status">
           <p className="font-semibold text-[#5f5115]">All checklist steps are recorded</p>
           <p className="mt-1 text-sm text-[#796513]">Finish recording completion to update Daily Checks.</p>
-          <Button type="button" disabled={!activeMemberId || saving === "signoff"} className="mt-3 h-11 bg-[#ffde59] text-[#202522] hover:bg-[#f4d34b]" onClick={() => void recordCompletion(activeMemberId)}>
+          <Button type="button" disabled={!activeMemberId || saving === "signoff"} className="mt-3 h-11 bg-brand-yellow text-[#202522] hover:bg-brand-yellow" onClick={() => void recordCompletion(activeMemberId)}>
             {saving === "signoff" ? "Recording…" : "Finish recording completion"}
           </Button>
         </section>}

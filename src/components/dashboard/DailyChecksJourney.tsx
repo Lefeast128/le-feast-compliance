@@ -74,7 +74,7 @@ export function DailyChecksJourney({
           <span className="text-3xl font-semibold tracking-tight text-[#202522]">{progressPercent}%</span>
         </div>
         <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#eef0ec]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent} aria-label="Today's checks progress">
-          <div className="h-full rounded-full bg-[#ffde56] transition-all" style={{ width: `${progressPercent}%` }} />
+          <div className="h-full rounded-full bg-brand-yellow transition-all" style={{ width: `${progressPercent}%` }} />
         </div>
       </section>
 

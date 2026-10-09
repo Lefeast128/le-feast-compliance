@@ -40,10 +40,12 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-brand-yellow: var(--brand-yellow);
 }
 
 /* CHANGE VALUES FOR THEME */
 :root {
+  --brand-yellow: #FDDE56;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -126,9 +128,6 @@
   /* Keep the empty temperature state concise without the old instructional label. */
   span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"] { font-size: 0; }
   span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"]::after { content: "READY"; font-size: 0.75rem; }
-  [class~="bg-[#f4c542]"], [class*="bg-[#f4c542]"] { background-color: #ffde56 !important; }
-  [class~="hover:bg-[#f7d363]"]:hover, [class*="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
-  [class~="ring-[#f4c542]"], [class*="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
 }
 
 @layer base {

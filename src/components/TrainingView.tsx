@@ -226,7 +226,7 @@ export default function TrainingView({
                       ) : (
                         <Button
                           size="sm"
-                          className="bg-[#ffde56] text-[#171717]"
+                          className="bg-brand-yellow text-[#171717]"
                           onClick={() => {
                             setAcknowledgementError(null);
                             setAcknowledgementTarget({ requirement, member: selectedMemberRecord });
@@ -362,7 +362,7 @@ export default function TrainingView({
                       ) : (
                         <Button
                           size="sm"
-                          className="bg-[#ffde56] text-[#171717]"
+                          className="bg-brand-yellow text-[#171717]"
                           onClick={() => {
                             setAcknowledgementError(null);
                             setAcknowledgementTarget({ requirement: selectedRequirement, member });
@@ -447,7 +447,7 @@ export default function TrainingView({
                 </Button>
                 <Button
                   disabled={acknowledgementSaving}
-                  className="bg-[#ffde56] text-[#171717]"
+                  className="bg-brand-yellow text-[#171717]"
                   onClick={confirmAcknowledgement}
                 >
                   {acknowledgementSaving ? "Saving…" : "Complete Acknowledgement"}

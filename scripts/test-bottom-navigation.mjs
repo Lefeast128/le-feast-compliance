@@ -21,9 +21,12 @@ assert.match(primitives, /active:scale-\[0\.94\]/, "tabs provide touch feedback"
 assert.match(primitives, /aria-current=\{active === key \? "page" : undefined\}/, "current tab is announced semantically");
 assert.match(primitives, /focus-visible:ring-2/, "keyboard focus remains visible");
 assert.match(primitives, /safe-area-inset-bottom/, "navigation respects the bottom safe area");
-assert.match(primitives, /backdrop-blur-2xl/, "navigation uses translucent blur treatment");
-assert.match(primitives, /bg-white\/\[0\.64\]/, "navigation has a translucent glass surface");
-assert.match(primitives, /border-white\/75/, "navigation has a visible glass border");
+assert.match(primitives, /backdrop-blur-\[32px\]/, "navigation uses strengthened translucent blur treatment");
+assert.match(primitives, /backdrop-saturate-150/, "navigation increases glass saturation");
+assert.match(primitives, /bg-white\/\[0\.78\]/, "navigation has a readable fallback glass surface");
+assert.match(primitives, /supports-\[backdrop-filter\]:bg-white\/\[0\.26\]/, "navigation becomes more transparent when blur is supported");
+assert.match(primitives, /border-white\/45/, "navigation has a restrained glass border");
+assert.match(primitives, /bg-brand-yellow\/75/, "active capsule uses the shared brand yellow");
 assert.match(primitives, /fixed inset-x-0 bottom-0 z-20/, "navigation sits below modal overlays");
 assert.match(primitives, /fixed inset-0 z-30/, "shared modal backdrop sits above navigation");
 assert.match(workflows, /<Modal/, "food probe uses the shared modal layer");
