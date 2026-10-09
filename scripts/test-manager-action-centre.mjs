@@ -29,7 +29,7 @@ const base = {
 
 let centre = buildManagerActionCentre(base, timestamp);
 assert.equal(centre.required.find(item => item.id === "am")?.status, "complete");
-assert.equal(centre.required.find(item => item.id === "pm")?.status, "due_later");
+assert.equal(centre.required.find(item => item.id === "pm")?.status, "pending_today");
 assert.equal(centre.required.find(item => item.id === "pm")?.requiresAttention, false);
 assert.equal(centre.required.find(item => item.id === "opening")?.status, "due_now");
 assert.equal(centre.failedTemperatures, 1, "only unresolved failed readings require follow-up");
@@ -97,5 +97,42 @@ const inProgress = buildManagerActionCentre({
 assert.equal(inProgress.required.find(item => item.id === "pm")?.status, "in_progress");
 assert.equal(inProgress.required.find(item => item.id === "opening")?.status, "in_progress");
 assert.equal(inProgress.required.find(item => item.id === "pm")?.requiresAttention, true);
+
+for (const time of [
+  "2026-10-09T08:00:00.000Z",
+  "2026-10-09T15:00:00.000Z",
+  "2026-10-09T21:00:00.000Z",
+]) {
+  const pending = buildManagerActionCentre(base, Date.parse(time));
+  assert.equal(pending.required.find(item => item.id === "am")?.status, "complete");
+  assert.equal(pending.required.find(item => item.id === "pm")?.status, "pending_today", `PM remains neutral at ${time} without configured timing`);
+  assert.equal(pending.required.find(item => item.id === "closing")?.status, "pending_today");
+  assert.equal(pending.required.some(item => item.status === "overdue"), false);
+}
+
+const completedEvening = buildManagerActionCentre({
+  ...base,
+  rounds: [...base.rounds, { _id: "pm-round", session: "PM", completedAt: timestamp }],
+  checklists: { ...base.checklists, closing: { questions: [], responses: [{}] } },
+  securityResponses: { ...base.securityResponses, PM: [{}] },
+  checklistSignOffs: [{ checklist: "closing" }],
+  securitySignOffs: [{ session: "PM" }],
+}, Date.parse("2026-10-09T21:00:00.000Z"));
+assert.equal(completedEvening.required.find(item => item.id === "pm")?.status, "complete");
+assert.equal(completedEvening.required.find(item => item.id === "closing")?.status, "complete");
+assert.equal(completedEvening.required.find(item => item.id === "security_pm")?.status, "complete");
+
+const newYorkMorning = buildManagerActionCentre({
+  ...base,
+  location: { ...base.location, timezone: "America/New_York" },
+  additionalRequirements: [{ _id: "additional-local-day", nextDueAt: "2026-10-09T09:00:00-04:00" }],
+}, Date.parse("2026-10-10T01:00:00.000Z"));
+assert.equal(newYorkMorning.additional.overdue, 0, "store timezone controls the additional-check day boundary");
+const newYorkNextDay = buildManagerActionCentre({
+  ...base,
+  location: { ...base.location, timezone: "America/New_York" },
+  additionalRequirements: [{ _id: "additional-local-day", nextDueAt: "2026-10-09T09:00:00-04:00" }],
+}, Date.parse("2026-10-10T05:00:00.000Z"));
+assert.equal(newYorkNextDay.additional.overdue, 1, "additional check becomes overdue only on the next local day");
 
 console.log("Manager action centre tests passed: due states, issue follow-up, cleaning/additional counts and resolved evidence");

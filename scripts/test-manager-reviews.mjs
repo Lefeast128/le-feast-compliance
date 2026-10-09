@@ -58,7 +58,7 @@ assert.match(ui, /Manager review summary/);
 assert.match(ui, /aria-label="Manager review sections"/);
 assert.match(ui, /onOpenDailyChecks\?: \(locationId: string\) => void/);
 assert.match(ui, /onOpenDailyChecks\(activeLocationId\)/);
-assert.match(ui, /Due later/);
+assert.match(ui, /Pending today/);
 assert.match(ui, /After-use checks/);
 assert.match(ui, /id="current-issues"/);
 assert.match(ui, /id="weekly-review"/);

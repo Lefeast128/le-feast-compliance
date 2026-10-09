@@ -3,7 +3,7 @@ import { isItemComplete } from "@/lib/unified-checklist";
 import { getIssueAttentionTaskIds } from "@/components/dashboard/daily-checks-model";
 import type { DashboardData, StructuredTask } from "@/components/dashboard/dashboard-types";
 
-export type ManagerActionStatus = "complete" | "in_progress" | "due_now" | "due_later" | "not_due" | "overdue";
+export type ManagerActionStatus = "complete" | "in_progress" | "due_now" | "pending_today" | "not_due" | "overdue";
 
 export type ManagerActionCentre = {
   required: Array<{
@@ -70,10 +70,10 @@ const areaComplete = (data: ManagerDashboardData, area: StructuredTask["area"]) 
   return tasks.every(task => isItemComplete(task, legacy, responses)) && signOffRecorded(data, area);
 };
 
-const requiredStatus = (complete: boolean, inProgress: boolean, dueLater: boolean): ManagerActionStatus => {
+const requiredStatus = (complete: boolean, inProgress: boolean, pendingToday: boolean): ManagerActionStatus => {
   if (complete) return "complete";
   if (inProgress) return "in_progress";
-  if (dueLater) return "due_later";
+  if (pendingToday) return "pending_today";
   return "due_now";
 };
 
@@ -104,14 +104,14 @@ const additionalComplete = (requirement: AdditionalRequirement, completions: Add
 export function buildManagerActionCentre(source: ManagerDashboardData, timestamp = Date.now()): ManagerActionCentre {
   const pendingRound = (session: "AM" | "PM") => source.rounds.some(round => round.session === session && !round.completedAt);
   const required = [
-    { id: "am" as const, taskId: "am-temperature", label: "AM temperatures", complete: source.rounds.some(round => round.session === "AM" && Boolean(round.completedAt)), inProgress: pendingRound("AM"), dueLater: false, detail: "Fridge temperature round" },
-    { id: "pm" as const, taskId: "pm-temperature", label: "PM temperatures", complete: source.rounds.some(round => round.session === "PM" && Boolean(round.completedAt)), inProgress: pendingRound("PM"), dueLater: true, detail: "Fridge temperature round" },
-    { id: "opening" as const, taskId: "opening-checklist", label: "Opening checklist", complete: areaComplete(source, "opening"), inProgress: hasResponses(source, "opening"), dueLater: false, detail: "Required opening checks" },
-    { id: "security_am" as const, taskId: "am-security", label: "AM security", complete: areaComplete(source, "security_am"), inProgress: hasResponses(source, "security_am"), dueLater: false, detail: "Morning security checks" },
-    { id: "closing" as const, taskId: "closing-checklist", label: "Closing checklist", complete: areaComplete(source, "closing"), inProgress: hasResponses(source, "closing"), dueLater: true, detail: "Required closing checks" },
-    { id: "security_pm" as const, taskId: "pm-security", label: "PM security", complete: areaComplete(source, "security_pm"), inProgress: hasResponses(source, "security_pm"), dueLater: true, detail: "Evening security checks" },
+    { id: "am" as const, taskId: "am-temperature", label: "AM temperatures", complete: source.rounds.some(round => round.session === "AM" && Boolean(round.completedAt)), inProgress: pendingRound("AM"), pendingToday: false, detail: "Fridge temperature round" },
+    { id: "pm" as const, taskId: "pm-temperature", label: "PM temperatures", complete: source.rounds.some(round => round.session === "PM" && Boolean(round.completedAt)), inProgress: pendingRound("PM"), pendingToday: true, detail: "Fridge temperature round" },
+    { id: "opening" as const, taskId: "opening-checklist", label: "Opening checklist", complete: areaComplete(source, "opening"), inProgress: hasResponses(source, "opening"), pendingToday: false, detail: "Required opening checks" },
+    { id: "security_am" as const, taskId: "am-security", label: "AM security", complete: areaComplete(source, "security_am"), inProgress: hasResponses(source, "security_am"), pendingToday: false, detail: "Morning security checks" },
+    { id: "closing" as const, taskId: "closing-checklist", label: "Closing checklist", complete: areaComplete(source, "closing"), inProgress: hasResponses(source, "closing"), pendingToday: true, detail: "Required closing checks" },
+    { id: "security_pm" as const, taskId: "pm-security", label: "PM security", complete: areaComplete(source, "security_pm"), inProgress: hasResponses(source, "security_pm"), pendingToday: true, detail: "Evening security checks" },
   ].map(item => {
-    const status = requiredStatus(item.complete, item.inProgress, item.dueLater);
+    const status = requiredStatus(item.complete, item.inProgress, item.pendingToday);
     return { ...item, status, requiresAttention: requiredAttention(status) };
   });
 

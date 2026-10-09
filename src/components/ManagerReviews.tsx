@@ -42,7 +42,7 @@ const actionStatusPresentation = (status: ManagerActionStatus) => {
   if (status === "complete") return { label: "Complete", className: "border-[#bfe3c9] bg-[#effaf1] text-[#216c45]", icon: CheckCircle2 };
   if (status === "overdue") return { label: "Overdue", className: "border-[#efc8c3] bg-[#fff3f1] text-[#a13d32]", icon: XCircle };
   if (status === "not_due") return { label: "Not due yet", className: "border-[#dfe3dd] bg-[#f4f5f3] text-[#727a74]", icon: Clock3 };
-  if (status === "due_later") return { label: "Due later", className: "border-[#dfe3dd] bg-[#f4f5f3] text-[#727a74]", icon: Clock3 };
+  if (status === "pending_today") return { label: "Pending today", className: "border-[#dfe3dd] bg-[#f4f5f3] text-[#727a74]", icon: Clock3 };
   if (status === "in_progress") return { label: "In progress", className: "border-[#ead797] bg-[#fff9e8] text-[#8a6513]", icon: AlertTriangle };
   return { label: "Due now", className: "border-[#ead797] bg-[#fff9e8] text-[#8a6513]", icon: AlertTriangle };
 };
