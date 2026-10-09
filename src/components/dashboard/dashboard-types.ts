@@ -2,6 +2,7 @@ export type DashboardLocation = {
   _id: string;
   name: string;
   organisationId?: string;
+  timezone?: string;
 };
 
 export type TeamMember = {

@@ -98,7 +98,7 @@ export default function Dashboard() {
   if (view === "day") return <MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => setView("calendar")} />;
   if (view === "additional") return <AdditionalChecksView locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => setView("today")} />;
   if (view === "managerReviews") return capabilities.canViewManagerReviews
-    ? <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} onOpenDailyChecks={() => setView("today")} />
+    ? <ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => setView("today")} onOpenDailyChecks={(selectedLocationId) => { switchLocation(selectedLocationId); setView("today"); }} />
     : <AccessDenied />;
 
   const todayProps: DashboardTodayProps = {
