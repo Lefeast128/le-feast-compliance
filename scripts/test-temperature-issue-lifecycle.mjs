@@ -23,10 +23,13 @@ check(!issueService.includes('set({ action, status: "monitoring" })'), "immediat
 check(issueService.includes('input.status === "resolved" && issue.category === "Temperature"'), "temperature resolution uses corrective evidence");
 check(issueService.includes('issue.category === "Probe"'), "probe resolution rule remains protected");
 check(actionUi.includes('<select disabled={progress.actionsSaved} value={progress.action}'), "corrective action uses a select control");
-check(actionUi.includes("Reason / notes"), "corrective action accepts a reason or note");
+check(actionUi.includes("Additional notes (optional)"), "corrective action notes are optional");
+check(actionUi.includes("Save corrective action"), "corrective action has one clear save action");
+check(!actionUi.includes("StaffAttributionLine"), "corrective action does not repeat a staff selector per fridge");
 check(!actionUi.includes("Rechecked temperature"), "recheck is not an immediate corrective action option");
-check(actionUi.includes('aria-label="Mark complete"'), "green tick completion has an accessible label");
-check(actionUi.includes("Issue reported"), "daily flow shows issue reported after action");
+check(!actionUi.includes('aria-label="Mark complete"'), "misleading Mark complete wording is removed");
+check(actionUi.includes("Corrective action recorded"), "daily flow shows a concise saved action state");
+check(actionUi.includes("Finish recording completion"), "round completion has a retry-only recovery action");
 check(workflow.includes("issueActionSubmittingRef"), "repeated action submissions are guarded");
 check(workflow.includes("await completeRound({ roundId"), "round completes after corrective actions");
 check(managerReviews.includes("<IssueDetail"), "manager View issue opens actionable issue detail");

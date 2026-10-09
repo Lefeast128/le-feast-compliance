@@ -28,6 +28,7 @@ const result = await submitTemperatureRound({
   completeRound: async (input) => { calls.completes.push(input); },
 });
 assert.equal(calls.start.length, 1, "one submission creates one round");
+assert.deepEqual(calls.start[0], { locationId: "location-1", session: "AM", teamMemberId: "member-1" }, "new round carries the selected staff member");
 assert.deepEqual(calls.readings.map(input => input.roundId), ["round-1", "round-1"]);
 assert.deepEqual(calls.completes, [{ roundId: "round-1", locationId: "location-1", session: "AM", teamMemberId: "member-1" }]);
 assert.equal(result.issues.length, 0);

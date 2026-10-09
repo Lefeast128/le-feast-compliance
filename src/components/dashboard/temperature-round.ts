@@ -2,7 +2,7 @@ import type { Equipment } from "./dashboard-types";
 
 type TemperatureSession = "AM" | "PM";
 
-type StartRound = (input: { locationId: string; session: TemperatureSession }) => Promise<string>;
+type StartRound = (input: { locationId: string; session: TemperatureSession; teamMemberId?: string }) => Promise<string>;
 type RecordTemperature = (input: {
   roundId: string;
   locationId: string;
@@ -54,7 +54,7 @@ export async function submitTemperatureRound({
   recordTemperature,
   completeRound,
 }: SubmitTemperatureRoundArgs) {
-  const submittedRoundId = roundId ?? await startRound({ locationId, session });
+  const submittedRoundId = roundId ?? await startRound({ locationId, session, teamMemberId });
   const issues: TemperatureRoundIssue[] = existingIssues
     .filter((issue) => !issue.actionRecorded)
     .map(({ actionRecorded, ...issue }) => {

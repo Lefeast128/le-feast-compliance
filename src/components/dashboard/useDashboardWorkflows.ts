@@ -5,6 +5,7 @@ import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-pi
 import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember, TemperatureReading } from "@/components/dashboard/dashboard-types";
 import { submitTemperatureRound, type ExistingTemperatureIssue } from "@/components/dashboard/temperature-round";
 import { isItemComplete } from "@/lib/unified-checklist";
+import { correctiveActionReady, temperatureActionNote } from "@/lib/temperature-action";
 
 type WorkflowArgs = {
   dashboard: DashboardData | null | undefined;
@@ -110,9 +111,10 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const hydratePendingRound = (pending: NonNullable<typeof pendingAmRound>, source: DashboardData) => {
     const state = temperatureIssueState(source, pending._id);
     const { readings, recoveredIssues, progress } = state;
+    const recoveredStaffId = pending.teamMemberId ?? readings.find(reading => reading.teamMemberId)?.teamMemberId ?? Object.values(progress).find(item => item.actionMemberId)?.actionMemberId ?? null;
     setRound(pending.session);
     setRoundId(pending._id);
-    setRoundCompleterId(pending.teamMemberId ?? null);
+    setRoundCompleterId(recoveredStaffId);
     setRoundEquipment([...source.equipment]);
     setRoundReadings(readings);
     setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
@@ -264,24 +266,32 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     }
   }
 
-  async function saveTemperatureActions(issueId: string, action: string, note: string, teamMemberId: string) {
+  async function saveTemperatureActions(issueId: string, action: string, note: string) {
+    const teamMemberId = roundCompleterId;
     if (!dashboard || !issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
-    if (action === "Other" && !note.trim()) return;
+    if (!correctiveActionReady(action, note)) return;
     issueActionSubmittingRef.current.add(issueId);
     try {
-      const combinedNote = note.trim() ? `${action} — ${note.trim()}` : action;
+      const combinedNote = temperatureActionNote(action, note);
       await addIssueAction({ issueId, action: combinedNote, teamMemberId });
       const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: teamMemberId, actionsSaved: true } };
       setIssueProgress(nextProgress);
       toast.success("Corrective action recorded");
+      if (roundIssues.length > 0 && roundIssues.every(issue => issue.issueId === issueId || nextProgress[issue.issueId]?.actionsSaved)) {
+        await completeRecoveredTemperatureRound(teamMemberId);
+      }
     } catch (error) {
       try {
         const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
         const linkedIssue = latest.issues.find(item => item._id === issueId);
         const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
         if (update) {
-          setIssueProgress(current => ({ ...current, [issueId]: { ...current[issueId], action, note, actionMemberId: update.teamMemberId ?? teamMemberId, actionsSaved: true } }));
+          const reconciledProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: update.teamMemberId ?? teamMemberId, actionsSaved: true } };
+          setIssueProgress(reconciledProgress);
           toast.success("Corrective action recorded", { description: "The saved server record was reconciled." });
+          if (roundIssues.length > 0 && roundIssues.every(item => item.issueId === issueId || reconciledProgress[item.issueId]?.actionsSaved)) {
+            await completeRecoveredTemperatureRound(teamMemberId);
+          }
           return;
         }
       } catch {
