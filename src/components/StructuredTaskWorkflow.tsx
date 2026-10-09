@@ -20,8 +20,16 @@ type Props = {
   area: StructuredTask["area"];
   tasks: StructuredTask[];
   responses: StructuredTaskResponse[];
+  cleaningCompletions?: Array<{
+    taskId: string;
+    completedAt?: number | string;
+    teamMemberId?: string | null;
+    teamMemberName?: string | null;
+  }>;
   teamMembers: TeamMember[];
   signOffRecorded?: boolean;
+  onCompleteCleaning?: (taskId: string, teamMemberId: string) => Promise<void>;
+  onReportCleaningIssue?: (description: string, teamMemberId: string) => Promise<void>;
   onBack: () => void;
 };
 type IssueDraft = { problem: string; action: string };
@@ -41,8 +49,11 @@ export default function StructuredTaskWorkflow({
   area,
   tasks,
   responses,
+  cleaningCompletions = [],
   teamMembers,
   signOffRecorded = false,
+  onCompleteCleaning,
+  onReportCleaningIssue,
   onBack,
 }: Props) {
   const save = useRestMutation(restApi.compliance.saveStructuredTaskResponse);
@@ -63,13 +74,30 @@ export default function StructuredTaskWorkflow({
     () => tasks.filter((task) => task.area === area),
     [tasks, area],
   );
+  const legacyCleaningResponseFor = (task: StructuredTask): StructuredTaskResponse | undefined => {
+    if (area !== "cleaning" || task.taskType === "with_steps" || task.completionMode !== "task") return undefined;
+    const completion = cleaningCompletions.find((item) => item.taskId === task._id);
+    if (!completion) return undefined;
+    return {
+      _id: `legacy-cleaning-${completion.taskId}`,
+      taskArea: "cleaning",
+      taskId: task._id,
+      stepId: "simple",
+      responseType: "confirm",
+      responseValue: "confirmed",
+      dateKey: new Date().toISOString().slice(0, 10),
+      createdAt: completion.completedAt === undefined ? undefined : new Date(completion.completedAt).toISOString(),
+      teamMemberId: completion.teamMemberId,
+      teamMemberName: completion.teamMemberName ?? undefined,
+    };
+  };
   const responseFor = (taskId: string, stepId: string) =>
     responses.find(
       (response) =>
         (response.taskId === taskId || versionedChecklistResponseMatches(areaTasks.find((task) => task._id === taskId) ?? { _id: taskId }, response)) &&
         response.taskArea === area &&
         response.stepId === stepId,
-    ) ?? localResponses[`${taskId}:${stepId}`];
+    ) ?? localResponses[`${taskId}:${stepId}`] ?? legacyCleaningResponseFor(areaTasks.find((task) => task._id === taskId) ?? { _id: taskId, area, title: "" });
   const stepsFor = (task: StructuredTask): StructuredStep[] =>
     task.taskType === "with_steps"
       ? (task.steps ?? [])
@@ -90,6 +118,7 @@ export default function StructuredTaskWorkflow({
     (total, task) => total + stepsFor(task).filter((step) => step.required !== false && responseFor(task._id, step.id)).length,
     0,
   );
+  const areaComplete = totalRequiredSteps > 0 && completedRequiredSteps === totalRequiredSteps;
   const isSignable = area !== "cleaning";
   const allStepsCompleteFor = (candidateResponses: Record<string, StructuredTaskResponse>) => areaTasks.every((task) =>
     stepsFor(task)
@@ -139,16 +168,23 @@ export default function StructuredTaskWorkflow({
     setSaving(key);
     try {
       const issue = issues[key];
-      const result = await save({
-        locationId,
-        area,
-        taskId: task._id,
-        stepId: step.id,
-        value: step.responseType === "confirm" ? "confirmed" : value,
-        teamMemberId: memberId,
-        problem: issue?.problem,
-        action: issue?.action,
-      });
+      const usesLegacyCleaningCompletion = area === "cleaning"
+        && task.taskType !== "with_steps"
+        && task.completionMode === "task"
+        && step.id === "simple"
+        && Boolean(onCompleteCleaning);
+      const result = usesLegacyCleaningCompletion
+        ? await onCompleteCleaning!(task._id, memberId)
+        : await save({
+            locationId,
+            area,
+            taskId: task._id,
+            stepId: step.id,
+            value: step.responseType === "confirm" ? "confirmed" : value,
+            teamMemberId: memberId,
+            problem: issue?.problem,
+            action: issue?.action,
+          });
       const nextResponse: StructuredTaskResponse = {
           _id: `local-${key}`,
           taskArea: area,
@@ -183,11 +219,16 @@ export default function StructuredTaskWorkflow({
     if (!memberId || !issue?.problem.trim() || saving) return;
     setSaving(`issue:${key}`);
     try {
-      await reportIssue({
-        locationId,
-        teamMemberId: memberId,
-        description: `${task.title}${step.id === "simple" ? "" : ` — ${step.label}`}\n\n${issue.problem.trim()}`,
-      });
+      const description = `${task.title}${step.id === "simple" ? "" : ` — ${step.label}`}\n\n${issue.problem.trim()}`;
+      if (area === "cleaning" && onReportCleaningIssue) {
+        await onReportCleaningIssue(description, memberId);
+      } else {
+        await reportIssue({
+          locationId,
+          teamMemberId: memberId,
+          description,
+        });
+      }
       setIssueOpen(null);
       setIssues((current) => ({
         ...current,
@@ -213,6 +254,16 @@ export default function StructuredTaskWorkflow({
           Each step can be completed by the team member who carried it out.
         </p>
         <ActiveStaffControl teamMembers={teamMembers} value={activeMemberId} onChange={setActiveMemberId} />
+        {area === "cleaning" && areaComplete && <section className="rounded-2xl border border-[#b9dfc5] bg-[#f3fbf5] p-4 text-[#2d7951]" role="status">
+          <div className="flex items-start gap-3">
+            <Check className="mt-0.5 size-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Cleaning complete</p>
+              <p className="mt-1 text-sm">All scheduled cleaning jobs are recorded.</p>
+              <Button type="button" variant="outline" className="mt-3 border-[#9bcaaa] text-[#2d7951]" onClick={onBack}>View all checks</Button>
+            </div>
+          </div>
+        </section>}
         {needsSignOffRecovery && <section className="rounded-2xl border border-[#f0d98a] bg-[#fffdf1] p-4" role="status">
           <p className="font-semibold text-[#5f5115]">All checklist steps are recorded</p>
           <p className="mt-1 text-sm text-[#796513]">Finish recording completion to update Daily Checks.</p>

@@ -24,6 +24,7 @@ import {
   type WastagePickerProduct,
 } from "@/lib/wastage-picker";
 import { Header } from "@/components/dashboard/DashboardPrimitives";
+import { cleaningProgress } from "@/lib/cleaning-checklist";
 import type { Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 
@@ -159,11 +160,11 @@ export default function DashboardToday({
   onOpenStructuredTask,
 }: DashboardTodayProps) {
   const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
-  const cleaningCompleted = cleaningTasks.length
-    ? cleaningTasks.filter(task => task.taskType === "with_steps"
-      ? (task.steps ?? []).filter(step => step.required !== false).every(step => active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === step.id))
-      : active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === "simple") || active.cleaningCompletions.some(completion => completion.taskId === task._id)).length
-    : active.cleaningCompletions.length;
+  const cleaningCompleted = cleaningProgress(
+    cleaningTasks,
+    active.structuredTaskResponses,
+    active.cleaningCompletions,
+  ).complete;
   const issueAttentionTaskIds = getIssueAttentionTaskIds({
     issues: openIssues,
     temperatureReadings: active.readings,
@@ -231,7 +232,6 @@ export default function DashboardToday({
         break;
       case "cleaning":
         if (cleaningCompleted > 0 && cleaningCompleted >= (cleaningTasks.length || active.cleaningTasks.length)) viewCleaningRecords();
-        else if (structuredTasks.some(task => task.area === "cleaning" && (task.taskType === "with_steps" || task.completionMode === "question"))) onOpenStructuredTask("cleaning");
         else setCleaningList(true);
         break;
       case "additional-checks":

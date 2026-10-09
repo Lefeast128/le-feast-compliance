@@ -8,7 +8,9 @@ const storeAdmin = await read("src/components/admin/AdminStoreOverview.tsx");
 const securityService = await read("src/server/management/security-service.ts");
 const organisationAdmin = await read("src/components/OrganisationAdmin.tsx");
 const cleaning = await read("src/components/InlineCleaning.tsx");
+const structured = await read("src/components/StructuredTaskWorkflow.tsx");
 const dashboard = await read("src/pages/Dashboard.tsx");
+const today = await read("src/components/dashboard/DashboardToday.tsx");
 const complianceCleaning = await read("src/server/compliance/cleaning-service.ts");
 
 // Security configuration uses the existing soft-retirement path and keeps central ownership server-side.
@@ -24,10 +26,15 @@ assert.match(organisationAdmin, /retireCentralOperationalTask|retireOperational/
 assert.equal(resolveCleaningMemberId(undefined, "joe"), "joe");
 assert.equal(resolveCleaningMemberId("sarah", "joe"), "sarah");
 assert.equal(resolveCleaningMemberId("", "joe"), "joe");
-assert.match(cleaning, /progress=\{\{ complete: completedCount, total: tasks\.length \}\}/);
-assert.match(cleaning, /Complete/);
-assert.match(cleaning, /Report issue/);
-assert.match(cleaning, /resolveCleaningMemberId\(selected\[task\._id\], activeMemberId\)/);
+assert.match(cleaning, /<StructuredTaskWorkflow/);
+assert.match(cleaning, /area="cleaning"/);
+assert.match(cleaning, /cleaningCompletions=\{completions\}/);
+assert.match(structured, /onCompleteCleaning/);
+assert.match(structured, /onReportCleaningIssue/);
+assert.match(structured, /responseType === "yes_no"/);
+assert.match(structured, /What stopped this check being completed/);
+assert.match(today, /case "cleaning":/);
+assert.doesNotMatch(today, /onOpenStructuredTask\("cleaning"\)/);
 assert.match(dashboard, /<InlineCleaning/);
 assert.match(dashboard, /StructuredTaskWorkflow/);
 
