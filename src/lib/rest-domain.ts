@@ -106,6 +106,7 @@ export const restApi = {
   },
   reports: {
     compliance: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
+    inspectionPack: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance/inspection-pack?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
   },
   library: {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/library?locationId=${encodeURIComponent(locationId)}`)),

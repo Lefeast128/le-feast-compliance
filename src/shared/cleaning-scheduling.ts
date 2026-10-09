@@ -26,6 +26,18 @@ export function cleaningRunsOn(frequency: string, weekdays: unknown, weekday: nu
 
 export type CleaningEvidenceStatus = "scheduled" | "not_required" | "not_verifiable";
 
+export type CleaningReportStatus = "complete" | "incomplete" | "recorded" | "not_required" | "not_verifiable";
+
+/**
+ * After-use completion is evidence that a cleaning action was recorded, but
+ * it is not evidence that the equipment was used (or that every use was
+ * followed by cleaning). Keep that distinction explicit in reports.
+ */
+export function afterUseCleaningStatus(hasAfterUseTasks: boolean, recordedCount: number): "recorded" | "not_required" | "not_verifiable" {
+  if (!hasAfterUseTasks) return "not_required";
+  return recordedCount > 0 ? "recorded" : "not_verifiable";
+}
+
 export function localWeekdayForDate(dateKey: string, timeZone: string) {
   const timestamp = Date.parse(`${dateKey}T12:00:00Z`);
   const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(new Date(timestamp));

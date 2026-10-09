@@ -20,7 +20,8 @@ export type ReportDay = {
   status: string;
   complete: boolean;
   correctiveActionRecorded?: boolean;
-  cleaningStatus?: "complete" | "incomplete" | "not_required" | "not_verifiable";
+  cleaningStatus?: "complete" | "incomplete" | "recorded" | "not_required" | "not_verifiable";
+  afterUseCleaningStatus?: "recorded" | "not_required" | "not_verifiable";
   sections?: Partial<Record<ReportSectionKey, boolean | null>>;
 };
 

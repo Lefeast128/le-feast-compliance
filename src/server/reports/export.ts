@@ -159,6 +159,12 @@ const sectionRows = (report: ComplianceReport) => SECTION_ORDER.map(key => {
 const dailyRows = (report: ComplianceReport) => report.days.map(day => {
   const sections = day.sections ?? {};
   const counts = day.counts ?? {};
+  const cleaningEvidence = [
+    day.cleaningStatus === "complete" ? "Cleaning required and completed" : "",
+    day.cleaningStatus === "incomplete" ? "Cleaning required but missed" : "",
+    day.afterUseCleaningStatus === "recorded" ? "Cleaning recorded" : "",
+    day.afterUseCleaningStatus === "not_verifiable" || day.cleaningStatus === "not_verifiable" ? "Usage requirement: Not verifiable" : "",
+  ].filter(Boolean).join(" · ") || "No cleaning scheduled";
   return [
     day.date,
     day.status,
@@ -172,7 +178,7 @@ const dailyRows = (report: ComplianceReport) => report.days.map(day => {
     boolLabel(sections.security_pm),
     boolLabel(sections.food_probes),
     boolLabel(sections.cleaning),
-    day.cleaningStatus === "not_verifiable" ? "Not verifiable" : day.cleaningStatus === "not_required" ? "Not required" : day.cleaningStatus === "incomplete" ? "Incomplete" : "Scheduled evidence recorded",
+    cleaningEvidence,
     boolLabel(sections.wastage),
     boolLabel(sections.additional_checks),
     counts.temperatureReadings ?? 0,

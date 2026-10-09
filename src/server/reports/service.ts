@@ -10,7 +10,7 @@ import { correctiveActionLabel, issueStatusLabel, resultLabel } from "../../lib/
 import { hasCorrectiveActionOnDay } from "../compliance/corrective-action.js";
 import { asOfIssue, evaluatedDays, reportDateRange, REPORT_SECTION_KEYS, sectionCompletion, type ReportSectionKey } from "./calculations.js";
 import { listManagerReviewsForReport } from "../reviews/service.js";
-import { cleaningIsScheduledForDate } from "../../shared/cleaning-scheduling.js";
+import { afterUseCleaningStatus, cleaningIsScheduledForDate, type CleaningReportStatus } from "../../shared/cleaning-scheduling.js";
 import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
 
 const db = () => getDb();
@@ -125,10 +125,12 @@ export async function complianceReport(context: AuthContext, input: { locationId
     const probeComplete = probeRequired.length === 0 || probeRequired.every(product => dayProbes.some(probe => probe.probeProductId ? rootFor(probeProductRows, probe.probeProductId) === (product.versionRootId ?? product.id) : probe.product === product.name));
     const selectedCleaning = selectVersions(cleaningTaskRows, date);
     const cleaningRequired = selectedCleaning.filter(task => cleaningIsScheduledForDate(task.frequency, task.weekdays, date, location.timezone));
-    const cleaningAfterUse = selectedCleaning.some(task => task.frequency === "after_use");
+    const cleaningAfterUseTasks = selectedCleaning.filter(task => task.frequency === "after_use");
     const structuredCleaning = structuredResponses.filter(response => response.taskArea === "cleaning" && localDateKey(response.createdAt.getTime(), location.timezone) === date);
-    const cleaningComplete = cleaningRequired.every(task => cleaning.some(done => done.dateKey === date && rootFor(cleaningTaskRows, done.taskId) === (task.versionRootId ?? task.id)) || (task.taskType === "with_steps" ? (task.steps ?? []).filter((step: any) => step.required !== false).every((step: any) => structuredCleaning.some(response => response.stepId === step.id && responseMatchesTask(task, response))) : structuredCleaning.some(response => response.stepId === "simple" && responseMatchesTask(task, response))));
-    const cleaningStatus: "complete" | "incomplete" | "not_verifiable" | "not_required" = cleaningRequired.length ? (cleaningComplete ? "complete" : "incomplete") : cleaningAfterUse ? "not_verifiable" : "not_required";
+    const cleaningTaskRecorded = (task: any) => cleaning.some(done => done.dateKey === date && rootFor(cleaningTaskRows, done.taskId) === (task.versionRootId ?? task.id)) || (task.taskType === "with_steps" ? (task.steps ?? []).filter((step: any) => step.required !== false).every((step: any) => structuredCleaning.some(response => response.stepId === step.id && responseMatchesTask(task, response))) : structuredCleaning.some(response => response.stepId === "simple" && responseMatchesTask(task, response)));
+    const cleaningComplete = cleaningRequired.every(cleaningTaskRecorded);
+    const afterUseStatus = afterUseCleaningStatus(cleaningAfterUseTasks.length > 0, cleaningAfterUseTasks.filter(cleaningTaskRecorded).length);
+    const cleaningStatus: CleaningReportStatus = cleaningRequired.length ? (cleaningComplete ? "complete" : "incomplete") : afterUseStatus;
     const additionalDue = selectVersions(requirementRows, date).filter(requirement => localDateKey(requirement.nextDueAt.getTime(), location.timezone) === date);
     const additionalComplete = additionalDue.every(requirement => completionRows.some(done => rootFor(requirementRows, done.requirementId) === (requirement.versionRootId ?? requirement.id) && done.scheduledDueAt && localDateKey(done.scheduledDueAt.getTime(), location.timezone) === date && localDateKey(done.completedAt.getTime(), location.timezone) === date));
     const dayWastage = wastage.filter(record => inLocalDay(record, "createdAt", date, location.timezone));
@@ -137,6 +139,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
       security_am: amSecurityComplete, security_pm: pmSecurityComplete, food_probes: probeComplete, cleaning: cleaningStatus === "complete" ? true : cleaningStatus === "incomplete" ? false : null,
       wastage: dayWastage.length > 0, additional_checks: additionalComplete,
       cleaningStatus,
+      afterUseCleaningStatus: afterUseStatus,
       counts: { temperatureReadings: dayReadings.length, foodProbes: dayProbes.length, checklistResponses: dayChecklist.length, securityResponses: daySecurity.length, cleaningCompletions: cleaning.filter(done => done.dateKey === date).length + structuredCleaning.length, wastageRecords: dayWastage.length, additionalChecks: completionRows.filter(done => inLocalDay(done, "completedAt", date, location.timezone)).length },
     };
   };
@@ -200,7 +203,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
     const flags = flagsFor(day.date);
     const eventsOnDay = [...issuesRows.filter(issue => inLocalDay(issue, "createdAt", day.date, location.timezone)), ...updates.filter(update => inLocalDay(update, "createdAt", day.date, location.timezone)), ...recheckRows.filter(recheck => inLocalDay(recheck, "createdAt", day.date, location.timezone)), ...issuesRows.filter(issue => inLocalDay(issue, "resolvedAt", day.date, location.timezone))];
     const correctiveActionRecorded = hasCorrectiveActionOnDay({ date: day.date, timezone: location.timezone, updates, checklistResponses: checklist, probes });
-    return { date: day.date, status: day.status, complete: day.complete, cleaningStatus: flags.cleaningStatus, correctiveActionRecorded, sections: Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, flags[key as ReportSectionKey]])), counts: { ...flags.counts, rounds: day.rounds, checklistSignoffs: day.checklistSignoffs, securitySignoffs: day.securitySignoffs, issueEvents: eventsOnDay.length } };
+    return { date: day.date, status: day.status, complete: day.complete, cleaningStatus: flags.cleaningStatus, afterUseCleaningStatus: flags.afterUseCleaningStatus, correctiveActionRecorded, sections: Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, flags[key as ReportSectionKey]])), counts: { ...flags.counts, rounds: day.rounds, checklistSignoffs: day.checklistSignoffs, securitySignoffs: day.securitySignoffs, issueEvents: eventsOnDay.length } };
   });
   const evaluated = evaluatedDays(dayRows, today);
   const sections = Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, sectionCompletion(dayRows, key, today)]));
