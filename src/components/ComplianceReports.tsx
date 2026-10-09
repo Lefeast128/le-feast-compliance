@@ -154,7 +154,7 @@ const dayTone = (day: any): StatusTone =>
   day.status === "green" ? "green" : day.status === "amber" ? "amber" : day.status === "grey" ? "grey" : "red";
 
 const dayStatus = (day: any) => {
-  if (day.status === "green") return { label: "Complete", detail: "No issues recorded" };
+  if (day.status === "green") return { label: "Complete", detail: day.cleaningStatus === "not_verifiable" ? "Required work complete · after-use cleaning not verifiable" : day.cleaningStatus === "not_required" ? "Required work complete · no scheduled cleaning" : "No issues recorded" };
   if (day.status === "amber") return { label: "Complete", detail: "Issue or corrective action recorded" };
   if (day.status === "grey") return { label: "Future", detail: "Not evaluated yet" };
   const outstanding = Object.values(day.sections ?? {}).filter((value) => value === false).length;
@@ -363,6 +363,8 @@ export default function ComplianceReports({
                 <span className="mt-3 flex flex-wrap items-center gap-2">
                   <StatusPill tone={tone}>{status.label}</StatusPill>
                   {day.correctiveActionRecorded && <span className="text-xs font-semibold text-[#8a6513]">Corrective action recorded</span>}
+                  {day.cleaningStatus === "not_verifiable" && <span className="text-xs font-semibold text-[#8a6513]">After-use cleaning not verifiable</span>}
+                  {day.cleaningStatus === "not_required" && <span className="text-xs font-semibold text-[#89918b]">No scheduled cleaning</span>}
                 </span>
                 <span className="mt-2 block text-sm text-[#727a74]">{status.detail}</span>
               </span>

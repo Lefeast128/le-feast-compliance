@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, eq, gte, lte } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs, cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates, issues, locations, probeProducts, rechecks, securityQuestions, securityResponses, securitySignOffs, teamMembers, temperatureReadings, temperatureRounds, wastageRecords } from "../db/schema.js";
+import { additionalCompletions, additionalRequirements, checklistQuestions, checklistResponses, checklistSignOffs, cleaningCompletions, cleaningTasks, equipment, foodChecks, issueUpdates, issues, locations, probeProducts, rechecks, securityQuestions, securityResponses, securitySignOffs, structuredTaskResponses, teamMembers, temperatureReadings, temperatureRounds, wastageRecords } from "../db/schema.js";
 import { requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { localDateKey, localDayRange } from "../compliance/validation.js";
-import { localWeekday } from "../dashboard/time.js";
 import { calendar } from "../history/service.js";
 import { correctiveActionLabel, issueStatusLabel, resultLabel } from "../../lib/temperature-resolution.js";
 import { hasCorrectiveActionOnDay } from "../compliance/corrective-action.js";
 import { asOfIssue, evaluatedDays, reportDateRange, REPORT_SECTION_KEYS, sectionCompletion, type ReportSectionKey } from "./calculations.js";
 import { listManagerReviewsForReport } from "../reviews/service.js";
+import { cleaningIsScheduledForDate } from "../../shared/cleaning-scheduling.js";
+import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
 
 const db = () => getDb();
 const iso = (value: unknown) => value instanceof Date ? value.toISOString() : value == null ? null : String(value);
@@ -35,7 +36,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
   const start = new Date(startMs);
   const end = new Date(endMs);
 
-  const [calendarResult, readings, rounds, probes, checklist, checklistSignoffs, security, securitySignoffs, cleaning, wastage, issuesRows, updates, recheckRows, equipmentRows, checklistQuestionRows, securityQuestionRows, cleaningTaskRows, probeProductRows, requirementRows, completionRows, members] = await Promise.all([
+  const [calendarResult, readings, rounds, probes, checklist, checklistSignoffs, security, securitySignoffs, cleaning, wastage, issuesRows, updates, recheckRows, equipmentRows, checklistQuestionRows, securityQuestionRows, cleaningTaskRows, probeProductRows, requirementRows, completionRows, members, structuredResponses] = await Promise.all([
     calendar(context, { locationId: location.id, monthStart: range.start, monthEnd: range.end }),
     db().select().from(temperatureReadings).where(and(eq(temperatureReadings.locationId, location.id), lte(temperatureReadings.createdAt, end))),
     db().select().from(temperatureRounds).where(and(eq(temperatureRounds.locationId, location.id), gte(temperatureRounds.startedAt, start), lte(temperatureRounds.startedAt, end))),
@@ -57,6 +58,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
     db().select().from(additionalRequirements).where(eq(additionalRequirements.locationId, location.id)),
     db().select().from(additionalCompletions).where(and(eq(additionalCompletions.locationId, location.id), gte(additionalCompletions.completedAt, start), lte(additionalCompletions.completedAt, end))),
     db().select().from(teamMembers).where(eq(teamMembers.locationId, location.id)),
+    db().select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, location.id), gte(structuredTaskResponses.createdAt, start), lte(structuredTaskResponses.createdAt, end))),
   ]);
 
   const memberNames = new Map(members.map(member => [member.id, member.name]));
@@ -64,6 +66,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
   const checklistLabels = new Map(checklistQuestionRows.map(question => [question.id, question.question]));
   const securityLabels = new Map(securityQuestionRows.map(question => [question.id, question.question]));
   const requirementLabels = new Map(requirementRows.map(requirement => [requirement.id, requirement.title]));
+  const structuredLabels = new Map([...checklistQuestionRows, ...securityQuestionRows, ...cleaningTaskRows].map(task => [task.id, { title: "question" in task ? task.question : task.name, area: "checklist" in task ? task.checklist : "session" in task ? task.session === "AM" ? "security_am" : "security_pm" : "cleaning", steps: Array.isArray(task.steps) ? task.steps : [] }]));
   const memberName = (id: string | null | undefined) => id ? memberNames.get(id) ?? null : null;
   const rootFor = (items: any[], id: string) => items.find(item => item.id === id)?.versionRootId ?? id;
   const configApplies = (item: any, date: string) => localDateKey(item.createdAt.getTime(), location.timezone) <= date && (!item.deactivatedAt || localDateKey(item.deactivatedAt.getTime(), location.timezone) >= date);
@@ -86,6 +89,12 @@ export async function complianceReport(context: AuthContext, input: { locationId
       if (!previous || item.createdAt > previous.createdAt) selected.set(root, item);
     }
     return [...selected.values()].filter(item => !item.deactivatedAt || item.deactivatedAt >= timestamp);
+  };
+  const allTaskVersions = [...checklistQuestionRows, ...securityQuestionRows, ...cleaningTaskRows];
+  const responseMatchesTask = (task: any, response: any) => {
+    if (task.id === response.taskId) return true;
+    const previous = allTaskVersions.find(candidate => candidate.id === response.taskId);
+    return Boolean(previous && checklistVersionRoot(previous) === checklistVersionRoot(task) && checklistDefinitionKey(previous) === checklistDefinitionKey(task));
   };
   const openingQuestions = checklistQuestionRows.filter(question => question.checklist === "opening");
   const closingQuestions = checklistQuestionRows.filter(question => question.checklist === "closing");
@@ -114,16 +123,21 @@ export async function complianceReport(context: AuthContext, input: { locationId
     const roundComplete = (session: string) => dayRounds.filter(round => round.session === session && round.completedAt).some(round => requiredEquipment.every(item => dayReadings.some(reading => reading.roundId === round.id && reading.equipmentId === item.id)));
     const probeRequired = selectVersions(probeProductRows.filter(product => (product.locationIds ?? []).includes(location.id)), date);
     const probeComplete = probeRequired.length === 0 || probeRequired.every(product => dayProbes.some(probe => probe.probeProductId ? rootFor(probeProductRows, probe.probeProductId) === (product.versionRootId ?? product.id) : probe.product === product.name));
-    const cleaningRequired = selectVersions(cleaningTaskRows, date).filter(task => task.frequency === "after_use" || task.frequency === "daily" || (task.frequency === "weekly" && localWeekday(Date.parse(`${date}T12:00:00Z`), location.timezone) === 1) || (task.frequency === "specific_days" && (task.weekdays ?? []).includes(localWeekday(Date.parse(`${date}T12:00:00Z`), location.timezone))));
-    const cleaningComplete = cleaningRequired.every(task => cleaning.some(done => done.dateKey === date && rootFor(cleaningTaskRows, done.taskId) === (task.versionRootId ?? task.id)));
+    const selectedCleaning = selectVersions(cleaningTaskRows, date);
+    const cleaningRequired = selectedCleaning.filter(task => cleaningIsScheduledForDate(task.frequency, task.weekdays, date, location.timezone));
+    const cleaningAfterUse = selectedCleaning.some(task => task.frequency === "after_use");
+    const structuredCleaning = structuredResponses.filter(response => response.taskArea === "cleaning" && localDateKey(response.createdAt.getTime(), location.timezone) === date);
+    const cleaningComplete = cleaningRequired.every(task => cleaning.some(done => done.dateKey === date && rootFor(cleaningTaskRows, done.taskId) === (task.versionRootId ?? task.id)) || (task.taskType === "with_steps" ? (task.steps ?? []).filter((step: any) => step.required !== false).every((step: any) => structuredCleaning.some(response => response.stepId === step.id && responseMatchesTask(task, response))) : structuredCleaning.some(response => response.stepId === "simple" && responseMatchesTask(task, response))));
+    const cleaningStatus: "complete" | "incomplete" | "not_verifiable" | "not_required" = cleaningRequired.length ? (cleaningComplete ? "complete" : "incomplete") : cleaningAfterUse ? "not_verifiable" : "not_required";
     const additionalDue = selectVersions(requirementRows, date).filter(requirement => localDateKey(requirement.nextDueAt.getTime(), location.timezone) === date);
     const additionalComplete = additionalDue.every(requirement => completionRows.some(done => rootFor(requirementRows, done.requirementId) === (requirement.versionRootId ?? requirement.id) && done.scheduledDueAt && localDateKey(done.scheduledDueAt.getTime(), location.timezone) === date && localDateKey(done.completedAt.getTime(), location.timezone) === date));
     const dayWastage = wastage.filter(record => inLocalDay(record, "createdAt", date, location.timezone));
     return {
       temperature_am: roundComplete("AM"), temperature_pm: roundComplete("PM"), opening_checklist: openingComplete, closing_checklist: closingComplete,
-      security_am: amSecurityComplete, security_pm: pmSecurityComplete, food_probes: probeComplete, cleaning: cleaningComplete,
+      security_am: amSecurityComplete, security_pm: pmSecurityComplete, food_probes: probeComplete, cleaning: cleaningStatus === "complete" ? true : cleaningStatus === "incomplete" ? false : null,
       wastage: dayWastage.length > 0, additional_checks: additionalComplete,
-      counts: { temperatureReadings: dayReadings.length, foodProbes: dayProbes.length, checklistResponses: dayChecklist.length, securityResponses: daySecurity.length, cleaningCompletions: cleaning.filter(done => done.dateKey === date).length, wastageRecords: dayWastage.length, additionalChecks: completionRows.filter(done => inLocalDay(done, "completedAt", date, location.timezone)).length },
+      cleaningStatus,
+      counts: { temperatureReadings: dayReadings.length, foodProbes: dayProbes.length, checklistResponses: dayChecklist.length, securityResponses: daySecurity.length, cleaningCompletions: cleaning.filter(done => done.dateKey === date).length + structuredCleaning.length, wastageRecords: dayWastage.length, additionalChecks: completionRows.filter(done => inLocalDay(done, "completedAt", date, location.timezone)).length },
     };
   };
 
@@ -176,12 +190,17 @@ export async function complianceReport(context: AuthContext, input: { locationId
   }
   for (const response of checklist.filter(row => row.answer === "no")) exceptionRows.push({ type: "checklist", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: checklistLabels.get(response.questionId) ?? "Checklist question", detail: [response.problem, response.action].filter(Boolean).join(" · "), result: "no", teamMemberName: memberName(response.teamMemberId) });
   for (const response of security.filter(row => row.answer === "no" || Boolean(row.issue))) exceptionRows.push({ type: "security", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: securityLabels.get(response.questionId) ?? "Security question", detail: response.issue ?? "", result: response.answer, teamMemberName: memberName(response.teamMemberId) });
+  for (const response of structuredResponses.filter(row => ["no", "fail", "false"].includes(String(row.responseValue).trim().toLowerCase()))) {
+    const task = structuredLabels.get(response.taskId);
+    const step = task?.steps.find(item => item.id === response.stepId);
+    exceptionRows.push({ type: task?.area ?? response.taskArea, date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: task?.title ?? "Structured task", detail: [step?.label, response.responseValue].filter(Boolean).join(" · "), result: "no", teamMemberName: memberName(response.teamMemberId) });
+  }
 
   const dayRows = calendarResult.days.map((day: any) => {
     const flags = flagsFor(day.date);
     const eventsOnDay = [...issuesRows.filter(issue => inLocalDay(issue, "createdAt", day.date, location.timezone)), ...updates.filter(update => inLocalDay(update, "createdAt", day.date, location.timezone)), ...recheckRows.filter(recheck => inLocalDay(recheck, "createdAt", day.date, location.timezone)), ...issuesRows.filter(issue => inLocalDay(issue, "resolvedAt", day.date, location.timezone))];
     const correctiveActionRecorded = hasCorrectiveActionOnDay({ date: day.date, timezone: location.timezone, updates, checklistResponses: checklist, probes });
-    return { date: day.date, status: day.status, complete: day.complete, correctiveActionRecorded, sections: Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, flags[key as ReportSectionKey]])), counts: { ...flags.counts, rounds: day.rounds, checklistSignoffs: day.checklistSignoffs, securitySignoffs: day.securitySignoffs, issueEvents: eventsOnDay.length } };
+    return { date: day.date, status: day.status, complete: day.complete, cleaningStatus: flags.cleaningStatus, correctiveActionRecorded, sections: Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, flags[key as ReportSectionKey]])), counts: { ...flags.counts, rounds: day.rounds, checklistSignoffs: day.checklistSignoffs, securitySignoffs: day.securitySignoffs, issueEvents: eventsOnDay.length } };
   });
   const evaluated = evaluatedDays(dayRows, today);
   const sections = Object.fromEntries(REPORT_SECTION_KEYS.map(key => [key, sectionCompletion(dayRows, key, today)]));

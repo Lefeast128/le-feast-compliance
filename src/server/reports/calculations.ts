@@ -20,7 +20,8 @@ export type ReportDay = {
   status: string;
   complete: boolean;
   correctiveActionRecorded?: boolean;
-  sections?: Partial<Record<ReportSectionKey, boolean>>;
+  cleaningStatus?: "complete" | "incomplete" | "not_required" | "not_verifiable";
+  sections?: Partial<Record<ReportSectionKey, boolean | null>>;
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -51,7 +52,7 @@ export function reportDateRange(start: unknown, end: unknown) {
 export const evaluatedDays = (days: ReportDay[], today: string) => days.filter(day => day.date <= today && day.status !== "grey");
 
 export function sectionCompletion(days: ReportDay[], key: ReportSectionKey, today: string) {
-  const evaluated = evaluatedDays(days, today);
+  const evaluated = evaluatedDays(days, today).filter(day => day.sections?.[key] !== null);
   const completedDays = evaluated.filter(day => day.sections?.[key] === true).length;
   const requiredDays = evaluated.length;
   return {
@@ -63,4 +64,3 @@ export function sectionCompletion(days: ReportDay[], key: ReportSectionKey, toda
 }
 
 export const asOfIssue = (issue: { createdAt: Date; resolvedAt: Date | null; status: string }, end: Date) => issue.createdAt <= end && (!issue.resolvedAt || issue.resolvedAt > end) && issue.status !== "resolved";
-

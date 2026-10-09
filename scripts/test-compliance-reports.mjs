@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { asOfIssue, evaluatedDays, reportDateRange, sectionCompletion } from "../src/server/reports/calculations.ts";
 import { hasCorrectiveActionEvidence, hasCorrectiveActionOnDay } from "../src/server/compliance/corrective-action.ts";
+import { cleaningEvidenceStatus, cleaningIsScheduledForDate } from "../src/shared/cleaning-scheduling.ts";
+import { renderComplianceCsv } from "../src/server/reports/export.ts";
 import { currentMonthRange, last30DaysRange, previousMonthRange } from "../src/lib/compliance-reports.ts";
 
 const reportService = await readFile(new URL("../src/server/reports/service.ts", import.meta.url), "utf8");
@@ -33,6 +35,7 @@ assert.equal(sectionCompletion(days, "temperature_am", "2026-01-16").requiredDay
 assert.equal(sectionCompletion(days, "temperature_am", "2026-01-16").completedDays, 1, "AM temperature completion counted");
 assert.equal(sectionCompletion(days, "temperature_pm", "2026-01-16").incompleteDays, 0, "PM temperature completion counted");
 assert.equal(sectionCompletion(days, "temperature_am", "2025-12-31").completionRate, null, "no fake 100 percent");
+assert.equal(sectionCompletion([{ date: "2026-01-15", status: "green", complete: true, sections: { cleaning: null } }], "cleaning", "2026-01-15").requiredDays, 0, "not-verifiable cleaning is excluded from the required denominator");
 assert.equal(days[1].status, "red", "report consumes calendar status unchanged");
 assert.equal(days[1].correctiveActionRecorded, true, "corrective action day retained");
 
@@ -115,5 +118,22 @@ assert.equal(hasCorrectiveActionOnDay({ date: tuesday, timezone, ...resolutionOn
 assert.equal(hasCorrectiveActionOnDay({ date: monday, timezone, updates: [], checklistResponses: [], probes: [] }), false, "daily completion remains independent of corrective-action evidence");
 assert.equal(days[0].complete, true, "daily completion remains complete independently of corrective-action evidence");
 assert.equal({ result: "fail", temperature: 9.3 }.result, "fail", "original failed reading remains failed");
+
+for (const [store, timezone] of [["Blackpool", "Europe/London"], ["Bolton", "Europe/London"], ["Poulton", "Europe/London"], ["Rochdale", "Europe/London"]]) {
+  assert.equal(cleaningEvidenceStatus("after_use", [], "2026-07-15", timezone), "not_verifiable", `${store} after-use evidence remains neutral without usage data`);
+  assert.equal(cleaningIsScheduledForDate("weekly", [2, 4], "2026-07-14", timezone), true, `${store} configured weekly schedule uses its selected weekday`);
+}
+assert.equal(cleaningIsScheduledForDate("specific_days", [0], "2026-07-12", "America/New_York"), true, "location timezone is used for a specific-day schedule");
+assert.equal(cleaningEvidenceStatus("daily", [], "2026-03-29", "Europe/London"), "scheduled", "spring DST date remains scheduled");
+assert.equal(cleaningEvidenceStatus("daily", [], "2026-10-25", "Europe/London"), "scheduled", "autumn DST date remains scheduled");
+const notVerifiableCsv = renderComplianceCsv({
+  location: { name: "Store", timezone: "Europe/London" },
+  range: { start: "2026-07-15", end: "2026-07-15", timezone: "Europe/London" },
+  summary: { daysEvaluated: 1, completeDays: 1, incompleteDays: 0, correctiveActionDays: 0, daysWithTemperatureFailure: 0, daysWithProbeFailure: 0, completionRate: 1 },
+  sections: { cleaning: { requiredDays: 0, completedDays: 0, incompleteDays: 0, completionRate: null } },
+  days: [{ date: "2026-07-15", status: "green", complete: true, cleaningStatus: "not_verifiable", sections: { cleaning: null }, counts: {} }],
+  exceptions: [], issues: { openAtRangeEnd: 0, rows: [] }, additional: { rows: [] },
+}, "2026-07-16T12:00:00.000Z").toString("utf8");
+assert.match(notVerifiableCsv, /Not verifiable/, "exports distinguish after-use evidence from completed cleaning");
 
 console.log("Compliance report tests passed, including corrective-action evidence regressions");

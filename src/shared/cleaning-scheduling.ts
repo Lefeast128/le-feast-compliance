@@ -24,6 +24,28 @@ export function cleaningRunsOn(frequency: string, weekdays: unknown, weekday: nu
   return normalizeCleaningWeekdays(frequency, weekdays).includes(weekday);
 }
 
+export type CleaningEvidenceStatus = "scheduled" | "not_required" | "not_verifiable";
+
+export function localWeekdayForDate(dateKey: string, timeZone: string) {
+  const timestamp = Date.parse(`${dateKey}T12:00:00Z`);
+  const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(new Date(timestamp));
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+}
+
+/**
+ * After-use cleaning is operationally triggered by an observed use event.
+ * There is no usage record in the current model, so historical reports must
+ * keep it visible as not verifiable rather than treating it as missed.
+ */
+export function cleaningEvidenceStatus(frequency: string, weekdays: unknown, dateKey: string, timeZone: string): CleaningEvidenceStatus {
+  if (frequency === "after_use") return "not_verifiable";
+  return cleaningRunsOn(frequency, weekdays, localWeekdayForDate(dateKey, timeZone)) ? "scheduled" : "not_required";
+}
+
+export function cleaningIsScheduledForDate(frequency: string, weekdays: unknown, dateKey: string, timeZone: string) {
+  return cleaningEvidenceStatus(frequency, weekdays, dateKey, timeZone) === "scheduled";
+}
+
 export function cleaningWeekdayLabel(value: number) {
   return CLEANING_WEEKDAYS.find(day => day.value === value)?.label ?? `Day ${value}`;
 }
