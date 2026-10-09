@@ -522,9 +522,13 @@ export default function AdminStoreOverview({
                   <div>
                     <p className="font-semibold">
                       {index + 1}. {item.name}
-                      {item.centralItemId && (
+                      {item.centralItemId ? (
                         <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                           Organisation standard
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                          Store-only
                         </span>
                       )}
                     </p>
@@ -711,9 +715,13 @@ export default function AdminStoreOverview({
                       >
                         <span>
                           {item.question}
-                          {item.centralItemId && (
+                          {item.centralItemId ? (
                             <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                               Organisation standard
+                            </span>
+                          ) : (
+                            <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                              Store-only
                             </span>
                           )}
                         </span>
@@ -768,9 +776,13 @@ export default function AdminStoreOverview({
                   <div>
                     <p className="font-semibold">
                       {index + 1}. {item.title}
-                      {item.centralPublicationId && (
+                      {item.centralPublicationId ? (
                         <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                           Organisation standard
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                          Store-only
                         </span>
                       )}
                     </p>

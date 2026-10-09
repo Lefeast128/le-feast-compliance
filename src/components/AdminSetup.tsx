@@ -4,6 +4,7 @@ import AdminFeatureCards, {
   type AdminFeatureKey,
 } from "@/components/admin/AdminFeatureCards";
 import AdminStoreOverview from "@/components/admin/AdminStoreOverview";
+import { AdminScopeNotice } from "@/components/admin/AdminScopeNotice";
 import OrganisationAdmin from "@/components/OrganisationAdmin";
 import type {
   AdminLocation,
@@ -202,6 +203,13 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
               ))}
             </select>
           </label>
+        </div>
+        <div className="mt-5">
+          <AdminScopeNotice
+            scope="store"
+            title={`Store-only setup · ${selected?.location.name ?? "Selected store"}`}
+            detail="Changes here apply only to this store. Organisation standards are read-only and managed through Organisation Admin."
+          />
         </div>
         {isOrganisationAdmin && (
           <section className="mt-7 rounded-3xl border border-[#e5d77b] bg-[#fffdf1] p-5 shadow-[0_4px_16px_rgba(23,25,24,0.03)]">

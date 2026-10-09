@@ -5,6 +5,8 @@ import OrganisationFeatureCards, {
 } from "@/components/admin/OrganisationFeatureCards";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
 import CleaningScheduleFields from "@/components/CleaningScheduleFields";
+import { AdminScopeNotice, AllocationImpact } from "@/components/admin/AdminScopeNotice";
+import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -621,6 +623,16 @@ export default function OrganisationAdmin({ onBack }: Props) {
       security_pm: "PM Security",
       additional: "Additional check",
     })[kind] ?? kind;
+  const scheduleLabel = (item: OperationalTask) => {
+    if (item.kind === "cleaning") return cleaningWeekdaySummary(item.frequency ?? "daily", item.weekdays);
+    if (item.kind !== "additional") return item.kind === "security_am" || item.kind === "security_pm" ? "Daily session" : "Daily checklist";
+    if (item.frequency === "weekly") return `Weekly · ${cleaningWeekdaySummary("weekly", item.weekdays)}`;
+    if (item.frequency === "every_x_weeks") return `Every ${item.interval ?? 1} week${item.interval === 1 ? "" : "s"}`;
+    if (item.frequency === "monthly") return `Monthly · day ${item.dayOfMonth ?? 1}`;
+    if (item.frequency === "every_x_months") return `Every ${item.interval ?? 1} month${item.interval === 1 ? "" : "s"}`;
+    if (item.frequency === "annual") return "Annual";
+    return "One-off";
+  };
 
   if (!data)
     return (
@@ -700,6 +712,13 @@ export default function OrganisationAdmin({ onBack }: Props) {
             Publish standards, manage access and review organisation activity
             across all stores.
           </p>
+          <div className="mt-5 max-w-2xl">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Central controls"
+              detail="Changes made here create or version organisation standards. Store Admin is for local setup only."
+            />
+          </div>
           <div className="mt-7">
             <OrganisationFeatureCards onSelect={setSection} />
           </div>
@@ -730,6 +749,11 @@ export default function OrganisationAdmin({ onBack }: Props) {
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-7 sm:px-8">
         {section === "training" && (
           <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Organisation-wide training standard"
+              detail="This publication is centrally managed for the stores selected below. Past acknowledgements and document history remain preserved."
+            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
@@ -836,6 +860,16 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   trainingStores,
                   setTrainingStores,
                 )}
+              </div>
+              <div className="md:col-span-2">
+                <AllocationImpact
+                  allStores={trainingAllStores}
+                  locationIds={selectedIds(trainingAllStores, trainingStores)}
+                  locations={stores}
+                  editing={Boolean(trainingEdit)}
+                  training
+                  reacknowledge={trainingReacknowledge}
+                />
               </div>
               {trainingEdit && trainingFormat === "briefing" && (
                 <label className="flex items-center gap-2 text-sm md:col-span-2">
@@ -961,6 +995,11 @@ export default function OrganisationAdmin({ onBack }: Props) {
         )}
         {section === "operational" && (
           <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Organisation-wide operational standard"
+              detail="Publish one versioned standard to every store or select specific stores. Store Admin cannot edit centrally controlled items."
+            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
@@ -999,6 +1038,22 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   </option>
                 </select>
               </label>
+              <div className="md:col-span-2">
+                {storePicker(
+                  taskAllStores,
+                  setTaskAllStores,
+                  taskStores,
+                  setTaskStores,
+                )}
+              </div>
+              <div className="md:col-span-2">
+                <AllocationImpact
+                  allStores={taskAllStores}
+                  locationIds={selectedIds(taskAllStores, taskStores)}
+                  locations={stores}
+                  editing={Boolean(taskEdit)}
+                />
+              </div>
               {(taskType === "opening" ||
                 taskType === "closing" ||
                 taskType.startsWith("security_")) && (
@@ -1525,7 +1580,12 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       {item.name ?? item.title ?? item.question}
                     </p>
                     <p className="text-xs text-[#727a74]">
-                      {taskLabel(item.kind)} · {item.stores.join(", ")}
+                      {taskLabel(item.kind)} · {scheduleLabel(item)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#89918b]">
+                      {item.allocationMode === "all"
+                        ? `All ${stores.length} stores`
+                        : item.stores.join(", ")}
                     </p>
                   </div>
                   <div className="flex gap-1">
