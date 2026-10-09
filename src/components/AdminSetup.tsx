@@ -106,7 +106,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
 
   if (!stores || (selectedLocationId && !currentStore)) {
     return (
-      <div className="min-h-screen bg-[#f6f7f5] p-8 text-sm text-[#727a74]">
+      <div className="min-h-screen bg-white p-8 text-sm text-[#727a74]">
         Loading store setup…
       </div>
     );
@@ -144,7 +144,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
       );
     }
     return (
-      <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+      <div className="min-h-screen bg-white text-[#171918]">
         <FeatureHeader
           title={featureTitles[feature]}
           storeName={currentStore.location.name}
@@ -164,7 +164,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <div>

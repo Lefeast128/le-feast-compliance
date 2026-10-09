@@ -491,7 +491,7 @@ export default function InlineChecklist({
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#171918]">
+    <div className="min-h-screen bg-white pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#171918]">
       <OperationalHeader
         title={title}
         eyebrow="Daily checklist"

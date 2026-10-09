@@ -115,6 +115,17 @@
 }
 
 @layer utilities {
+  /* Ordinary app surfaces stay bright white; status surfaces retain their semantic tones. */
+  .bg-\[\#f6f7f5\] { background-color: #ffffff; }
+  .bg-\[\#f6f7f5\]\/95 { background-color: rgb(255 255 255 / 0.95); }
+  .min-h-screen.bg-\[\#fffdf4\] { background-color: #ffffff; }
+  .bg-\[\#fff7dc\],
+  .bg-\[\#fff7c9\],
+  .bg-\[\#fff9df\] { background-color: rgb(253 222 86 / 0.18); }
+  .bg-\[\#fffdf4\],
+  .bg-\[\#fffdf1\] { background-color: rgb(253 222 86 / 0.10); }
+  .bg-\[\#fafbf9\],
+  .bg-\[\#fbfcfa\] { background-color: #ffffff; }
   /* Keep the compact signer line after the answer controls in expanded checklist items. */
   div:has(> .checklist-attribution) { display: flex; flex-direction: column; }
   div:has(> .checklist-attribution) > .checklist-attribution { order: 2; }

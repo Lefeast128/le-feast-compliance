@@ -1,10 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BookOpen, CalendarDays, Check, ChevronRight, ClipboardCheck, Coffee, GraduationCap, LogOut, Moon, RotateCcw, ShieldCheck, Sun, Thermometer, X } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays, Check, ChevronRight, ClipboardCheck, GraduationCap, Moon, RotateCcw, ShieldCheck, Sun, Thermometer, X } from "lucide-react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-
-export function Brand() {
-  return <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-yellow text-[#171717]"><Coffee className="size-5" /></div><div className="min-w-0"><p className="truncate text-[13px] font-semibold tracking-tight sm:text-[15px]">Your Daily Checks</p><p className="hidden text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74] sm:block">Internal compliance workspace</p></div></div>;
-}
 
 export function Top({ title, onBack }: { title: string; onBack: () => void }) {
   return <header className="border-b border-black/[0.07] bg-white"><div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4"><Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="size-5" /></Button><p className="font-semibold">{title}</p></div></header>;
@@ -27,11 +23,7 @@ export function EntryCard({ title, status, complete, action, onClick }: { title:
   const isMorning = lowerTitle.includes("opening") || lowerTitle.includes("am security");
   const isEvening = lowerTitle.includes("closing") || lowerTitle.includes("pm security");
   const StatusIcon = isMorning ? Sun : isEvening ? Moon : Thermometer;
-  return <div className={`rounded-2xl border p-5 sm:p-6 ${complete ? "border-[#cfe3d5] bg-[#fbfefb]" : "border-black/[0.07] bg-white"}`}><div className="flex items-start gap-4"><div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${complete ? "bg-[#e4f2e8] text-[#2d7951]" : "bg-[#fff7dc] text-[#8a6b12]"}`}>{complete ? <Check className="size-5" /> : <StatusIcon className="size-5" />}</div><div><p className="text-lg font-semibold">{title}</p><p className={`mt-1 text-sm ${complete ? "text-[#2d7951]" : "text-[#727a74]"}`}>{status}</p></div></div><Button className={`mt-5 h-12 w-full font-semibold ${complete ? "bg-white text-[#202522] ring-1 ring-black/[0.1] hover:bg-[#f6f7f5]" : "bg-brand-yellow text-[#171717] hover:bg-brand-yellow"}`} onClick={onClick}>{complete ? "View readings" : action}<ChevronRight className="ml-2 size-4" /></Button></div>;
-}
-
-export function Header({ onLogout }: { onLogout: () => void | Promise<void> }) {
-  return <header className="sticky top-0 z-20 border-b border-black/[0.07] bg-[#f6f7f5]/95 backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-8"><Brand /><Button variant="ghost" size="icon" className="shrink-0" onClick={onLogout} aria-label="Log out" title="Log out"><LogOut className="size-4" /></Button></div></header>;
+  return <div className={`rounded-2xl border p-5 sm:p-6 ${complete ? "border-[#cfe3d5] bg-[#fbfefb]" : "border-black/[0.07] bg-white"}`}><div className="flex items-start gap-4"><div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${complete ? "bg-[#e4f2e8] text-[#2d7951]" : "bg-brand-yellow/20 text-[#171717]"}`}>{complete ? <Check className="size-5" /> : <StatusIcon className="size-5" />}</div><div><p className="text-lg font-semibold">{title}</p><p className={`mt-1 text-sm ${complete ? "text-[#2d7951]" : "text-[#727a74]"}`}>{status}</p></div></div><Button className={`mt-5 h-12 w-full font-semibold ${complete ? "bg-white text-[#202522] ring-1 ring-black/[0.1] hover:bg-white" : "bg-brand-yellow text-[#171717] hover:bg-brand-yellow"}`} onClick={onClick}>{complete ? "View readings" : action}<ChevronRight className="ml-2 size-4" /></Button></div>;
 }
 
 export function BottomNavigation({ onToday, onCalendar, onTraining, onLibrary, onAdmin, canUseManagement, active = "today" }: { onToday: () => void; onCalendar: () => void; onTraining: () => void; onLibrary: () => void; onAdmin: () => void; canUseManagement: boolean; active?: "today" | "calendar" | "training" | "library" | "admin" }) {

@@ -22,9 +22,8 @@ import { formatDateKey } from "@/lib/date-key";
 import { getRoleCapabilities } from "@/lib/role-capabilities";
 import { useState } from "react";
 
-const dateLabel = (value = new Date()) => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(value);
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
-const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
+const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
 
 export default function Dashboard() {
   const { logout, user, memberships } = useAuth();
@@ -85,8 +84,8 @@ export default function Dashboard() {
     workflows.openWastage();
   };
 
-  if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
-  if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-[#f6f7f5] p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
+  if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
+  if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
 
   if (recordView) return <OperationalRecordsView {...recordView} dashboard={dashboard} onBack={() => setRecordView(null)} onAdd={recordView.kind === "probes" ? addProbeFromRecords : recordView.kind === "wastage" ? addWastageFromRecords : undefined} />;
   if (workflows.round && workflows.roundIssues.length) return <TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} roundTeamMemberId={workflows.roundCompleterId} setRoundCompleterId={workflows.setRoundCompleterId} submitting={workflows.roundSubmitting} onSaveActions={workflows.saveTemperatureActions} onCompleteRound={workflows.completeRecoveredTemperatureRound} onBack={() => { workflows.resetForLocation(); }} />;
@@ -109,8 +108,6 @@ export default function Dashboard() {
     canUseManagement: capabilities.canUseManagement,
     managerReviewStatus,
     onLogout: logout,
-    todayLabel: dateLabel(),
-    currentUserName: user?.name || user?.email || "Current user",
     renderTimestamp,
     viewTemperatureRecords,
     viewChecklistRecords,
@@ -135,5 +132,5 @@ export default function Dashboard() {
             : <AccessDenied />
           : <DashboardToday {...todayProps} />;
   const activeNavigation = view === "calendar" || view === "training" || view === "library" || view === "admin" ? view : "today";
-  return <div className="min-h-screen bg-[#f6f7f5] pb-[calc(6.5rem+env(safe-area-inset-bottom))]">{mainView}<BottomNavigation onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
+  return <div className="min-h-screen bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))]">{mainView}<BottomNavigation onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
 }

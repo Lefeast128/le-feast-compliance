@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { DailyTaskCard } from "@/components/dashboard/DailyTaskCard";
 import type { DailyTaskModel } from "@/components/dashboard/daily-checks-model";
-import { CheckCircle2, ChevronRight, Plus, AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, LogOut, Plus } from "lucide-react";
 import type { DashboardIssue, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
 
 const reviewStatusLabel = (period: ManagerReviewStatus["periods"]["weekly"]) =>
@@ -19,9 +19,6 @@ const reviewTone = (period: ManagerReviewStatus["periods"]["weekly"]) =>
   period.status === "complete" || period.status === "up_to_date" ? "text-[#2d7951]" : period.status === "overdue" ? "text-[#a13f34]" : "text-[#8a6b12]";
 
 export function DailyChecksJourney({
-  locationName,
-  todayLabel,
-  currentUserName,
   completed,
   total,
   progressPercent,
@@ -34,10 +31,8 @@ export function DailyChecksJourney({
   openIssues,
   onIssueSelected,
   onReportIssue,
+  onLogout,
 }: {
-  locationName: string;
-  todayLabel: string;
-  currentUserName: string;
   completed: number;
   total: number;
   progressPercent: number;
@@ -50,20 +45,12 @@ export function DailyChecksJourney({
   openIssues: DashboardIssue[];
   onIssueSelected: (issue: DashboardIssue) => void;
   onReportIssue: () => void;
+  onLogout: () => void | Promise<void>;
 }) {
   const additionalTask = tasks.find((task) => task.id === "additional-checks");
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6 sm:px-8 sm:py-10">
-      <div className="mb-7 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
-        <div>
-          <p className="text-sm font-medium text-[#7b827d]">{todayLabel}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.05em]">{locationName}</h1>
-          <p className="mt-2 text-sm text-[#727a74]">{currentUserName}</p>
-        </div>
-        <span className="w-fit rounded-full bg-white px-3 py-2 text-xs font-semibold text-[#727a74] shadow-[0_3px_12px_rgba(23,25,24,0.04)]">Daily compliance journey</span>
-      </div>
-
+    <main className="mx-auto max-w-3xl px-4 pb-6 pt-4 sm:px-8 sm:pb-10 sm:pt-8">
       <section className="rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_6px_22px_rgba(23,25,24,0.05)] sm:p-7" aria-labelledby="todays-checks-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -152,6 +139,12 @@ export function DailyChecksJourney({
           </Button>
         </div>
       </section>
+
+      <div className="mt-8 flex justify-end border-t border-black/[0.07] pt-4">
+        <Button variant="ghost" size="sm" className="text-[#59625c] hover:bg-brand-yellow/15 hover:text-[#171918]" onClick={() => void onLogout()} aria-label="Sign out">
+          <LogOut className="mr-2 size-4" /> Sign out
+        </Button>
+      </div>
     </main>
   );
 }

@@ -23,7 +23,6 @@ import {
   buildWastagePayload,
   type WastagePickerProduct,
 } from "@/lib/wastage-picker";
-import { Header } from "@/components/dashboard/DashboardPrimitives";
 import { cleaningProgress } from "@/lib/cleaning-checklist";
 import type { Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
@@ -35,8 +34,6 @@ export type DashboardTodayProps = {
   canUseManagement: boolean;
   managerReviewStatus?: ManagerReviewStatus | null;
   onLogout: () => void | Promise<void>;
-  todayLabel: string;
-  currentUserName: string;
   renderTimestamp: number;
   requiredComplete: number;
   equipment: Equipment[];
@@ -102,8 +99,6 @@ export default function DashboardToday({
   canUseManagement,
   managerReviewStatus,
   onLogout,
-  todayLabel,
-  currentUserName,
   renderTimestamp,
   requiredComplete,
   equipment,
@@ -247,12 +242,8 @@ export default function DashboardToday({
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f6f7f5] pb-24 text-[#171918]">
-      <Header onLogout={onLogout} />
+    <div className="min-h-screen overflow-x-hidden bg-white pb-24 text-[#171918]">
       <DailyChecksJourney
-        locationName={dashboard.location.name}
-        todayLabel={todayLabel}
-        currentUserName={currentUserName}
         completed={requiredComplete}
         total={6}
         progressPercent={getProgressPercent(requiredComplete, 6)}
@@ -265,6 +256,7 @@ export default function DashboardToday({
         openIssues={openIssues}
         onIssueSelected={setIssueSelected}
         onReportIssue={() => setIssueOpen(true)}
+        onLogout={onLogout}
       />
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>

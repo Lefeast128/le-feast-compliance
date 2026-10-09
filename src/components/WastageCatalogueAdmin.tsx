@@ -114,7 +114,7 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
     }
   }
 
-  return <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+  return <div className="min-h-screen bg-white text-[#171918]">
     <header className="border-b border-black/[0.07] bg-white">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-8 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3"><Button variant="outline" size="icon" onClick={onClose} aria-label="Back to admin setup"><ArrowLeft className="size-4" /></Button><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Admin setup</p><h1 className="mt-1 text-2xl font-semibold">Wastage catalogue</h1></div></div>

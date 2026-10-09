@@ -134,7 +134,7 @@ export default function TrainingView({
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
           <Button variant="ghost" size="icon" onClick={onBack}>

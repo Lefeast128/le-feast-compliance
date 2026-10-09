@@ -76,7 +76,7 @@ export function StaffAttributionLine({
   const [pickerOpen, setPickerOpen] = useState(false);
   const memberName = teamMembers.find((member) => member._id === value)?.name ?? "Not selected";
   return (
-    <div className={`rounded-xl border border-black/[0.06] bg-[#f6f7f5] px-3 py-2 ${className}`}>
+    <div className={`rounded-xl border border-black/[0.06] bg-white px-3 py-2 ${className}`}>
       <div className="flex items-center justify-between gap-3 text-xs text-[#59625c]">
         <span className="min-w-0 truncate">Signed by: <strong className={value ? "font-semibold text-[#303631]" : "font-semibold text-[#8f3a31]"}>{memberName}</strong></span>
         <button

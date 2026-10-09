@@ -84,7 +84,7 @@ export default function MobileDayView({ location, date, archive, onBack }: any) 
   const dayIssues = issues.filter((issue: any) => dayIssueIds.has(issue.id));
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5]">
+    <div className="min-h-screen bg-white">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-4">
           <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to calendar"><ArrowLeft className="size-5" /></Button>
@@ -100,7 +100,7 @@ export default function MobileDayView({ location, date, archive, onBack }: any) 
         <section className="mt-7 rounded-2xl border border-black/[0.07] bg-white p-5">
           <div className="flex items-center justify-between gap-3">
             <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#89918b]">Day summary</p><h2 className="mt-1 text-lg font-semibold">{summaryLabel}</h2>{summary?.correctiveActionRecorded && <p className="mt-2 text-sm font-semibold text-[#8a6513]">Corrective action recorded</p>}{summary?.afterUseCleaningStatus === "recorded" && <p className="mt-2 text-sm font-semibold text-[#216c45]">Cleaning recorded</p>}{(summary?.afterUseCleaningStatus === "not_verifiable" || summary?.cleaningStatus === "not_verifiable") && <p className="mt-2 text-sm font-semibold text-[#8a6513]">Usage requirement: Not verifiable</p>}{summary?.cleaningStatus === "not_required" && <p className="mt-2 text-sm text-[#89918b]">No cleaning scheduled</p>}</div>
-            {summary?.complete ? <CheckCircle2 className="size-5 text-[#2d7951]" /> : <span className="rounded-full bg-[#f6f7f5] px-3 py-1 text-xs font-semibold text-[#727a74]">Evidence recorded</span>}
+            {summary?.complete ? <CheckCircle2 className="size-5 text-[#2d7951]" /> : <span className="rounded-full border border-black/[0.07] bg-white px-3 py-1 text-xs font-semibold text-[#727a74]">Evidence recorded</span>}
           </div>
           {summary?.carriedOpenIssueCount ? <p className="mt-3 text-sm text-[#8f3a31]">{summary.carriedOpenIssueCount} open issue{summary.carriedOpenIssueCount === 1 ? "" : "s"} carried into this day.</p> : null}
           <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#727a74] sm:grid-cols-4">

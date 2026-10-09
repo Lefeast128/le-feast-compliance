@@ -14,7 +14,7 @@ function TaskIcon({ icon }: { icon: DailyTaskIcon }) {
 
 const statusStyles: Record<DailyTaskStatus, string> = {
   "not-started": "border-black/[0.08] bg-white",
-  "in-progress": "border-[#ead797] bg-[#fffdf4]",
+  "in-progress": "border-brand-yellow/60 bg-brand-yellow/10",
   completed: "border-[#cfe3d5] bg-[#fbfefb]",
   "completed-attention": "border-[#efc8c3] bg-[#fff8f6]",
   "due-later": "border-black/[0.06] bg-[#fbfcfa] opacity-80",
@@ -24,12 +24,12 @@ const statusStyles: Record<DailyTaskStatus, string> = {
 
 const markerStyles: Record<DailyTaskStatus, string> = {
   "not-started": "border-[#d9dcd7] bg-white text-[#7b827d]",
-  "in-progress": "border-[#e1c451] bg-[#fff7dc] text-[#8a6b12]",
+  "in-progress": "border-brand-yellow/70 bg-brand-yellow/20 text-[#5d4a00]",
   completed: "border-[#b9d6c2] bg-[#e4f2e8] text-[#2d7951]",
   "completed-attention": "border-[#e5aaa2] bg-[#fff0ed] text-[#a13f34]",
   "due-later": "border-[#dfe3dd] bg-[#f1f2ef] text-[#89918b]",
   attention: "border-[#e5aaa2] bg-[#fff0ed] text-[#a13f34]",
-  "not-scheduled": "border-[#e2e5e1] bg-[#f1f2ef] text-[#89918b]",
+  "not-scheduled": "border-[#e2e5e1] bg-white text-[#89918b]",
 };
 
 export function DailyTaskCard({

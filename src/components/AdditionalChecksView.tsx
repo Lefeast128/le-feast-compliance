@@ -76,7 +76,7 @@ export default function AdditionalChecksView({
     }
   }
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <OperationalHeader
         title="Additional Checks"
         eyebrow="Recurring compliance"

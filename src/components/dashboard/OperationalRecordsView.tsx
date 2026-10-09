@@ -90,7 +90,7 @@ export default function OperationalRecordsView({ kind, session, checklist, dashb
           : [];
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] pb-[calc(2rem+env(safe-area-inset-bottom))] text-[#171918]">
+    <div className="min-h-screen bg-white pb-[calc(2rem+env(safe-area-inset-bottom))] text-[#171918]">
       <OperationalHeader title={title} eyebrow="Recorded evidence" date={recordDate(evidenceDates)} subtitle={`${dashboard.location.name} · Read-only records`} onBack={onBack} />
       <main className="mx-auto max-w-2xl space-y-3 px-4 py-7 sm:px-6">
         <div className="rounded-2xl border border-[#cfe3d5] bg-[#fbfefb] p-5">

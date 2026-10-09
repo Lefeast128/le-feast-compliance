@@ -588,7 +588,7 @@ export default function ComplianceReports({
   };
 
   return (
-    <div className={`min-h-screen bg-[#f6f7f5] text-[#171918] ${activeTab === "pack" ? "inspection-print-root" : ""}`}>
+    <div className={`min-h-screen bg-white text-[#171918] ${activeTab === "pack" ? "inspection-print-root" : ""}`}>
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <div>

@@ -131,7 +131,7 @@ export default function ManagerReviews({ locationId, locations, onBack, onOpenDa
     ["History", "review-history"],
   ] as const;
 
-  return <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+  return <div className="min-h-screen bg-white text-[#171918]">
     <header className="border-b border-black/[0.07] bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8"><div><p className="text-[15px] font-semibold">Issues &amp; Reviews</p><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#737a74]">Manager controls</p></div><Button variant="outline" onClick={onBack}><ArrowLeft className="mr-2 size-4" /> Back to setup</Button></div></header>
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-8">
       <section className="rounded-2xl border border-black/[0.07] bg-white p-5"><label className="text-sm font-semibold">Store<select value={activeLocationId} onChange={event => { setActiveLocationId(event.target.value); setRevision(value => value + 1); setWeeklyNotes({}); }} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3 sm:w-80">{locations.map(location => <option key={locationIdOf(location)} value={locationIdOf(location)}>{location.name}</option>)}</select></label></section>

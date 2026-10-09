@@ -169,7 +169,7 @@ export function ChecklistScreen({
   onBack,
 }: ChecklistScreenProps) {
   return (
-    <div className="min-h-screen bg-[#f6f7f5]">
+    <div className="min-h-screen bg-white">
       <OperationalHeader
         title={title}
         eyebrow="Daily checks"
@@ -302,7 +302,7 @@ export function SecurityScreen({
     }
   }
   return (
-    <div className="min-h-screen bg-[#f6f7f5]">
+    <div className="min-h-screen bg-white">
       <OperationalHeader
         title={`${session} Security Check`}
         eyebrow="Daily checks"
