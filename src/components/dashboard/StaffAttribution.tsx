@@ -21,7 +21,7 @@ export function ActiveStaffControl({
   return (
     <section className="rounded-2xl border border-black/[0.07] bg-white p-4 shadow-[0_4px_16px_rgba(23,25,24,0.04)]" aria-label={label}>
       <div className="flex items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#fff7c9] text-[#796513]">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-yellow/20 text-[#171717]">
           <UserRound className="size-5" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
@@ -37,7 +37,7 @@ export function ActiveStaffControl({
             role="radio"
             aria-checked={value === member._id}
             onClick={() => onChange(member._id)}
-            className={`min-h-10 rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow ${value === member._id ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#303631] hover:bg-[#fffdf4]"}`}
+            className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow ${value === member._id ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#303631] hover:bg-brand-yellow/10"}`}
           >
             {member.name}
           </button>

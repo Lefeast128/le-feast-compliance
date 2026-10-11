@@ -65,21 +65,6 @@ export function DailyChecksJourney({
         </div>
       </section>
 
-      {canUseManagement && (
-        <section className="mt-5 rounded-2xl border border-[#ead797] bg-[#fffdf4] p-4 sm:p-5" aria-label="Manager reviews">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Manager reviews</p>
-              <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2 sm:gap-x-6">
-                <p>Weekly review <span className={`ml-2 font-semibold ${managerReviewStatus ? reviewTone(managerReviewStatus.periods.weekly) : "text-[#727a74]"}`}>{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.weekly) : "Loading…"}</span></p>
-                <p>4-week review <span className={`ml-2 font-semibold ${managerReviewStatus ? reviewTone(managerReviewStatus.periods.four_weekly) : "text-[#727a74]"}`}>{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.four_weekly) : "Loading…"}</span></p>
-              </div>
-            </div>
-            <Button variant="outline" onClick={onManagerReviews}>Open reviews <ChevronRight className="ml-2 size-4" /></Button>
-          </div>
-        </section>
-      )}
-
       <section className="mt-8" aria-labelledby="daily-journey-heading">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
@@ -139,6 +124,21 @@ export function DailyChecksJourney({
           </Button>
         </div>
       </section>
+
+      {canUseManagement && (
+        <section className="mt-8 rounded-2xl border border-[#ead797] bg-brand-yellow/10 p-4 sm:p-5" aria-label="Manager reviews">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Manager reviews</p>
+              <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2 sm:gap-x-6">
+                <p>Weekly review <span className={`ml-2 font-semibold ${managerReviewStatus ? reviewTone(managerReviewStatus.periods.weekly) : "text-[#727a74]"}`}>{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.weekly) : "Loading…"}</span></p>
+                <p>4-week review <span className={`ml-2 font-semibold ${managerReviewStatus ? reviewTone(managerReviewStatus.periods.four_weekly) : "text-[#727a74]"}`}>{managerReviewStatus ? reviewStatusLabel(managerReviewStatus.periods.four_weekly) : "Loading…"}</span></p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={onManagerReviews}>Open reviews <ChevronRight className="ml-2 size-4" /></Button>
+          </div>
+        </section>
+      )}
 
       <div className="mt-8 flex justify-end border-t border-black/[0.07] pt-4">
         <Button variant="ghost" size="sm" className="text-[#59625c] hover:bg-brand-yellow/15 hover:text-[#171918]" onClick={() => void onLogout()} aria-label="Sign out">

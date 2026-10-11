@@ -105,6 +105,13 @@ assert.match(headerSource, /of \{progress\.total\} \{progressLabel\}/, "header s
 assert.match(headerSource, /env\(safe-area-inset-top\)/, "focused headers respect the safe-area inset");
 assert.match(headerSource, /break-words text-lg font-bold/, "long checklist titles wrap without clipping");
 assert.doesNotMatch(headerSource, /truncate text-sm font-semibold/, "checklist title is no longer truncated into the date");
+assert.match(checklistSource, /flex min-h-16 flex-wrap/, "checklist rows wrap question content on narrow screens");
+assert.match(checklistSource, /block break-words text-sm font-semibold/, "question text wraps without clipping");
+assert.match(checklistSource, /grid w-full basis-full grid-cols-2 gap-2 pl-11/, "question actions sit below the question on mobile");
+assert.match(checklistSource, /className="h-11 rounded-xl/, "question actions meet the touch target size");
+const managerReviewsPosition = journeySource.indexOf('aria-label="Manager reviews"');
+const issuesPosition = journeySource.indexOf('aria-labelledby="issues-heading"');
+assert.ok(managerReviewsPosition > issuesPosition, "Manager reviews follow the daily journey and attention area");
 assert.match(recordsSource, /structuredTaskResponses/, "record views include structured responses");
 assert.match(recordsSource, /equipmentName \?\? equipment\?\.name/, "temperature records prefer stored equipment names");
 assert.match(recordsSource, /No response evidence available\./, "record views do not fabricate missing answers");

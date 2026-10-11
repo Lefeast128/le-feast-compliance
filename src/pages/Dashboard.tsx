@@ -123,14 +123,14 @@ export default function Dashboard() {
   const mainView = view === "calendar"
     ? <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />
     : view === "training"
-      ? <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("today")} />
+        ? <TrainingView locationName={dashboard.location.name} requirements={workflows.active?.trainingRequirements ?? []} completions={workflows.active?.trainingCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeTraining} onBack={() => setView("library")} />
       : view === "library"
-        ? <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => setView("today")} />
+        ? <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => setView("today")} onOpenTraining={() => setView("training")} />
         : view === "admin"
           ? capabilities.canUseManagement
             ? <AdminSetup onBack={() => setView("today")} onOpenDay={(date, reportLocationId) => { switchLocation(reportLocationId); setSelectedDay(date); setView("day"); }} />
             : <AccessDenied />
           : <DashboardToday {...todayProps} />;
-  const activeNavigation = view === "calendar" || view === "training" || view === "library" || view === "admin" ? view : "today";
-  return <div className="min-h-screen bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))]">{mainView}<BottomNavigation onToday={() => setView("today")} onCalendar={() => setView("calendar")} onTraining={() => setView("training")} onLibrary={() => setView("library")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
+  const activeNavigation = view === "training" ? "library" : view === "calendar" || view === "library" || view === "admin" ? view : "today";
+  return <div className="min-h-screen bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))]">{mainView}<BottomNavigation onToday={() => setView("today")} onLibrary={() => setView("library")} onCalendar={() => setView("calendar")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
 }

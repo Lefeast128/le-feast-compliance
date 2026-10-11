@@ -245,7 +245,7 @@ export default function StructuredTaskWorkflow({
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <OperationalHeader
         title={areaLabel}
         eyebrow="Operational checks"

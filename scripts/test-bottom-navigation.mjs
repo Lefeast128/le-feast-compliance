@@ -10,10 +10,11 @@ const taskCard = await readFile(new URL("../src/components/dashboard/DailyTaskCa
 const workflows = await readFile(new URL("../src/components/dashboard/DashboardWorkflowScreens.tsx", import.meta.url), "utf8");
 const taskIssueModal = await readFile(new URL("../src/components/TaskIssueModal.tsx", import.meta.url), "utf8");
 
-for (const label of ["Daily Checks", "Calendar", "Training", "Library", "Admin"]) {
+for (const label of ["Daily Checks", "Library", "Calendar", "Admin"]) {
   assert.match(primitives, new RegExp(label), `${label} destination is preserved`);
 }
-assert.match(primitives, /items\.length === 4 \? "grid-cols-4" : "grid-cols-5"/, "four- and five-tab layouts are supported");
+assert.doesNotMatch(primitives, /Training.*GraduationCap/, "Training is no longer an independent tab");
+assert.match(primitives, /items\.length === 4 \? "grid-cols-4" : "grid-cols-3"/, "three- and four-tab layouts are supported");
 assert.match(primitives, /activeIndex = .*findIndex/, "active tab is resolved to a stable position");
 assert.match(primitives, /translateX\(\$\{activeIndex \* 100\}%\)/, "selection capsule moves using a transform");
 assert.match(primitives, /transition-transform duration-300 ease-\[cubic-bezier\(0\.22,1,0\.36,1\)\]/, "selection capsule uses a spring-like transition");
@@ -22,6 +23,7 @@ assert.match(primitives, /active:scale-\[0\.94\]/, "tabs provide touch feedback"
 assert.match(primitives, /aria-current=\{active === key \? "page" : undefined\}/, "current tab is announced semantically");
 assert.match(primitives, /focus-visible:ring-2/, "keyboard focus remains visible");
 assert.match(primitives, /safe-area-inset-bottom/, "navigation respects the bottom safe area");
+assert.match(primitives, /print:hidden/, "navigation is hidden from printable inspection packs");
 assert.match(primitives, /backdrop-blur-\[32px\]/, "navigation uses strengthened translucent blur treatment");
 assert.match(primitives, /backdrop-saturate-150/, "navigation increases glass saturation");
 assert.match(primitives, /bg-white\/\[0\.78\]/, "navigation has a readable fallback glass surface");
@@ -35,7 +37,9 @@ assert.match(taskIssueModal, /fixed inset-0 z-30/, "issue reporting overlay also
 assert.match(today, /onClose=\{\(\) => \{[\s\S]*setProbeOpen\(false\)/, "probe dismissal restores the main navigation state");
 assert.equal((dashboard.match(/<BottomNavigation /g) ?? []).length, 1, "Dashboard owns one persistent navigation bar");
 assert.match(dashboard, /const mainView = view === "calendar"/, "main destinations share a parent shell");
-assert.match(dashboard, /activeNavigation = view === "calendar" \|\| view === "training" \|\| view === "library" \|\| view === "admin"/, "main tab active state follows the current view");
+assert.match(dashboard, /activeNavigation = view === "training" \? "library" : view === "calendar" \|\| view === "library" \|\| view === "admin"/, "Training keeps the Library tab active");
+assert.match(dashboard, /onOpenTraining=\{\(\) => setView\("training"\)\}/, "Library opens the preserved Training experience");
+assert.match(dashboard, /onBack=\{\(\) => setView\("library"\)\}/, "Training returns to Library");
 assert.doesNotMatch(today, /<BottomNavigation /, "Daily Checks does not mount a duplicate navigation bar");
 assert.doesNotMatch(library, /<BottomNavigation /, "Library does not mount a duplicate navigation bar");
 assert.match(dashboard, /if \(workflows\.round/, "focused temperature workflows remain outside the main navigation shell");
