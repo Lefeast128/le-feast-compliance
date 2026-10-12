@@ -844,7 +844,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   )}
                   <PdfDropzone onFile={setTrainingFile} />
                   <span className="mt-2 block text-xs font-normal text-[#89918b]">
-                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 75 MB" : "Required for Document / PDF training · PDF · Maximum 75 MB"}
+                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 100 MB" : "Required for Document / PDF training · PDF · Maximum 100 MB"}
                   </span>
                   {trainingFile && <span className="mt-2 block text-xs text-[#727a74]">Selected: {trainingFile.name} · {(trainingFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
                 </div>

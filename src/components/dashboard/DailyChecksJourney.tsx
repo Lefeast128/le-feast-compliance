@@ -111,7 +111,7 @@ export function DailyChecksJourney({
         </section>
       )}
 
-      <section className="mt-8" aria-labelledby="issues-heading">
+      <section id="issues-section" className="mt-8" aria-labelledby="issues-heading">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Attention area</p>

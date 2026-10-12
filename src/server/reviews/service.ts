@@ -303,6 +303,14 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   for (const update of updates) {
     const issue = issueMap.get(update.issueId);
     if (!issue || (reviewType !== "weekly" && statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end) === "resolved")) throw new ApiError(422, "Issue update must reference an outstanding issue in the review period");
+    if (update.status === "resolved" && issue.category === "Temperature") {
+      const immediate = await db().select({ id: issueUpdates.id }).from(issueUpdates).where(and(eq(issueUpdates.issueId, issue.id), eq(issueUpdates.updateType, "immediate_action"))).limit(1);
+      if (!immediate.length) throw new ApiError(422, "Corrective action is required before resolution");
+    }
+    if (update.status === "resolved" && issue.category === "Probe") {
+      const passingRecheck = await db().select({ result: rechecks.result }).from(rechecks).where(eq(rechecks.issueId, issue.id));
+      if (!passingRecheck.some((row) => row.result === "pass")) throw new ApiError(422, "A passing probe recheck is required before resolution");
+    }
   }
   let seriousProblems: boolean | null = null;
   let details: string | null = null;

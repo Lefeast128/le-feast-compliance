@@ -68,6 +68,7 @@ export default function AdminStoreOverview({
   const [fridgeEditor, setFridgeEditor] = useState<FridgeEditorState | null>(
     null,
   );
+  const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null);
 
   const addQuestion = useRestMutation(restApi.admin.addChecklistQuestion);
   const updateQuestion = useRestMutation(restApi.admin.updateChecklistQuestion);
@@ -193,6 +194,16 @@ export default function AdminStoreOverview({
     if (kind === "question")
       await reorderQuestion({ questionId: id, direction });
     else await reorderWastage({ itemId: id, direction });
+  }
+
+  async function moveCleaningByDrag(fromId: string, toId: string) {
+    const from = store.cleaningTasks.findIndex((item) => item._id === fromId);
+    const to = store.cleaningTasks.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1) {
+      await reorderCleaning({ taskId: fromId, direction });
+    }
   }
 
   function openEditor(
@@ -517,8 +528,15 @@ export default function AdminStoreOverview({
               {store.cleaningTasks.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable={!item.centralItemId}
+                  onDragStart={() => setDraggedCleaningId(item._id)}
+                  onDragEnd={() => setDraggedCleaningId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => { if (draggedCleaningId && draggedCleaningId !== item._id && !item.centralItemId) void moveCleaningByDrag(draggedCleaningId, item._id); setDraggedCleaningId(null); }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedCleaningId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {!item.centralItemId && <button type="button" draggable aria-label={`Drag ${item.name} to reorder`} title="Drag to reorder" className="cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button>}
                   <div>
                     <p className="font-semibold">
                       {index + 1}. {item.name}
@@ -538,33 +556,15 @@ export default function AdminStoreOverview({
                         : cleaningWeekdaySummary(item.frequency, item.weekdays)}
                     </p>
                   </div>
+                  </div>
                   {item.centralItemId ? (
                     <span className="text-xs font-semibold text-[#477152]">
                       Organisation standard
                     </span>
                   ) : (
                     <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          reorderCleaning({ taskId: item._id, direction: "up" })
-                        }
-                      >
-                        <ChevronUp className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          reorderCleaning({
-                            taskId: item._id,
-                            direction: "down",
-                          })
-                        }
-                      >
-                        <ChevronDown className="size-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" aria-label={`Move ${item.name} up`} title="Move up (accessible alternative)" onClick={() => reorderCleaning({ taskId: item._id, direction: "up" })}><span aria-hidden="true">↑</span></Button>
+                      <Button variant="ghost" size="icon" aria-label={`Move ${item.name} down`} title="Move down (accessible alternative)" onClick={() => reorderCleaning({ taskId: item._id, direction: "down" })}><span aria-hidden="true">↓</span></Button>
                       <Button
                         variant="ghost"
                         size="icon"

@@ -351,11 +351,12 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     setSecurity(session); setSecurityIndex(index); setSecurityTeamMemberId(""); setSecurityIssue("");
   }
 
-  async function saveSecurity() {
-    if (!dashboard || !security || !currentSecurityQuestion || !securityTeamMemberId) return;
+  async function saveSecurity(teamMemberIdOverride?: string) {
+    const completingMemberId = teamMemberIdOverride || securityTeamMemberId;
+    if (!dashboard || !security || !currentSecurityQuestion || !completingMemberId) return;
     const last = securityIndex + 1 >= (currentSecurity?.length ?? 0);
-    await saveSecurityResponse({ locationId: dashboard.location._id, session: security, questionId: currentSecurityQuestion._id, issue: last ? securityIssue || undefined : undefined, teamMemberId: securityTeamMemberId });
-    if (last) { await signOffSecurity({ locationId: dashboard.location._id, session: security, teamMemberId: securityTeamMemberId }); toast.success(`${security} security check complete`); setSecurity(null); setSecurityTeamMemberId(""); }
+    await saveSecurityResponse({ locationId: dashboard.location._id, session: security, questionId: currentSecurityQuestion._id, issue: last ? securityIssue || undefined : undefined, teamMemberId: completingMemberId });
+    if (last) { await signOffSecurity({ locationId: dashboard.location._id, session: security, teamMemberId: completingMemberId }); toast.success(`${security} security check complete`); setSecurity(null); setSecurityTeamMemberId(""); }
     else setSecurityIndex(value => value + 1);
   }
 
@@ -403,6 +404,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
       await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId });
       toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
       setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({});
+      window.setTimeout(() => document.getElementById("issues-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
     } catch (error) {
       try {
         const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;

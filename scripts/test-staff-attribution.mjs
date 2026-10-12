@@ -34,7 +34,7 @@ assert.match(checklist, /saveStructured\(\{\s*locationId,\s*area: checklist,\s*t
 assert.match(checklist, /disabled=\{!memberFor\(task\._id\)\}/);
 assert.match(dashboardSource, /questionId, answer: "yes", teamMemberId/);
 assert.match(dashboardSource, /questionId: dashboard\.location\._id|questionId: currentSecurityQuestion\._id/);
-assert.match(dashboardSource, /teamMemberId: securityTeamMemberId/);
+assert.match(dashboardSource, /teamMemberId: completingMemberId/);
 assert.match(dashboardSource, /setSecurityTeamMemberId\(""\)/);
 
 assert.match(dashboardRepository, /teamMemberName: teamNames\.get\(row\.teamMemberId\)/);

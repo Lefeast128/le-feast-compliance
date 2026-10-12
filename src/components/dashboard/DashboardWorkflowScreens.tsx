@@ -258,6 +258,7 @@ export function ChecklistScreen({
 }
 
 type SecurityScreenProps = {
+  locationId: string;
   session: "AM" | "PM";
   question: string;
   index: number;
@@ -267,11 +268,12 @@ type SecurityScreenProps = {
   setTeamMemberId: Dispatch<SetStateAction<string>>;
   issue: string;
   setIssue: Dispatch<SetStateAction<string>>;
-  onSave: () => void | Promise<void>;
+  onSave: (teamMemberId?: string) => void | Promise<void>;
   onBack: () => void;
 };
 
 export function SecurityScreen({
+  locationId,
   session,
   question,
   index,
@@ -287,12 +289,14 @@ export function SecurityScreen({
   const last = index + 1 === total;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rememberedMemberId, setRememberedMemberId] = useActiveTeamMember(locationId, teamMembers);
+  const selectedMemberId = teamMemberId || rememberedMemberId;
   async function handleSave() {
     if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave();
+      await onSave(selectedMemberId || undefined);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "The answer could not be saved. Please try again.");
     } finally {
@@ -316,7 +320,7 @@ export function SecurityScreen({
         <h1 className="mt-5 text-3xl font-semibold leading-tight">
           {question}
         </h1>
-        <div className="mt-8"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing security check as" /></div>
+        <div className="mt-8"><ActiveStaffControl teamMembers={teamMembers} value={selectedMemberId} onChange={(value) => { setTeamMemberId(value); setRememberedMemberId(value); }} label="Completing security check as" /></div>
         {last && (
           <>
             <p className="mt-10 font-semibold">
@@ -344,7 +348,7 @@ export function SecurityScreen({
           aria-label={last ? "Complete security check" : "Save security answer"}
           className="mt-10 h-16 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
           onClick={() => void handleSave()}
-          disabled={saving || !teamMemberId}
+          disabled={saving || !selectedMemberId}
         >
           {saving ? "Saving…" : last ? "Complete security check" : "Save answer"}
           <Check className="ml-2 size-5" />

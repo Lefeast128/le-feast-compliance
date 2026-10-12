@@ -14,7 +14,7 @@ const storeTraining = await read("src/components/admin/AdminStoreOverview.tsx");
 const organisationTraining = await read("src/components/OrganisationAdmin.tsx");
 const pure = await read("src/server/documents/pure.ts");
 
-assert.equal(MAX_PDF_BYTES, 75 * 1024 * 1024);
+assert.equal(MAX_PDF_BYTES, 100 * 1024 * 1024);
 const pdf = new Uint8Array(11.6 * 1024 * 1024);
 pdf.set(new TextEncoder().encode("%PDF-1.7"));
 validatePdfBytesValue("application/pdf", pdf);
@@ -29,10 +29,10 @@ for (const [name, value, needles] of [
   ["upload route", uploadRoute, ["createUploadGrant", "handleMutation"]],
   ["finalize route", finalizeRoute, ["finalizeDocument", "handleMutation"]],
   ["cleanup route", cleanupRoute, ["cleanupUpload", "handleMutation"]],
-  ["documents API", api, ["put as putBlob", "/api/documents/upload-token", "/api/documents/finalize", "/api/documents/cleanup", "multipart", "This PDF is larger than the 75 MB maximum."]],
-  ["library admin", library, ["PDF · Maximum 75 MB", "Uploading PDF…", "documentsApi.upload"]],
+  ["documents API", api, ["put as putBlob", "/api/documents/upload-token", "/api/documents/finalize", "/api/documents/cleanup", "multipart", "This PDF is larger than the 100 MB maximum."]],
+  ["library admin", library, ["PDF · Maximum 100 MB", "Uploading PDF…", "documentsApi.upload"]],
   ["store training admin", storeTraining, ["documentsApi.upload"]],
-  ["organisation training admin", organisationTraining, ["PDF · Maximum 75 MB", "Uploading PDF…"]],
+  ["organisation training admin", organisationTraining, ["PDF · Maximum 100 MB", "Uploading PDF…"]],
   ["production-safe PDF module import", pure, ["../../lib/pdf-constants.js"]],
 ]) {
   for (const needle of needles) assert.ok(value.includes(needle), `${name} missing ${needle}`);
