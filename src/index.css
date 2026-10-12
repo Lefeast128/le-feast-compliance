@@ -121,11 +121,12 @@
   .min-h-screen.bg-\[\#fffdf4\] { background-color: #ffffff; }
   .bg-\[\#fff7dc\],
   .bg-\[\#fff7c9\],
-  .bg-\[\#fff9df\] { background-color: rgb(253 222 86 / 0.18); }
+  .bg-\[\#fff9df\] { background-color: rgb(255 222 86 / 0.18); }
   .bg-\[\#fffdf4\],
-  .bg-\[\#fffdf1\] { background-color: rgb(253 222 86 / 0.10); }
+  .bg-\[\#fffdf1\] { background-color: rgb(255 222 86 / 0.10); }
   .bg-\[\#fafbf9\],
-  .bg-\[\#fbfcfa\] { background-color: #ffffff; }
+  .bg-\[\#fbfcfa\],
+  .bg-\[\#f8f9f7\] { background-color: #ffffff; }
   /* Keep the compact signer line after the answer controls in expanded checklist items. */
   div:has(> .checklist-attribution) { display: flex; flex-direction: column; }
   div:has(> .checklist-attribution) > .checklist-attribution { order: 2; }

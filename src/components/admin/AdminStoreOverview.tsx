@@ -25,7 +25,7 @@ import type {
 } from "@/components/admin/admin-types";
 import { Button } from "@/components/ui/button";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
@@ -69,6 +69,8 @@ export default function AdminStoreOverview({
     null,
   );
   const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null);
+  const [draggedWastageId, setDraggedWastageId] = useState<string | null>(null);
+  const [draggedTrainingId, setDraggedTrainingId] = useState<string | null>(null);
 
   const addQuestion = useRestMutation(restApi.admin.addChecklistQuestion);
   const updateQuestion = useRestMutation(restApi.admin.updateChecklistQuestion);
@@ -204,6 +206,24 @@ export default function AdminStoreOverview({
     for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1) {
       await reorderCleaning({ taskId: fromId, direction });
     }
+  }
+
+  async function moveWastageByDrag(fromId: string, toId: string) {
+    const from = store.wastageItems.findIndex((item) => item._id === fromId);
+    const to = store.wastageItems.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1)
+      await reorderWastage({ itemId: fromId, direction });
+  }
+
+  async function moveTrainingByDrag(fromId: string, toId: string) {
+    const from = store.trainingRequirements.findIndex((item) => item._id === fromId);
+    const to = store.trainingRequirements.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1)
+      await reorderTraining({ requirementId: fromId, direction });
   }
 
   function openEditor(
@@ -643,25 +663,37 @@ export default function AdminStoreOverview({
               {store.wastageItems.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable
+                  onDragStart={() => setDraggedWastageId(item._id)}
+                  onDragEnd={() => setDraggedWastageId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedWastageId && draggedWastageId !== item._id) {
+                      void moveWastageByDrag(draggedWastageId, item._id);
+                    }
+                    setDraggedWastageId(null);
+                  }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedWastageId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
-                  <span className="font-semibold">
-                    {index + 1}. {item.name}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-3"><button type="button" draggable aria-label={`Drag ${item.name} to reorder`} title="Drag to reorder" className="cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button><span className="font-semibold">{index + 1}. {item.name}</span></div>
                   <div className="flex gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Move ${item.name} up`}
+                      title="Move up (accessible alternative)"
                       onClick={() => move("wastage", item._id, "up")}
                     >
-                      <ChevronUp className="size-4" />
+                      <span aria-hidden="true">↑</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Move ${item.name} down`}
+                      title="Move down (accessible alternative)"
                       onClick={() => move("wastage", item._id, "down")}
                     >
-                      <ChevronDown className="size-4" />
+                      <span aria-hidden="true">↓</span>
                     </Button>
                     <Button
                       variant="ghost"
@@ -771,9 +803,21 @@ export default function AdminStoreOverview({
               {store.trainingRequirements.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable={!item.centralPublicationId}
+                  onDragStart={() => !item.centralPublicationId && setDraggedTrainingId(item._id)}
+                  onDragEnd={() => setDraggedTrainingId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (!item.centralPublicationId && draggedTrainingId && draggedTrainingId !== item._id) {
+                      void moveTrainingByDrag(draggedTrainingId, item._id);
+                    }
+                    setDraggedTrainingId(null);
+                  }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedTrainingId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
-                  <div>
+                  <div className="flex min-w-0 items-start gap-3">
+                    {!item.centralPublicationId && <button type="button" draggable aria-label={`Drag ${item.title} to reorder`} title="Drag to reorder" className="mt-0.5 cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button>}
+                    <div>
                     <p className="font-semibold">
                       {index + 1}. {item.title}
                       {item.centralPublicationId ? (
@@ -790,6 +834,7 @@ export default function AdminStoreOverview({
                       {trainingCategoryLabels[item.category ?? "other"]} ·{" "}
                       {trainingAudienceLabels[item.audience ?? "all_team"]}
                     </p>
+                    </div>
                   </div>
                   {item.centralPublicationId ? (
                     <span className="text-xs font-semibold text-[#477152]">
@@ -800,6 +845,8 @@ export default function AdminStoreOverview({
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Move ${item.title} up`}
+                        title="Move up (accessible alternative)"
                         onClick={() =>
                           reorderTraining({
                             requirementId: item._id,
@@ -807,11 +854,13 @@ export default function AdminStoreOverview({
                           })
                         }
                       >
-                        <ChevronUp className="size-4" />
+                        <span aria-hidden="true">↑</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Move ${item.title} down`}
+                        title="Move down (accessible alternative)"
                         onClick={() =>
                           reorderTraining({
                             requirementId: item._id,
@@ -819,7 +868,7 @@ export default function AdminStoreOverview({
                           })
                         }
                       >
-                        <ChevronDown className="size-4" />
+                        <span aria-hidden="true">↓</span>
                       </Button>
                       <Button
                         variant="ghost"
