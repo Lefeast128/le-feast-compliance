@@ -32,6 +32,10 @@ export function DailyChecksJourney({
   onIssueSelected,
   onReportIssue,
   onLogout,
+  isOrganisationAdmin,
+  locations,
+  currentLocationId,
+  onLocationChange,
 }: {
   completed: number;
   total: number;
@@ -46,11 +50,23 @@ export function DailyChecksJourney({
   onIssueSelected: (issue: DashboardIssue) => void;
   onReportIssue: () => void;
   onLogout: () => void | Promise<void>;
+  isOrganisationAdmin?: boolean;
+  locations?: Array<{ _id: string; name: string }>;
+  currentLocationId?: string | null;
+  onLocationChange?: (locationId: string) => void;
 }) {
   const additionalTask = tasks.find((task) => task.id === "additional-checks");
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-6 pt-4 sm:px-8 sm:pb-10 sm:pt-8">
+      {isOrganisationAdmin && locations && locations.length > 1 && (
+        <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.08] bg-white p-3 shadow-[0_3px_12px_rgba(23,25,24,0.04)]">
+          <label htmlFor="operational-store" className="text-sm font-semibold text-[#303631]">Active store</label>
+          <select id="operational-store" value={currentLocationId ?? ""} onChange={(event) => onLocationChange?.(event.target.value)} className="h-11 min-w-0 max-w-[62%] rounded-xl border border-black/[0.1] bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-brand-yellow/60">
+            {locations.map((location) => <option key={location._id} value={location._id}>{location.name}</option>)}
+          </select>
+        </div>
+      )}
       <section className="rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_6px_22px_rgba(23,25,24,0.05)] sm:p-7" aria-labelledby="todays-checks-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>

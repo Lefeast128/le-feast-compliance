@@ -4,6 +4,7 @@ import OrganisationFeatureCards, {
   type OrganisationFeatureKey,
 } from "@/components/admin/OrganisationFeatureCards";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
+import { PdfDropzone } from "@/components/PdfDropzone";
 import CleaningScheduleFields from "@/components/CleaningScheduleFields";
 import { AdminScopeNotice, AllocationImpact } from "@/components/admin/AdminScopeNotice";
 import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
@@ -841,14 +842,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   {trainingEdit && existingTrainingPdfAttached && !trainingFile && (
                     <p className="mt-1 text-sm text-[#2d7951]">Current PDF attached</p>
                   )}
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(event) => setTrainingFile(event.target.files?.[0] ?? null)}
-                    className="mt-3 block w-full rounded-xl border border-black/[0.1] bg-white p-3 text-sm"
-                  />
+                  <PdfDropzone onFile={setTrainingFile} />
                   <span className="mt-2 block text-xs font-normal text-[#89918b]">
-                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 25 MB" : "Required for Document / PDF training · PDF · Maximum 25 MB"}
+                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 75 MB" : "Required for Document / PDF training · PDF · Maximum 75 MB"}
                   </span>
                   {trainingFile && <span className="mt-2 block text-xs text-[#727a74]">Selected: {trainingFile.name} · {(trainingFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
                 </div>

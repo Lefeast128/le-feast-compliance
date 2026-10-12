@@ -24,6 +24,7 @@ export type ReviewType = "weekly" | "four_weekly";
 export type ReviewPeriod = { reviewType: ReviewType; start: string; end: string };
 export type ReviewStatus = "complete" | "due" | "overdue" | "up_to_date";
 export type ReviewPeriodState = { reviewType: ReviewType; start: string | null; end: string | null; status: ReviewStatus; daysUntilDue: number; available: boolean; nextAvailableAfter: string | null };
+// Non-resolving review updates retain the canonical event: updateType: "manager_review".
 
 type IssueRow = typeof issues.$inferSelect;
 type IssueUpdateRow = typeof issueUpdates.$inferSelect;
@@ -282,7 +283,9 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   const updates = updatesInput.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError(400, `Issue update ${index + 1} is invalid`);
     const record = value as Record<string, unknown>;
-    return { issueId: requireUuid(record.issueId, "issueId"), note: requireString(record.note, "Current position / next action") };
+    const status = record.status === undefined ? undefined : record.status;
+    if (status !== undefined && status !== "open" && status !== "monitoring" && status !== "resolved") throw new ApiError(400, `Issue update ${index + 1} status is invalid`);
+    return { issueId: requireUuid(record.issueId, "issueId"), note: requireString(record.note, "Current position / next action"), status: status as "open" | "monitoring" | "resolved" | undefined };
   });
   const currentIssueRows = reviewType === "weekly" ? await db().select().from(issues).where(and(eq(issues.locationId, location.id), inArray(issues.status, ["open", "monitoring"]))) : [];
   const issueMap = new Map((reviewType === "weekly" ? currentIssueRows : scope.issueRows).map(issue => [issue.id, issue]));
@@ -318,7 +321,9 @@ export async function completeManagerReview(context: AuthContext, input: Record<
     for (const update of updates) {
       const issue = issueMap.get(update.issueId)!;
       const currentStatus = statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end);
-      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "manager_review", note: update.note, status: currentStatus as "open" | "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: null });
+      const nextStatus = update.status ?? currentStatus as "open" | "monitoring";
+      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: nextStatus === "resolved" ? "resolution" : "manager_review", note: update.note, status: nextStatus, createdAt: timestamp, createdBy: context.user.id, teamMemberId: null });
+      await tx.update(issues).set({ status: nextStatus, ...(nextStatus === "resolved" ? { resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: update.note } : {}) }).where(eq(issues.id, issue.id));
     }
     const [review] = await tx.insert(managerReviews).values({ locationId: location.id, reviewType, periodStart, periodEnd, completedAt: timestamp, completedBy: context.user.id, summary, seriousProblems, details, actionTaken, answers }).returning();
     await tx.insert(auditEvents).values({ locationId: location.id, userId: context.user.id, type: `${reviewType}_manager_review_completed`, detail: `${reviewType === "weekly" ? "Weekly" : "4-week"} manager review completed for ${periodStart} to ${periodEnd}`, createdAt: timestamp });

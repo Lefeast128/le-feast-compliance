@@ -119,6 +119,10 @@ export default function Dashboard() {
     additional,
     structuredTasks: workflows.active?.structuredTasks ?? [],
     onOpenStructuredTask: setStructuredTaskArea,
+    isOrganisationAdmin: capabilities.isOrganisationAdmin,
+    locations: locations ?? [],
+    currentLocationId,
+    onLocationChange: switchLocation,
   };
   const mainView = view === "calendar"
     ? <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />

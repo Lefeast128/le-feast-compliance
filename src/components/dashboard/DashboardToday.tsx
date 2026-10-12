@@ -90,6 +90,10 @@ export type DashboardTodayProps = {
   addIssueUpdate: (args: Record<string, unknown>) => Promise<unknown>;
   structuredTasks: StructuredTask[];
   onOpenStructuredTask: (area: StructuredTask["area"]) => void;
+  isOrganisationAdmin: boolean;
+  locations: Array<{ _id: string; name: string }>;
+  currentLocationId: string | null;
+  onLocationChange: (locationId: string) => void;
 };
 
 export default function DashboardToday({
@@ -153,6 +157,10 @@ export default function DashboardToday({
   addIssueUpdate,
   structuredTasks,
   onOpenStructuredTask,
+  isOrganisationAdmin,
+  locations,
+  currentLocationId,
+  onLocationChange,
 }: DashboardTodayProps) {
   const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
   const cleaningCompleted = cleaningProgress(
@@ -245,9 +253,9 @@ export default function DashboardToday({
     <div className="min-h-screen overflow-x-hidden bg-white pb-24 text-[#171918]">
       <DailyChecksJourney
         completed={requiredComplete}
-        total={6}
-        progressPercent={getProgressPercent(requiredComplete, 6)}
-        progressMessage={getProgressMessage(requiredComplete, 6)}
+        total={8}
+        progressPercent={getProgressPercent(requiredComplete, 8)}
+        progressMessage={getProgressMessage(requiredComplete, 8)}
         tasks={tasks}
         onTaskAction={taskAction}
         canUseManagement={canUseManagement}
@@ -257,12 +265,17 @@ export default function DashboardToday({
         onIssueSelected={setIssueSelected}
         onReportIssue={() => setIssueOpen(true)}
         onLogout={onLogout}
+        isOrganisationAdmin={isOrganisationAdmin}
+        locations={locations}
+        currentLocationId={currentLocationId}
+        onLocationChange={onLocationChange}
       />
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>
       )}
       {probeOpen && (
         <ProbeModal
+          locationId={dashboard.location._id}
           products={active.probeProducts}
           teamMembers={dashboard.teamMembers}
           product={probeProduct}
@@ -303,6 +316,11 @@ export default function DashboardToday({
           teamMembers={dashboard.teamMembers}
           onUpdate={async (args: Record<string, unknown>) => {
             await addIssueUpdate(args);
+            if (args.updateType === "resolution" || args.status === "resolved") {
+              setIssueSelected(null);
+              toast.success("Issue resolved");
+              return;
+            }
             const refreshed = dashboard.issues.find(
               (item) => item._id === issueSelected._id,
             );

@@ -137,7 +137,7 @@ export function buildManagerActionCentre(source: ManagerDashboardData, timestamp
 
   const unresolvedIssueIds = new Set(source.issues.filter(issue => issue.status !== "resolved").map(issue => issue._id));
   const issueByReading = new Set(source.issues.filter(issue => issue.status !== "resolved" && issue.sourceTemperatureReadingId).map(issue => issue.sourceTemperatureReadingId));
-  const failedTemperatures = source.readings.filter(reading => reading.result === "fail" && (issueByReading.has(reading._id) || source.issues.every(issue => issue.sourceTemperatureReadingId !== reading._id))).length;
+  const failedTemperatures = source.readings.filter(reading => reading.result === "fail" && issueByReading.has(reading._id)).length;
   const issueLinkedTaskIds = getIssueAttentionTaskIds({
     issues: source.issues.filter(issue => issue.status !== "resolved"),
     temperatureReadings: source.readings,

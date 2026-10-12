@@ -32,8 +32,8 @@ const base = {
 };
 
 const tasks = buildDailyTaskModels(base);
-assert.equal(tasks.filter((task) => task.required).length, 6, "required progress remains six checks");
-assert.equal(getProgressPercent(6, 6), 100, "required progress still reaches 100 percent");
+assert.equal(tasks.filter((task) => task.required).length, 8, "required progress includes probes and wastage");
+assert.equal(getProgressPercent(8, 8), 100, "required progress still reaches 100 percent");
 assert.equal(tasks.find((task) => task.id === "cleaning")?.detail, "Nothing due today");
 assert.equal(tasks.find((task) => task.id === "additional-checks")?.detail, "Nothing due today");
 

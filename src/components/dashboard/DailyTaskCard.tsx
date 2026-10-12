@@ -23,11 +23,11 @@ const statusStyles: Record<DailyTaskStatus, string> = {
 };
 
 const markerStyles: Record<DailyTaskStatus, string> = {
-  "not-started": "border-[#d9dcd7] bg-white text-[#7b827d]",
+  "not-started": "border-brand-yellow bg-brand-yellow text-[#171717]",
   "in-progress": "border-brand-yellow/70 bg-brand-yellow/20 text-[#5d4a00]",
   completed: "border-[#b9d6c2] bg-[#e4f2e8] text-[#2d7951]",
   "completed-attention": "border-[#e5aaa2] bg-[#fff0ed] text-[#a13f34]",
-  "due-later": "border-[#dfe3dd] bg-[#f1f2ef] text-[#89918b]",
+  "due-later": "border-brand-yellow/70 bg-brand-yellow/20 text-[#5d4a00]",
   attention: "border-[#e5aaa2] bg-[#fff0ed] text-[#a13f34]",
   "not-scheduled": "border-[#e2e5e1] bg-white text-[#89918b]",
 };
@@ -54,7 +54,7 @@ export function DailyTaskCard({
         className="group relative block min-h-[7.75rem] w-full rounded-3xl p-4 text-left outline-none transition-[transform,box-shadow,background-color] duration-200 hover:shadow-[0_8px_24px_rgba(23,25,24,0.08)] focus-visible:ring-2 focus-visible:ring-[#202522] focus-visible:ring-inset active:scale-[0.99] disabled:cursor-default disabled:hover:shadow-none disabled:active:scale-100 sm:min-h-[7.5rem] sm:p-5 motion-reduce:transition-none"
       >
         <div className="flex items-start gap-3 pr-8 sm:gap-4">
-          <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border ${optional ? "border-[#dfe3dd] bg-[#f1f2ef] text-[#89918b]" : markerStyles[task.status]}`} aria-hidden="true">
+          <div className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border ${optional ? "border-brand-yellow/70 bg-brand-yellow/20 text-[#5d4a00]" : markerStyles[task.status]}`} aria-hidden="true">
             <TaskIcon icon={task.icon} />
           </div>
           <div className="min-w-0 flex-1">

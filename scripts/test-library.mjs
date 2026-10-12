@@ -25,7 +25,7 @@ const checks = [
   [rest, ["/api/library?locationId=", "/api/admin/organisation/library"]],
   [reader, ["requireContext", "libraryDocumentForAccess", "Content-Disposition", "readLibraryDocument"]],
   [upload, ["library_document", "validatePdfBytes"]],
-  [admin, ["useRestQueryState", "Try again", "No documents have been published yet.", "PDF · Maximum 25 MB"]],
+  [admin, ["useRestQueryState", "Try again", "No documents have been published yet.", "PDF · Maximum 75 MB"]],
   [restState, ["RestQueryState", "loading: boolean", "error: Error | null", "retry: () => void"]],
 ];
 

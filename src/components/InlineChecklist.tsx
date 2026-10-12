@@ -26,6 +26,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
 
@@ -87,7 +88,7 @@ export default function InlineChecklist({
   const reportManualIssue = useRestMutation(
     restApi.compliance.createManualIssue,
   );
-  const [workflowMemberId, setWorkflowMemberId] = useState("");
+  const [workflowMemberId, setWorkflowMemberId] = useActiveTeamMember(locationId, teamMembers);
   const [overrides, setOverrides] = useState<MemberMap>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [issueDrafts, setIssueDrafts] = useState<Record<string, IssueDraft>>(

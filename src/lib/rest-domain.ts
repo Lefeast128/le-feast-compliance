@@ -190,7 +190,7 @@ export const documentsApi = {
   upload: async ({ locationId, file, data, filename, contentType, purpose, onUploadProgress }: AnyRecord) => {
     if (!file) return post("/api/documents/upload", { locationId, purpose, filename, contentType, data });
     if (file.type !== "application/pdf") throw new Error("Only PDF files are supported.");
-    if (file.size > MAX_PDF_BYTES) throw new Error("This PDF is larger than the 25 MB maximum.");
+    if (file.size > MAX_PDF_BYTES) throw new Error("This PDF is larger than the 75 MB maximum.");
     const grant = await post("/api/documents/upload-token", {
       locationId,
       purpose,

@@ -11,6 +11,7 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
 
@@ -63,7 +64,7 @@ export default function StructuredTaskWorkflow({
   const [members, setMembers] = useState<Record<string, string>>({});
   const [issues, setIssues] = useState<Record<string, IssueDraft>>({});
   const [issueOpen, setIssueOpen] = useState<string | null>(null);
-  const [activeMemberId, setActiveMemberId] = useState("");
+  const [activeMemberId, setActiveMemberId] = useActiveTeamMember(locationId, teamMembers);
   const [saving, setSaving] = useState<string | null>(null);
   const [completedAt, setCompletedAt] = useState<string | null>(null);
   const autoSignOffRef = useRef(false);

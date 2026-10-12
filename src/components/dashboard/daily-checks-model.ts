@@ -217,9 +217,9 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Record cooking temperatures when required.",
       detail: input.foodProbeCount ? `${input.foodProbeCount} recorded today` : "No readings recorded today",
       icon: "probe",
-      status: issueAttention("food-probes") ? getTaskStatus({ complete: false, attention: true }) : "not-started",
+      status: issueAttention("food-probes") ? getTaskStatus({ complete: false, attention: true }) : getTaskStatus({ complete: input.foodProbeCount > 0 }),
       actionLabel: "Record food probe",
-      required: false,
+      required: true,
     },
     {
       id: "cleaning",
@@ -271,9 +271,9 @@ export function buildDailyTaskModels(input: DailyChecksModelInput): DailyTaskMod
       description: "Record today's food wastage or confirm no waste.",
       detail: input.wastageCount ? `${input.wastageCount} records today` : "No records today",
       icon: "wastage",
-      status: "not-started",
+      status: getTaskStatus({ complete: input.wastageCount > 0 }),
       actionLabel: "Record wastage",
-      required: false,
+      required: true,
     },
     {
       id: "additional-checks",

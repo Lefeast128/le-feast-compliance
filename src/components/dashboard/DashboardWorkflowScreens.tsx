@@ -4,6 +4,7 @@ import {
   Choice,
   Modal,
   TemperatureInput,
+  NumericWheel,
 } from "@/components/dashboard/DashboardPrimitives";
 import type {
   ProbeProduct,
@@ -14,10 +15,12 @@ import { operationalDateLabel } from "@/lib/operational-date";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 
 type Answer = "yes" | "no" | "na" | null;
 
 type ProbeModalProps = {
+  locationId: string;
   products: ProbeProduct[];
   teamMembers: TeamMember[];
   product: string;
@@ -32,6 +35,7 @@ type ProbeModalProps = {
 };
 
 export function ProbeModal({
+  locationId,
   products,
   teamMembers,
   product,
@@ -48,7 +52,7 @@ export function ProbeModal({
   const minimum = selected?.minimumTemperature ?? 76;
   const holdMinutes = selected?.holdMinutes ?? 2;
   const currentlyFailed = Boolean(temperature) && Number(temperature) < minimum;
-  const [teamMemberId, setTeamMemberId] = useState("");
+  const [teamMemberId, setTeamMemberId] = useActiveTeamMember(locationId, teamMembers);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function handleSave() {
@@ -87,13 +91,7 @@ export function ProbeModal({
       </label>
       <label className="mt-4 block text-sm font-semibold">
         Quantity / batch
-        <Input
-          disabled={failed}
-          value={quantity}
-          onChange={(event) => setQuantity(event.target.value)}
-          className="mt-2 h-12"
-          placeholder="e.g. 20 sausages"
-        />
+        <NumericWheel value={quantity} setValue={setQuantity} min={1} max={100} label="Quantity or batch number" />
       </label>
       <label className="mt-4 block text-sm font-semibold">
         Core temperature

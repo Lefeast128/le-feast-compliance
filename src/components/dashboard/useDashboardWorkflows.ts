@@ -132,7 +132,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const closingComplete = structuredComplete("closing", active?.checklists.closing.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing")), (active?.checklists.closing.responses.length ?? 0) >= (active?.checklists.closing.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing"));
   const amSecurityComplete = structuredComplete("security_am", active?.securityResponses.AM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "AM")), (active?.securityResponses.AM.length ?? 0) >= (active?.security.AM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "AM"));
   const pmSecurityComplete = structuredComplete("security_pm", active?.securityResponses.PM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "PM")), (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM"));
-  const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
+  const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, (active?.foodChecks.length ?? 0) > 0, (active?.wastageRecords.length ?? 0) > 0].filter(Boolean).length;
 
   async function beginRound(session: "AM" | "PM") {
     if (!dashboard) return;
