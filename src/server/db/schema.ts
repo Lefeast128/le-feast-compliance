@@ -226,6 +226,40 @@ export const documents = pgTable("documents", {
   locationPurpose: index("documents_location_purpose_idx").on(table.locationId, table.purpose, table.status),
 }));
 
+export const controlledDocuments = pgTable("controlled_documents", {
+  id: id(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  displayInLibrary: boolean("display_in_library").notNull().default(true),
+  requireTrainingAcknowledgement: boolean("require_training_acknowledgement").notNull().default(false),
+  acknowledgementDeadline: timestampColumn("acknowledgement_deadline"),
+  publicationDate: timestampColumn("publication_date"),
+  reviewDate: timestampColumn("review_date"),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(),
+  updatedAt: timestampColumn("updated_at"),
+}, table => ({ organisationActive: index("controlled_documents_organisation_active_idx").on(table.organisationId, table.active) }));
+
+export const controlledDocumentVersions = pgTable("controlled_document_versions", {
+  id: id(),
+  controlledDocumentId: uuid("controlled_document_id").notNull().references(() => controlledDocuments.id, { onDelete: "restrict" }),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "restrict" }),
+  versionNumber: integer("version_number").notNull(),
+  publishedAt: timestampColumn("published_at"),
+  reviewDate: timestampColumn("review_date"),
+  requiresReacknowledgement: boolean("requires_reacknowledgement").notNull().default(true),
+  createdAt: createdAt(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+}, table => ({
+  documentVersion: uniqueIndex("controlled_document_versions_document_version_idx").on(table.controlledDocumentId, table.versionNumber),
+  document: index("controlled_document_versions_document_idx").on(table.documentId),
+}));
+
 export const libraryDocuments = pgTable("library_documents", {
   id: id(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
@@ -235,6 +269,7 @@ export const libraryDocuments = pgTable("library_documents", {
   important: boolean("important").notNull().default(false),
   locationIds: jsonb("location_ids").$type<string[]>().notNull(),
   allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  controlledDocumentId: uuid("controlled_document_id").references(() => controlledDocuments.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: createdAt(),
@@ -245,6 +280,7 @@ export const libraryDocumentVersions = pgTable("library_document_versions", {
   id: id(),
   libraryDocumentId: uuid("library_document_id").notNull().references(() => libraryDocuments.id, { onDelete: "restrict" }),
   documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "restrict" }),
+  controlledDocumentVersionId: uuid("controlled_document_version_id").references(() => controlledDocumentVersions.id, { onDelete: "restrict" }),
   versionNumber: integer("version_number").notNull(),
   createdAt: createdAt(),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
@@ -263,6 +299,7 @@ export const centralTrainingPublications = pgTable("central_training_publication
   trainingFormat: text("training_format").notNull().default("briefing"),
   locationIds: jsonb("location_ids").$type<string[]>().notNull(),
   allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  controlledDocumentId: uuid("controlled_document_id").references(() => controlledDocuments.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: createdAt(),
@@ -270,7 +307,7 @@ export const centralTrainingPublications = pgTable("central_training_publication
 });
 
 export const trainingRequirements = pgTable("training_requirements", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), title: text("title").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), documentStorageId: text("document_storage_id"), documentName: text("document_name"), currentDocumentVersionId: uuid("current_document_version_id"), requiredDocumentVersionId: uuid("required_document_version_id"), trainingFormat: text("training_format").notNull().default("briefing"), currentContentVersionId: uuid("current_content_version_id"), requiredContentVersionId: uuid("required_content_version_id"), description: text("description"), category: text("category"), audience: text("audience"), selectedTeamMemberIds: jsonb("selected_team_member_ids").$type<string[]>(), centralPublicationId: uuid("central_publication_id").references(() => centralTrainingPublications.id, { onDelete: "restrict" }), createdAt: createdAt() });
-export const trainingDocumentVersions = pgTable("training_document_versions", { id: id(), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), versionNumber: integer("version_number").notNull(), storageId: text("storage_id").notNull(), documentName: text("document_name").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
+export const trainingDocumentVersions = pgTable("training_document_versions", { id: id(), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), controlledDocumentVersionId: uuid("controlled_document_version_id").references(() => controlledDocumentVersions.id, { onDelete: "restrict" }), versionNumber: integer("version_number").notNull(), storageId: text("storage_id").notNull(), documentName: text("document_name").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
 export const trainingContentVersions = pgTable("training_content_versions", { id: id(), requirementId: uuid("requirement_id").notNull(), versionNumber: integer("version_number").notNull(), content: text("content").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
 export const trainingCompletions = pgTable("training_completions", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").notNull().references(() => teamMembers.id, { onDelete: "restrict" }), documentVersionId: uuid("document_version_id").references(() => trainingDocumentVersions.id, { onDelete: "restrict" }), contentVersionId: uuid("content_version_id").references(() => trainingContentVersions.id, { onDelete: "restrict" }), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }) }, table => ({ locationMember: index("training_completions_location_member_idx").on(table.locationId, table.teamMemberId), requirement: index("training_completions_requirement_idx").on(table.requirementId) }));
 

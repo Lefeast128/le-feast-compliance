@@ -1,5 +1,6 @@
 import UserAccessAdmin from "@/components/UserAccessAdmin";
 import OrganisationLibraryAdmin from "@/components/OrganisationLibraryAdmin";
+import ControlledDocumentsAdmin from "@/components/ControlledDocumentsAdmin";
 import OrganisationFeatureCards, {
   type OrganisationFeatureKey,
 } from "@/components/admin/OrganisationFeatureCards";
@@ -730,6 +731,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
   if (section === "access") return page("User Access", <UserAccessAdmin />);
   if (section === "library")
     return page("Document Library", <OrganisationLibraryAdmin />);
+  if (section === "controlled-documents")
+    return page("Controlled Documents", <ControlledDocumentsAdmin />);
   if (section === "activity")
     return page("Organisation Activity", recentChanges);
   return (

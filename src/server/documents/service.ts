@@ -3,7 +3,7 @@ import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { and, eq } from "drizzle-orm";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { getDb } from "../db/client.js";
-import { documents, locations } from "../db/schema.js";
+import { controlledDocumentVersions, controlledDocuments, documents, locations } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireFiniteNumber, requireString, requireUuid } from "../compliance/validation.js";
@@ -212,10 +212,22 @@ export async function uploadDocument(context: AuthContext, input: Record<string,
   }
 }
 
-export async function documentForAccess(context: AuthContext, documentId: string) {
+export async function documentForAccess(context: AuthContext, documentId: string, requestedLocationId?: string) {
   requireUuid(documentId, "documentId");
   const [document] = await getDb().select().from(documents).where(and(eq(documents.id, documentId), eq(documents.status, "active"))).limit(1);
   if (!document) throw new ApiError(404, "Document not found");
+  if (requestedLocationId) {
+    const location = await locationFor(context, requestedLocationId, false);
+    const [controlled] = await getDb().select({ documentId: controlledDocumentVersions.documentId, locationIds: controlledDocuments.locationIds, allocationMode: controlledDocuments.allocationMode, organisationId: controlledDocuments.organisationId })
+      .from(controlledDocumentVersions)
+      .innerJoin(controlledDocuments, eq(controlledDocuments.id, controlledDocumentVersions.controlledDocumentId))
+      .where(and(eq(controlledDocumentVersions.documentId, document.id), eq(controlledDocuments.active, true), eq(controlledDocuments.organisationId, location.organisationId)))
+      .limit(1);
+    if (controlled) {
+      if (controlled.allocationMode !== "all" && !controlled.locationIds.includes(location.id)) throw new ApiError(403, "Document access denied");
+      return document;
+    }
+  }
   await locationFor(context, document.locationId, false);
   return document;
 }

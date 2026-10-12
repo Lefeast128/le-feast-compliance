@@ -73,7 +73,7 @@ export async function trainingDashboard(context: AuthContext, locationId: string
       requiredDocumentVersionNumber: required?.versionNumber,
       currentContentVersionNumber: currentContent?.versionNumber,
       requiredContentVersionNumber: requiredContent?.versionNumber,
-      documentUrl: requirement.trainingFormat === "document" && currentDocument ? `/api/documents/${currentDocument.id}` : null,
+      documentUrl: requirement.trainingFormat === "document" && currentDocument ? `/api/documents/${currentDocument.id}?locationId=${encodeURIComponent(location.id)}` : null,
     };
   });
   const completionData = completions.map(completion => {

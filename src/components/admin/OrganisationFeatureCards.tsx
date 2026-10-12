@@ -13,6 +13,7 @@ export type OrganisationFeatureKey =
   | "training"
   | "operational"
   | "library"
+  | "controlled-documents"
   | "activity";
 
 const cards: Array<{
@@ -43,6 +44,12 @@ const cards: Array<{
     key: "library",
     title: "Document Library",
     description: "Publish reference documents to stores.",
+    icon: FileText,
+  },
+  {
+    key: "controlled-documents",
+    title: "Controlled Documents",
+    description: "Publish one versioned document to Library and Training.",
     icon: FileText,
   },
   {

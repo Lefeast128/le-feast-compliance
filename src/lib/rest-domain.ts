@@ -107,6 +107,8 @@ export const restApi = {
   reports: {
     compliance: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
     inspectionPack: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance/inspection-pack?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
+    controlledDocumentAcknowledgements: async ({ controlledDocumentId, locationId }: AnyRecord) => compat(await query(`/api/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}/acknowledgements?locationId=${encodeURIComponent(locationId)}`)),
+    controlledDocuments: async ({ locationId }: AnyRecord) => compat(await query(`/api/controlled-documents?locationId=${encodeURIComponent(locationId)}`)),
   },
   library: {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/library?locationId=${encodeURIComponent(locationId)}`)),
@@ -172,6 +174,13 @@ export const restApi = {
         publish: (body: AnyRecord) => post("/api/admin/organisation/library", body),
         update: ({ libraryDocumentId, ...body }: AnyRecord) => patch(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
         replace: ({ libraryDocumentId, ...body }: AnyRecord) => post(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
+      },
+      controlledDocuments: {
+        list: async () => compat(await query("/api/admin/organisation/controlled-documents")),
+        create: (body: AnyRecord) => post("/api/admin/organisation/controlled-documents", body),
+        update: ({ controlledDocumentId, ...body }: AnyRecord) => patch(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}`, body),
+        replace: ({ controlledDocumentId, ...body }: AnyRecord) => post(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}`, body),
+        acknowledgements: async ({ controlledDocumentId, locationId }: AnyRecord) => compat(await query(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}/acknowledgements${locationId ? `?locationId=${encodeURIComponent(locationId)}` : ""}`)),
       },
       publishTraining: (body: AnyRecord) => post("/api/admin/organisation/training", body),
       updateTraining: ({ publicationId, ...body }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, body),

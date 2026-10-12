@@ -6,7 +6,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   try {
     const id = Array.isArray(req.query?.id) ? req.query?.id[0] : req.query?.id;
     const context = await requireContext(req);
-    const document = await documentForAccess(context, String(id ?? ""));
+    const locationId = Array.isArray(req.query?.locationId) ? req.query?.locationId[0] : req.query?.locationId;
+    const document = await documentForAccess(context, String(id ?? ""), typeof locationId === "string" ? locationId : undefined);
     const result = await readPrivateDocument(document);
     const response = res as ApiResponse & { setHeader?: (name: string, value: string) => void; send?: (body: unknown) => void };
     response.setHeader?.("Content-Type", document.contentType);
