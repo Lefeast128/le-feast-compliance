@@ -157,7 +157,7 @@ export async function maybeAutoSignOffStructuredChecklist(
   const versionTasks = checklist
     ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, input.locationId), eq(checklistQuestions.checklist, checklist)))
     : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, input.locationId), eq(securityQuestions.session, input.area === "security_am" ? "AM" : "PM")));
-  const versionsById = new Map(versionTasks.map(task => [task.id, task as TaskRow]));
+  const versionsById = new Map<string, TaskRow>(versionTasks.map(task => [task.id, task as TaskRow] as [string, TaskRow]));
   const { start, end } = localDayRange(Date.parse(`${input.dateKey}T12:00:00Z`), input.timezone);
   const legacyResponses = checklist
     ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, input.locationId), eq(checklistResponses.checklist, checklist), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
@@ -322,7 +322,7 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
     const versionTasks = area === "opening" || area === "closing"
       ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, locationId), eq(checklistQuestions.checklist, parsedArea as "opening" | "closing")))
       : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, locationId), eq(securityQuestions.session, area === "security_am" ? "AM" : "PM")));
-    const versionsById = new Map(versionTasks.map(task => [task.id, task as TaskRow]));
+    const versionsById = new Map<string, TaskRow>(versionTasks.map(task => [task.id, task as TaskRow] as [string, TaskRow]));
     if (!tasks.length) throw new ApiError(422, "No active checklist tasks exist for this location");
     const legacyChecklist = area === "opening" || area === "closing"
       ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, locationId), eq(checklistResponses.checklist, parsedArea as "opening" | "closing"), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
