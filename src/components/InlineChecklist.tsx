@@ -312,7 +312,9 @@ export default function InlineChecklist({
       setLocalLegacyResponses((current) => [...current, newResponse]);
       setIssueOpen(null);
       setExpandedTaskId(null);
-      await maybeAutoSignOff(nextLegacy, structured, memberId);
+      // A locally queued response is not server-confirmed evidence. The server
+      // owns automatic sign-off when the outbox replay succeeds.
+      if (!queued) await maybeAutoSignOff(nextLegacy, structured, memberId);
       toast.success(
         queued ? "Answer saved on this device" : answer === "no" ? "Issue and action recorded" : "Answer recorded",
         queued ? { description: "It will sync when the connection returns." } : undefined,

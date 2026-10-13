@@ -41,8 +41,13 @@ export function createIndexedDbStore(): OfflineStore {
   const open = () => database ??= new Promise((resolve, reject) => {
     const requestOpen = indexedDB.open(DB_NAME, 1);
     requestOpen.onupgradeneeded = () => {
-      const store = requestOpen.result.createObjectStore(STORE_NAME, { keyPath: "submissionId" });
-      store.createIndex("state", "state"); store.createIndex("locationId", "locationId"); store.createIndex("nextAttemptAt", "nextAttemptAt");
+      const database = requestOpen.result;
+      const store = database.objectStoreNames.contains(STORE_NAME)
+        ? requestOpen.transaction!.objectStore(STORE_NAME)
+        : database.createObjectStore(STORE_NAME, { keyPath: "submissionId" });
+      if (!store.indexNames.contains("state")) store.createIndex("state", "state");
+      if (!store.indexNames.contains("locationId")) store.createIndex("locationId", "locationId");
+      if (!store.indexNames.contains("nextAttemptAt")) store.createIndex("nextAttemptAt", "nextAttemptAt");
     };
     requestOpen.onsuccess = () => resolve(requestOpen.result);
     requestOpen.onerror = () => reject(new OfflineStorageError("Unable to open secure offline storage", requestOpen.error));
