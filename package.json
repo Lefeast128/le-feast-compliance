@@ -69,6 +69,7 @@
     "test:pwa": "node scripts/test-pwa.mjs",
     "test:offline-foundation": "node --import=tsx/esm scripts/test-offline-foundation.mjs && node --import=tsx/esm scripts/test-offline-checklist-expansion.mjs && node --import=tsx/esm scripts/test-offline-operational-idempotency.mjs",
     "offline:test-api": "node --import=tsx/esm scripts/offline-browser-server.mjs",
+    "offline:test-operational-api": "node scripts/test-offline-operational-api.mjs",
     "test:bottom-navigation": "node scripts/test-bottom-navigation.mjs",
     "test:api-tenant-isolation-local": "node --import=tsx/esm scripts/test-api-tenant-isolation-local.mjs"
   },

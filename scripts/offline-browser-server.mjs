@@ -21,6 +21,12 @@ const ids = {
   org: "00000000-0000-4000-8000-000000001001", location: "00000000-0000-4000-8000-000000001002",
   user: "00000000-0000-4000-8000-000000001003", membership: "00000000-0000-4000-8000-000000001004",
   member: "00000000-0000-4000-8000-000000001005", question: "00000000-0000-4000-8000-000000001006",
+  cleaning: "00000000-0000-4000-8000-000000001007", cleaningQuestion: "00000000-0000-4000-8000-000000001019", cleaningConcurrent: "00000000-0000-4000-8000-000000001021", memberAlt: "00000000-0000-4000-8000-000000001020", security: "00000000-0000-4000-8000-000000001008",
+  additional: "00000000-0000-4000-8000-000000001009", org2: "00000000-0000-4000-8000-000000001010",
+  location2: "00000000-0000-4000-8000-000000001011", user2: "00000000-0000-4000-8000-000000001012",
+  membership2: "00000000-0000-4000-8000-000000001013", member2: "00000000-0000-4000-8000-000000001014",
+  location3: "00000000-0000-4000-8000-000000001015", user3: "00000000-0000-4000-8000-000000001016",
+  membership3: "00000000-0000-4000-8000-000000001017", member3: "00000000-0000-4000-8000-000000001018",
 };
 const credential = createPasswordCredential("offline-test-password");
 const sql = (text) => run(bin("psql"), ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--dbname", dbUrl], { input: text, encoding: "utf8" });
@@ -32,7 +38,22 @@ INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES (
 INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user}', '${ids.org}', 'offline.staff@example.test', 'offline.staff@example.test', 'Offline Test Staff', 'user', now(), '${credential.hash}', '${credential.salt}');
 INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership}', '${ids.user}', '${ids.location}', 'staff');
 INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member}', '${ids.location}', 'Offline Test Team Member', 'team');
+INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.memberAlt}', '${ids.location}', 'Offline Test Second Team Member', 'team');
 INSERT INTO checklist_questions (id, location_id, checklist, question, task_type, completion_mode, steps, sort_order) VALUES ('${ids.question}', '${ids.location}', 'opening', 'Offline test: handwash station ready?', 'simple', 'question', '[]'::jsonb, 0);
+INSERT INTO cleaning_tasks (id, location_id, name, task_type, completion_mode, steps, frequency, weekdays, sort_order) VALUES ('${ids.cleaning}', '${ids.location}', 'Offline test: clean surfaces', 'simple', 'task', '[]'::jsonb, 'daily', '[]'::jsonb, 0);
+INSERT INTO cleaning_tasks (id, location_id, name, task_type, completion_mode, steps, frequency, weekdays, sort_order) VALUES ('${ids.cleaningQuestion}', '${ids.location}', 'Offline test: check cleaning result', 'with_steps', 'question', '[{"id":"answer","label":"Cleaning is satisfactory?","responseType":"yes_no","required":true}]'::jsonb, 'daily', '[]'::jsonb, 1);
+INSERT INTO cleaning_tasks (id, location_id, name, task_type, completion_mode, steps, frequency, weekdays, sort_order) VALUES ('${ids.cleaningConcurrent}', '${ids.location}', 'Offline test: concurrent cleaning result', 'with_steps', 'question', '[{"id":"answer","label":"Concurrent cleaning check?","responseType":"yes_no","required":true}]'::jsonb, 'daily', '[]'::jsonb, 2);
+INSERT INTO security_questions (id, location_id, session, question, task_type, completion_mode, steps, sort_order) VALUES ('${ids.security}', '${ids.location}', 'AM', 'Offline test: doors secure?', 'simple', 'question', '[]'::jsonb, 0);
+INSERT INTO additional_requirements (id, location_id, title, frequency, next_due_at, fields, sort_order) VALUES ('${ids.additional}', '${ids.location}', 'Offline test: probe calibration', 'daily', now() - interval '1 hour', '[{"key":"done","label":"Completed","type":"completed"}]'::jsonb, 0);
+INSERT INTO organisations (id, name, timezone) VALUES ('${ids.org2}', 'Second Offline Organisation', 'Europe/London');
+INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location2}', '${ids.org}', 'Second Offline Store', 'offline-2', 'Europe/London');
+INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user2}', '${ids.org}', 'offline.manager@example.test', 'offline.manager@example.test', 'Offline Test Manager', 'user', now(), '${credential.hash}', '${credential.salt}');
+INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership2}', '${ids.user2}', '${ids.location2}', 'manager');
+INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member2}', '${ids.location2}', 'Second Store Team Member', 'team');
+INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location3}', '${ids.org2}', 'Other Organisation Store', 'other', 'Europe/London');
+INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user3}', '${ids.org2}', 'other.staff@example.test', 'other.staff@example.test', 'Other Organisation Staff', 'user', now(), '${credential.hash}', '${credential.salt}');
+INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership3}', '${ids.user3}', '${ids.location3}', 'staff');
+INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member3}', '${ids.location3}', 'Other Organisation Team Member', 'team');
 `;
 }
 
@@ -54,6 +75,12 @@ const handlers = new Map([
   ["/api/structured-tasks", await load("api/structured-tasks.ts")],
   ["/api/team-members", await load("api/team-members.ts")],
   ["/api/compliance/checklists/responses", await load("api/compliance/checklists/responses.ts")],
+  ["/api/compliance/cleaning/completions", await load("api/compliance/cleaning/completions.ts")],
+  ["/api/compliance/security/responses", await load("api/compliance/security/responses.ts")],
+  ["/api/compliance/security/signoff", await load("api/compliance/security/signoff.ts")],
+  ["/api/compliance/structured-tasks/responses", await load("api/compliance/structured-tasks/responses.ts")],
+  ["/api/additional/complete", await load("api/additional/complete.ts")],
+  ["/api/additional", await load("api/additional.ts")],
 ]);
 
 async function shutdown() {
@@ -82,7 +109,7 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === "/__test__/state") {
     const client = await (await import("../src/server/db/client.ts")).getPool().connect();
     try {
-      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
+      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM cleaning_completions WHERE location_id = $1) AS cleaning, (SELECT count(*)::int FROM security_responses WHERE location_id = $1) AS security, (SELECT count(*)::int FROM structured_task_responses WHERE location_id = $1) AS structured, (SELECT count(*)::int FROM additional_completions WHERE location_id = $1) AS additional, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
       response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify(result.rows[0]));
     } finally { client.release(); }
     return;

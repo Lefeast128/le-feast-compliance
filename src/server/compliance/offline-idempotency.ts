@@ -14,14 +14,29 @@ export async function idempotentOfflineMutation(tx: any, context: AuthContext, i
   if (!input.key) return work();
   if (!keyPattern.test(input.key)) throw new ApiError(400, "Invalid idempotency key");
   const payloadHash = hashPayload(input.payload);
-  const [existing] = await tx.select().from(offlineSubmissions).where(eq(offlineSubmissions.submissionId, input.key)).limit(1);
+  const existingForKey = async () => {
+    const [row] = await tx.select().from(offlineSubmissions).where(eq(offlineSubmissions.submissionId, input.key!)).limit(1);
+    return row;
+  };
+  const existing = await existingForKey();
   if (existing) {
     if (existing.organisationId !== input.organisationId || existing.locationId !== input.locationId || existing.userId !== context.user.id || existing.operation !== input.operation) throw new ApiError(409, "This submission key belongs to another workflow or account");
     if (existing.payloadHash && existing.payloadHash !== payloadHash) throw new ApiError(409, "This submission key was reused with different data");
     if (existing.status === "synced" && existing.response) return existing.response;
     throw new ApiError(409, "This submission is already being processed");
   }
-  await tx.insert(offlineSubmissions).values({ submissionId: input.key, organisationId: input.organisationId, locationId: input.locationId, userId: context.user.id, operation: input.operation, payloadHash, status: "processing" });
+  // ON CONFLICT closes the check-then-insert race when two devices replay the
+  // same submission at the same time. The losing transaction re-reads the
+  // committed claim and follows the same replay rules as a normal retry.
+  const [claim] = await tx.insert(offlineSubmissions).values({ submissionId: input.key, organisationId: input.organisationId, locationId: input.locationId, userId: context.user.id, operation: input.operation, payloadHash, status: "processing" }).onConflictDoNothing({ target: offlineSubmissions.submissionId }).returning({ id: offlineSubmissions.id });
+  if (!claim) {
+    const raced = await existingForKey();
+    if (!raced) throw new ApiError(409, "This submission could not be claimed safely; please retry");
+    if (raced.organisationId !== input.organisationId || raced.locationId !== input.locationId || raced.userId !== context.user.id || raced.operation !== input.operation) throw new ApiError(409, "This submission key belongs to another workflow or account");
+    if (raced.payloadHash && raced.payloadHash !== payloadHash) throw new ApiError(409, "This submission key was reused with different data");
+    if (raced.status === "synced" && raced.response) return raced.response;
+    throw new ApiError(409, "This submission is already being processed");
+  }
   const response = await work();
   await tx.update(offlineSubmissions).set({ status: "synced", response, completedAt: new Date() }).where(and(eq(offlineSubmissions.submissionId, input.key), eq(offlineSubmissions.userId, context.user.id)));
   return response;
