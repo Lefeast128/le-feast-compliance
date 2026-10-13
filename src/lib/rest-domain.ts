@@ -50,11 +50,12 @@ const compat = (value: any): any => {
 const idOf = (value: any) => value?._id ?? value?.id ?? value;
 const query = (path: string): Promise<any> => apiRequest<any>(path).then((body) => unwrap<any>(body));
 const post = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
-const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response") => {
-  const workflow = operation.replace("-response", "") as "cleaning" | "security" | "additional-check";
-  const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow);
+const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record") => {
+  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage";
+  const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow === "issue" ? "issues" : workflow);
   const session = readOfflineSession();
-  if (enabled && typeof navigator !== "undefined" && navigator.onLine === false && session && session.locationId === body.locationId && sessionCanWriteForBody(session, body.locationId)) {
+  const locationId = body.locationId ?? session?.locationId;
+  if (enabled && typeof navigator !== "undefined" && navigator.onLine === false && session && session.locationId === locationId && sessionCanWriteForBody(session, locationId)) {
     return enqueueOfflineMutation({ organisationId: session.organisationId, locationId: session.locationId, userId: session.userId, deviceSessionId: session.deviceSessionId }, { operation, endpoint: path, payload: body });
   }
   return post(path, body);
@@ -94,15 +95,15 @@ export const restApi = {
       const value: any = await post("/api/compliance/temperature-rounds", body);
       return value?.roundId ?? value;
     },
-    recordTemperature: (body: AnyRecord) => post("/api/compliance/temperature-readings", body),
+    recordTemperature: (body: AnyRecord) => offlinePost("/api/compliance/temperature-readings", body, "temperature-reading"),
     completeRound: (body: AnyRecord) => post(`/api/compliance/temperature-rounds/${encodeURIComponent(idOf(body.roundId))}/complete`, body),
-    recordFoodCheck: (body: AnyRecord) => post("/api/compliance/food-checks", body),
-    recordProbeRecheck: (body: AnyRecord) => post(`/api/compliance/probe-issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
+    recordFoodCheck: (body: AnyRecord) => offlinePost("/api/compliance/food-checks", body, "probe-reading"),
+    recordProbeRecheck: (body: AnyRecord) => offlinePost(`/api/compliance/probe-issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body, "issue-update"),
     saveChecklistResponse: (body: AnyRecord) => post("/api/compliance/checklists/responses", body),
     signOffChecklist: (body: AnyRecord) => post("/api/compliance/checklists/signoff", body),
     saveSecurityResponse: (body: AnyRecord) => offlinePost("/api/compliance/security/responses", body, "security-response"),
     signOffSecurity: (body: AnyRecord) => post("/api/compliance/security/signoff", body),
-    recordWastage: (body: AnyRecord) => post("/api/compliance/wastage", body),
+    recordWastage: (body: AnyRecord) => offlinePost("/api/compliance/wastage", body, "wastage-record"),
     completeCleaningTask: (body: AnyRecord) => offlinePost("/api/compliance/cleaning/completions", body, "cleaning-response"),
     structuredTasks: async ({ locationId, date }: AnyRecord) => {
       const params = new URLSearchParams({ locationId: String(locationId) });
@@ -111,10 +112,10 @@ export const restApi = {
     },
     saveStructuredTaskResponse: (body: AnyRecord) => offlinePost("/api/compliance/structured-tasks/responses", body, body.area === "cleaning" ? "cleaning-response" : "security-response"),
     signOffStructuredTask: (body: AnyRecord) => post("/api/compliance/structured-tasks/signoff", body),
-    createManualIssue: (body: AnyRecord) => post("/api/compliance/issues", body),
-    addIssueAction: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body),
-    addRecheck: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
-    addIssueUpdate: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body),
+    createManualIssue: (body: AnyRecord) => offlinePost("/api/compliance/issues", body, "issue-update"),
+    addIssueAction: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body, "issue-update"),
+    addRecheck: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body, "issue-update"),
+    addIssueUpdate: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body, "issue-update"),
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },
   reports: {

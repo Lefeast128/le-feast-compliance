@@ -42,3 +42,12 @@ export const probeResult = (temperature: number, minimum: number) => temperature
 
 export const equipmentApplicableAtRound = (createdAt: Date, deactivatedAt: Date | null, startedAt: Date) =>
   createdAt <= startedAt && (!deactivatedAt || deactivatedAt >= startedAt);
+
+// Offline clients send their capture time separately from the payload. Keep it
+// bounded and auditable; a future client clock must not move evidence forward.
+export const captureTime = (value?: string) => {
+  if (value === undefined) return new Date();
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime()) || timestamp.getTime() > Date.now() + 5 * 60 * 1000) throw new ApiError(400, "Invalid capture timestamp");
+  return timestamp;
+};

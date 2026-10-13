@@ -4,7 +4,8 @@ import { auditEvents, equipment, issueUpdates, issues, rechecks, scheduledTasks,
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, issueAndMember, locationFor, now } from "./shared.js";
-import { equipmentApplicableAtRound, localDateKey, requireEnum, requireFiniteNumber, requireUuid, temperatureResult } from "./validation.js";
+import { captureTime, equipmentApplicableAtRound, localDateKey, requireEnum, requireFiniteNumber, requireUuid, temperatureResult } from "./validation.js";
+import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
 export async function startRound(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; teamMemberId?: string }) {
   requireEnum(input.session, "session", ["AM", "PM"] as const);
@@ -22,13 +23,13 @@ export async function startRound(context: AuthContext, input: { locationId: stri
   return { roundId: round.id, startedAt: timestamp.toISOString() };
 }
 
-export async function recordTemperature(context: AuthContext, input: { roundId: string; locationId: string; equipmentId: string; temperature: number; teamMemberId: string }) {
+export async function recordTemperature(context: AuthContext, input: { roundId: string; locationId: string; equipmentId: string; temperature: number; teamMemberId: string; idempotencyKey?: string; capturedAt?: string }) {
   requireUuid(input.roundId, "roundId"); requireUuid(input.equipmentId, "equipmentId");
   const location = await locationFor(context, input.locationId);
   requireFiniteNumber(input.temperature, "temperature");
   await activeMember(input.locationId, input.teamMemberId);
   const db = getDb();
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx) => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "temperature-reading", payload: input }, async () => {
     const roundRows = await tx.select().from(temperatureRounds).where(and(eq(temperatureRounds.id, input.roundId), eq(temperatureRounds.locationId, location.id))).limit(1);
     const round = roundRows[0];
     if (!round) throw new ApiError(404, "Round not found");
@@ -43,7 +44,7 @@ export async function recordTemperature(context: AuthContext, input: { roundId: 
     const preferred = item.preferredTemperature ?? 5;
     const maximum = item.maximumTemperature ?? 8;
     const result = temperatureResult(input.temperature, minimum, preferred, maximum);
-    const createdAt = now();
+    const createdAt = captureTime(input.capturedAt);
     const [reading] = await tx.insert(temperatureReadings).values({ roundId: round.id, equipmentId: item.id, locationId: location.id, temperature: input.temperature, result, createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, voided: false, equipmentName: item.name, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum }).onConflictDoNothing({ target: [temperatureReadings.roundId, temperatureReadings.equipmentId, temperatureReadings.voided] }).returning({ id: temperatureReadings.id });
     if (!reading) throw new ApiError(409, "This fridge already has a reading in this round");
     let issueId: string | null = null;
@@ -52,7 +53,7 @@ export async function recordTemperature(context: AuthContext, input: { roundId: 
       issueId = issue.id;
     }
     return { readingId: reading.id, issueId, result, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum };
-  });
+  }));
 }
 
 export async function completeRound(context: AuthContext, input: { roundId: string; locationId: string; session: "AM" | "PM"; teamMemberId: string }) {
@@ -88,30 +89,37 @@ export async function completeRound(context: AuthContext, input: { roundId: stri
   });
 }
 
-export async function addTemperatureRecheck(context: AuthContext, input: { issueId: string; temperature: number; teamMemberId: string }) {
+export async function addTemperatureRecheck(context: AuthContext, input: { issueId: string; temperature: number; teamMemberId: string; idempotencyKey?: string; capturedAt?: string }) {
   requireFiniteNumber(input.temperature, "temperature");
-  const { db, issue, location } = await issueAndMember(context, input.issueId, input.teamMemberId, "Temperature");
-  const updates = await db.select().from(issueUpdates).where(eq(issueUpdates.issueId, issue.id));
-  if (!updates.some(item => item.updateType === "immediate_action" && item.note.trim())) throw new ApiError(422, "Corrective action is required before recheck");
-  let minimum = 0;
-  let maximum = 8;
-  if (issue.sourceTemperatureReadingId) {
-    const [reading] = await db.select().from(temperatureReadings).where(eq(temperatureReadings.id, issue.sourceTemperatureReadingId)).limit(1);
-    if (!reading || reading.locationId !== location.id || reading.maximumTemperature === null) throw new ApiError(422, "Source temperature reading does not contain a maximum temperature snapshot");
-    minimum = reading.minimumTemperature ?? 0;
-    maximum = reading.maximumTemperature;
-  }
-  return db.transaction(async (tx) => {
-    const timestamp = now();
+  requireUuid(input.issueId, "issueId");
+  const db = getDb();
+  const [issue] = await db.select().from(issues).where(eq(issues.id, input.issueId)).limit(1);
+  if (!issue) throw new ApiError(404, "Issue not found");
+  if (issue.category !== "Temperature") throw new ApiError(422, "Issue is not a temperature issue");
+  const location = await locationFor(context, issue.locationId);
+  await activeMember(location.id, input.teamMemberId);
+  return db.transaction(async (tx) => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "issue-update", payload: input }, async () => {
+    const current = await issueAndMember(context, input.issueId, input.teamMemberId, "Temperature");
+    const updates = await tx.select().from(issueUpdates).where(eq(issueUpdates.issueId, current.issue.id));
+    if (!updates.some(item => item.updateType === "immediate_action" && item.note.trim())) throw new ApiError(422, "Corrective action is required before recheck");
+    let minimum = 0;
+    let maximum = 8;
+    if (current.issue.sourceTemperatureReadingId) {
+      const [reading] = await tx.select().from(temperatureReadings).where(eq(temperatureReadings.id, current.issue.sourceTemperatureReadingId)).limit(1);
+      if (!reading || reading.locationId !== location.id || reading.maximumTemperature === null) throw new ApiError(422, "Source temperature reading does not contain a maximum temperature snapshot");
+      minimum = reading.minimumTemperature ?? 0;
+      maximum = reading.maximumTemperature;
+    }
+    const timestamp = captureTime(input.capturedAt);
     const result = input.temperature >= minimum && input.temperature <= maximum ? "pass" : "fail";
-    await tx.insert(rechecks).values({ issueId: issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+    await tx.insert(rechecks).values({ issueId: current.issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     if (result === "pass") {
       const note = `Rechecked at ${input.temperature}°C`;
-      await tx.update(issues).set({ status: "resolved", resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: note }).where(eq(issues.id, issue.id));
-      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.update(issues).set({ status: "resolved", resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: note }).where(eq(issues.id, current.issue.id));
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     } else {
-      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "further_action", note: `Recheck remained out of range at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "further_action", note: `Recheck remained out of range at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     }
     return { result, minimumTemperature: minimum, maximumTemperature: maximum };
-  });
+  }));
 }
