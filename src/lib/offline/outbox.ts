@@ -11,11 +11,27 @@ const notify = () => { if (typeof window !== "undefined") window.dispatchEvent(n
 const id = () => typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `submission-${Date.now()}-${Math.random()}`;
 const backoff = (attempts: number) => Math.min(OFFLINE_MAX_BACKOFF_MS, 1000 * 2 ** Math.max(0, attempts - 1));
 
-export async function enqueueOpeningChecklistResponse(scope: OfflineScope, payload: Record<string, unknown>, store = getOfflineStore()) {
+export async function enqueueOfflineMutation(
+  scope: OfflineScope,
+  input: {
+    operation: OfflineSubmission["operation"];
+    endpoint: string;
+    payload: Record<string, unknown>;
+  },
+  store = getOfflineStore(),
+) {
   if (!sessionCanWrite(readOfflineSession(), scope)) throw new ApiError(401, "Sign in again before recording offline checks");
   const now = new Date().toISOString();
-  const submission: OfflineSubmission = { ...scope, submissionId: id(), schemaVersion: 1, operation: "opening-checklist-response", endpoint: "/api/compliance/checklists/responses", method: "POST", capturedAt: now, state: "pending", payload, attempts: 0, nextAttemptAt: now, lastError: null, serverResponse: null, createdAt: now, updatedAt: now };
+  const submission: OfflineSubmission = { ...scope, submissionId: id(), schemaVersion: 1, operation: input.operation, endpoint: input.endpoint, method: "POST", capturedAt: now, state: "pending", payload: input.payload, attempts: 0, nextAttemptAt: now, lastError: null, serverResponse: null, createdAt: now, updatedAt: now };
   await store.put(submission); notify(); return submission;
+}
+
+export async function enqueueOpeningChecklistResponse(scope: OfflineScope, payload: Record<string, unknown>, store = getOfflineStore()) {
+  return enqueueOfflineMutation(scope, { operation: "opening-checklist-response", endpoint: "/api/compliance/checklists/responses", payload }, store);
+}
+
+export async function enqueueChecklistResponse(scope: OfflineScope, checklist: "opening" | "closing", payload: Record<string, unknown>, store = getOfflineStore()) {
+  return enqueueOfflineMutation(scope, { operation: `${checklist}-checklist-response`, endpoint: "/api/compliance/checklists/responses", payload }, store);
 }
 
 export async function syncSubmission(submission: OfflineSubmission, store = getOfflineStore(), transport: typeof fetch = fetch) {

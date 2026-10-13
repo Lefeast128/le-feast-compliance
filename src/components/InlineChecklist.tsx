@@ -31,8 +31,8 @@ import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
 import { useAuth } from "@/hooks/use-auth";
 import { establishOfflineSession, getDeviceSessionId } from "@/lib/offline/device-session";
-import { enqueueOpeningChecklistResponse, installOutboxRuntime } from "@/lib/offline/outbox";
-import { offlineOpeningChecklistEnabled } from "@/lib/offline/feature";
+import { enqueueChecklistResponse, installOutboxRuntime } from "@/lib/offline/outbox";
+import { offlineChecklistEnabled } from "@/lib/offline/feature";
 
 type ChecklistTask = UnifiedItem & {
   title: string;
@@ -290,14 +290,14 @@ export default function InlineChecklist({
         action: issue?.action,
         teamMemberId: memberId,
       };
-      const pilotEnabled = checklist === "opening" && answer !== "no" && offlineOpeningChecklistEnabled() && user?.organisationId;
+      const pilotEnabled = offlineChecklistEnabled(checklist) && user?.organisationId;
       if (pilotEnabled && user?.organisationId) {
         try {
           await saveLegacy(payload);
         } catch (error) {
           const networkFailure = typeof navigator !== "undefined" && navigator.onLine === false || (error instanceof TypeError) || (error instanceof Error && "status" in error && [0, 502, 503].includes((error as { status?: unknown }).status as number));
           if (!networkFailure) throw error;
-          await enqueueOpeningChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, payload);
+          await enqueueChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, checklist, payload);
           queued = true;
         }
       } else {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 const { createMemoryOfflineStore } = await import("../src/lib/offline/indexeddb.ts");
 const { syncSubmission, OFFLINE_MAX_ATTEMPTS } = await import("../src/lib/offline/outbox.ts");
 const { establishOfflineSession, readOfflineAuthSession, sessionCanWrite, clearOfflineSession } = await import("../src/lib/offline/device-session.ts");
-const { offlineOpeningChecklistEnabled } = await import("../src/lib/offline/feature.ts");
+const { offlineOpeningChecklistEnabled, offlineChecklistEnabled, offlineOperationalWorkflowEnabled } = await import("../src/lib/offline/feature.ts");
 
 const scope = { organisationId: "org-a", locationId: "site-a", userId: "user-a", deviceSessionId: "device-a" };
 const now = new Date().toISOString();
@@ -11,6 +11,9 @@ const submission = { ...scope, submissionId: "submission-00000001", schemaVersio
 
 assert.equal(offlineOpeningChecklistEnabled({}), false, "pilot is disabled by default");
 assert.equal(offlineOpeningChecklistEnabled({ VITE_OFFLINE_OPENING_CHECKLIST: "true" }), true, "pilot can be explicitly enabled");
+assert.equal(offlineChecklistEnabled("closing", {}), false, "closing checklist pilot is disabled by default");
+assert.equal(offlineChecklistEnabled("closing", { VITE_OFFLINE_CLOSING_CHECKLIST: "true" }), true, "closing checklist pilot can be explicitly enabled");
+assert.equal(offlineOperationalWorkflowEnabled("temperature", {}), false, "temperature offline recording remains disabled by default");
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString() }, scope), true, "valid authenticated scope can write");
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() - 1).toISOString() }, scope), false, "expired offline session cannot write");
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString() }, { ...scope, locationId: "site-b" }), false, "offline scope cannot cross stores");

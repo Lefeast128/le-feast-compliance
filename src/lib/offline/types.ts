@@ -18,7 +18,16 @@ export type OfflineScope = {
 export type OfflineSubmission = OfflineScope & {
   submissionId: string;
   schemaVersion: number;
-  operation: "opening-checklist-response";
+  operation:
+    | "opening-checklist-response"
+    | "closing-checklist-response"
+    | "cleaning-response"
+    | "security-response"
+    | "additional-check-response"
+    | "temperature-reading"
+    | "probe-reading"
+    | "issue-update"
+    | "wastage-record";
   endpoint: string;
   method: "POST";
   capturedAt: string;

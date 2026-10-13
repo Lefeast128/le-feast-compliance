@@ -16,8 +16,7 @@ export async function saveChecklistResponse(context: AuthContext, input: { locat
   return db.transaction(async (tx) => {
     if (input.idempotencyKey) {
       if (!/^[A-Za-z0-9_-]{16,120}$/.test(input.idempotencyKey)) throw new ApiError(400, "Invalid idempotency key");
-      if (input.checklist !== "opening") throw new ApiError(400, "Offline idempotency is not enabled for this checklist");
-      const [created] = await tx.insert(offlineSubmissions).values({ submissionId: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, userId: context.user.id, operation: "opening-checklist-response", status: "processing" }).onConflictDoNothing({ target: offlineSubmissions.submissionId }).returning({ id: offlineSubmissions.id });
+      const [created] = await tx.insert(offlineSubmissions).values({ submissionId: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, userId: context.user.id, operation: `${input.checklist}-checklist-response`, status: "processing" }).onConflictDoNothing({ target: offlineSubmissions.submissionId }).returning({ id: offlineSubmissions.id });
       if (!created) {
         const [previous] = await tx.select({ status: offlineSubmissions.status, response: offlineSubmissions.response }).from(offlineSubmissions).where(and(eq(offlineSubmissions.submissionId, input.idempotencyKey), eq(offlineSubmissions.organisationId, location.organisationId), eq(offlineSubmissions.locationId, location.id), eq(offlineSubmissions.userId, context.user.id))).limit(1);
         if (previous?.status === "synced" && previous.response && typeof previous.response === "object" && "responseId" in previous.response) return previous.response as { responseId: string; existing: true };
