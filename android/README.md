@@ -1,17 +1,27 @@
 # Isolated Android test build
 
-This directory contains preparation templates only. It does not contain a signing key, credentials, a deployed URL, or a generated Android project.
+This directory contains the Android test configuration and runbook. It does not contain a signing key, credentials, or a generated Android project.
+
+## Current isolated-environment status
+
+- Vercel test project: `le-feast-compliance-android-test` (`prj_VpxtFTYoacGz2oK54aMR49bDrWmv`)
+- Test hostname mapping: `eho-test.lefeast.co.uk` → `codex/pwa-foundation`
+- Test-only preview flags: configured on the test project; higher-risk temperature, probe, issue and wastage offline flags remain disabled.
+- Neon test database: not provisioned yet. The available Vercel connector exposes the existing Neon installation but this environment has no Neon resource-creation operation or Neon API credentials.
+- Test document storage: not provisioned. The storage request was rejected by Vercel for the current scope and must be completed by an authorised Vercel/Blob account connection.
+- Public DNS/TLS: not reachable yet; `eho-test.lefeast.co.uk` currently has no public DNS response. Add the UK2-managed DNS record only after the isolated deployment is configured.
+- Android tooling: Java 17, Android SDK platform-tools, Android 35 and build-tools 35 are installed locally. Bubblewrap is installed in `/private/tmp/eho-bubblewrap` for this workstation.
 
 ## Safety boundary
 
 The test application must use `eho-test.lefeast.co.uk`, an isolated deployment and a separate fictional-data database. It must never use `eho.lefeast.co.uk`, Neon `main`, live Blob storage, or live authentication secrets. Keep the offline flags in `config/android-test.env.example` disabled until the corresponding isolated services are confirmed.
 
-Before creating infrastructure, obtain approval for:
+Before completing the test release, obtain or provision:
 
-1. A separate Vercel project or deployment target and a separate Neon test branch/database containing no operational data.
-2. Test-only authentication secrets, allowed origin and private document storage.
-3. DNS/TLS for `eho-test.lefeast.co.uk` (or an approved isolated HTTPS hostname).
-4. A non-production Android signing key and the package ID `uk.co.lefeast.eho.test`.
+1. A separate Neon test database containing no operational data, then set its connection string only on the test Vercel project.
+2. A test-only authentication secret and private document-storage token on the test project.
+3. The UK2 DNS record for `eho-test.lefeast.co.uk`, after the test deployment is ready.
+4. A non-production Android signing key kept outside Git; never reuse a Production or commercial key.
 
 ## Bubblewrap build procedure
 
