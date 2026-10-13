@@ -1,0 +1,112 @@
+/* Disposable local API server for real browser acceptance tests.
+ * It owns a temporary PostgreSQL cluster and never accepts a non-loopback DB URL. */
+import http from "node:http";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { URL } from "node:url";
+import { createPasswordCredential } from "../src/server/auth/core.ts";
+
+const run = (command, args, options = {}) => execFileSync(command, args, { stdio: "pipe", ...options });
+const bin = (name) => execFileSync("which", [name], { encoding: "utf8" }).trim();
+const port = Number(process.env.EHO_OFFLINE_TEST_API_PORT ?? 4174);
+const pgPort = port + 1;
+const externalDbUrl = process.env.EHO_OFFLINE_TEST_DATABASE_URL;
+const dataDir = externalDbUrl ? null : mkdtempSync(join(tmpdir(), "eho-offline-browser-"));
+const dbUrl = externalDbUrl ?? `postgresql://postgres@127.0.0.1:${pgPort}/postgres`;
+let started = false;
+let networkOffline = false;
+const ids = {
+  org: "00000000-0000-4000-8000-000000001001", location: "00000000-0000-4000-8000-000000001002",
+  user: "00000000-0000-4000-8000-000000001003", membership: "00000000-0000-4000-8000-000000001004",
+  member: "00000000-0000-4000-8000-000000001005", question: "00000000-0000-4000-8000-000000001006",
+};
+const credential = createPasswordCredential("offline-test-password");
+const sql = (text) => run(bin("psql"), ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--dbname", dbUrl], { input: text, encoding: "utf8" });
+
+function fixture() {
+  return `
+INSERT INTO organisations (id, name, timezone) VALUES ('${ids.org}', 'Offline Test Organisation', 'Europe/London');
+INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location}', '${ids.org}', 'Offline Test Store', 'offline', 'Europe/London');
+INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user}', '${ids.org}', 'offline.staff@example.test', 'offline.staff@example.test', 'Offline Test Staff', 'user', now(), '${credential.hash}', '${credential.salt}');
+INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership}', '${ids.user}', '${ids.location}', 'staff');
+INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member}', '${ids.location}', 'Offline Test Team Member', 'team');
+INSERT INTO checklist_questions (id, location_id, checklist, question, task_type, completion_mode, steps, sort_order) VALUES ('${ids.question}', '${ids.location}', 'opening', 'Offline test: handwash station ready?', 'simple', 'question', '[]'::jsonb, 0);
+`;
+}
+
+async function bodyOf(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const text = Buffer.concat(chunks).toString("utf8");
+  if (!text) return undefined;
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+const load = async (path) => (await import(`../${path}`)).default;
+const handlers = new Map([
+  ["/api/auth/session", await load("api/auth/session.ts")],
+  ["/api/auth/login", await load("api/auth/login.ts")],
+  ["/api/auth/logout", await load("api/auth/logout.ts")],
+  ["/api/locations", await load("api/locations.ts")],
+  ["/api/dashboard", await load("api/dashboard.ts")],
+  ["/api/structured-tasks", await load("api/structured-tasks.ts")],
+  ["/api/team-members", await load("api/team-members.ts")],
+  ["/api/compliance/checklists/responses", await load("api/compliance/checklists/responses.ts")],
+]);
+
+async function shutdown() {
+  try { await (await import("../src/server/db/client.ts")).getPool().end(); } catch {}
+  if (started && dataDir) { try { run(bin("pg_ctl"), ["--pgdata", dataDir, "--mode", "immediate", "--wait", "stop"], { stdio: "ignore" }); } catch {} }
+  if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+}
+
+if (dataDir) {
+  run(bin("initdb"), ["--no-locale", "--auth=trust", "--username=postgres", "--set", "shared_memory_type=mmap", "--set", "dynamic_shared_memory_type=mmap", "--pgdata", dataDir], { stdio: "ignore" });
+  run(bin("pg_ctl"), ["--pgdata", dataDir, "--options", `-p ${pgPort} -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c shared_buffers=12MB`, "--wait", "start"], { stdio: "ignore" });
+  started = true;
+}
+const migrations = await (await import("node:fs/promises")).readdir(new URL("../drizzle/", import.meta.url));
+for (const name of migrations.filter((value) => value.endsWith(".sql")).sort()) sql(readFileSync(new URL(`../drizzle/${name}`, import.meta.url), "utf8").replaceAll("--> statement-breakpoint", ""));
+sql(fixture());
+process.env.NODE_ENV = "test";
+process.env.EHO_TEST_DATABASE_DRIVER = "pg";
+process.env.DATABASE_URL = dbUrl;
+process.env.AUTH_SESSION_SECRET = "offline-browser-test-session-secret";
+process.env.AUTH_ALLOWED_ORIGINS = "http://127.0.0.1:5173,http://localhost:5173";
+
+const server = http.createServer(async (request, response) => {
+  const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (url.pathname === "/__test__/network") { networkOffline = url.searchParams.get("state") === "offline"; response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify({ networkOffline })); return; }
+  if (url.pathname === "/__test__/state") {
+    const client = await (await import("../src/server/db/client.ts")).getPool().connect();
+    try {
+      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
+      response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify(result.rows[0]));
+    } finally { client.release(); }
+    return;
+  }
+  if (networkOffline) { response.writeHead(503, { "Content-Type": "application/json" }); response.end(JSON.stringify({ ok: false, error: "Simulated temporary network failure" })); return; }
+  const handler = handlers.get(url.pathname);
+  if (!handler) { response.writeHead(404); response.end("Not found"); return; }
+  const body = await bodyOf(request);
+  const query = Object.fromEntries(url.searchParams.entries());
+  const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key, value ?? undefined]));
+  let status = 200;
+  const apiResponse = {
+    status(code) { status = code; return apiResponse; },
+    setHeader(name, value) { response.setHeader(name, value); },
+    json(value) { response.statusCode = status; response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(value)); },
+    send(value) { response.statusCode = status; response.end(value); },
+    end(value) { response.statusCode = status; response.end(value); },
+  };
+  try { await handler({ method: request.method, body, query, headers }, apiResponse); }
+  catch (error) { response.statusCode = 500; response.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Test server error" })); }
+});
+
+server.listen(port, "127.0.0.1", () => {
+  console.log(JSON.stringify({ ready: true, api: `http://127.0.0.1:${port}`, browserPassword: "offline-test-password", testUser: "offline.staff@example.test", testLocationId: ids.location }));
+});
+process.on("SIGINT", () => { server.close(); void shutdown(); });
+process.on("SIGTERM", () => { server.close(); void shutdown(); });

@@ -290,10 +290,16 @@ export default function InlineChecklist({
         action: issue?.action,
         teamMemberId: memberId,
       };
-      const canQueue = checklist === "opening" && answer !== "no" && offlineOpeningChecklistEnabled() && typeof navigator !== "undefined" && navigator.onLine === false && user?.organisationId;
-      if (canQueue && user?.organisationId) {
-        await enqueueOpeningChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, payload);
-        queued = true;
+      const pilotEnabled = checklist === "opening" && answer !== "no" && offlineOpeningChecklistEnabled() && user?.organisationId;
+      if (pilotEnabled && user?.organisationId) {
+        try {
+          await saveLegacy(payload);
+        } catch (error) {
+          const networkFailure = typeof navigator !== "undefined" && navigator.onLine === false || (error instanceof TypeError) || (error instanceof Error && "status" in error && [0, 502, 503].includes((error as { status?: unknown }).status as number));
+          if (!networkFailure) throw error;
+          await enqueueOpeningChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, payload);
+          queued = true;
+        }
       } else {
         await saveLegacy(payload);
       }

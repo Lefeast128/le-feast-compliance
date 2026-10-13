@@ -68,6 +68,7 @@
     "test:admin-acceptance": "node --import=tsx/esm scripts/test-admin-acceptance.mjs",
     "test:pwa": "node scripts/test-pwa.mjs",
     "test:offline-foundation": "node --import=tsx/esm scripts/test-offline-foundation.mjs",
+    "offline:test-api": "node --import=tsx/esm scripts/offline-browser-server.mjs",
     "test:bottom-navigation": "node scripts/test-bottom-navigation.mjs",
     "test:api-tenant-isolation-local": "node --import=tsx/esm scripts/test-api-tenant-isolation-local.mjs"
   },

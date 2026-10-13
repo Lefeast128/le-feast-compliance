@@ -129,6 +129,11 @@ export default defineConfig(({ command }) => {
     hmr: {
       overlay: false,
     },
+    ...(process.env.EHO_OFFLINE_TEST_API_ORIGIN ? {
+      proxy: {
+        "/api": { target: process.env.EHO_OFFLINE_TEST_API_ORIGIN, changeOrigin: false },
+      },
+    } : {}),
   },
   };
 });
