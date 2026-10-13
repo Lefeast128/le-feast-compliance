@@ -9,6 +9,7 @@ import { ApiError } from "../compliance/errors.js";
 import { requireFiniteNumber, requireString, requireUuid } from "../compliance/validation.js";
 import { MAX_PDF_BYTES } from "./pure.js";
 import { decodeBase64, sanitizeFilename, validatePdfBytes } from "./validation.js";
+import { assertControlledDocumentAccess } from "./access.js";
 
 export type DocumentPurpose = "training_document" | "additional_check_certificate" | "library_document";
 
@@ -216,19 +217,20 @@ export async function documentForAccess(context: AuthContext, documentId: string
   requireUuid(documentId, "documentId");
   const [document] = await getDb().select().from(documents).where(and(eq(documents.id, documentId), eq(documents.status, "active"))).limit(1);
   if (!document) throw new ApiError(404, "Document not found");
-  if (requestedLocationId) {
+  const [controlled] = await getDb().select({ locationIds: controlledDocuments.locationIds, allocationMode: controlledDocuments.allocationMode, organisationId: controlledDocuments.organisationId, active: controlledDocuments.active })
+    .from(controlledDocumentVersions)
+    .innerJoin(controlledDocuments, eq(controlledDocuments.id, controlledDocumentVersions.controlledDocumentId))
+    .where(eq(controlledDocumentVersions.documentId, document.id))
+    .limit(1);
+  if (controlled) {
+    if (!controlled.active) throw new ApiError(404, "Document not found");
+    assertControlledDocumentAccess(controlled, requestedLocationId, context.user.organisationId ?? "");
     const location = await locationFor(context, requestedLocationId, false);
-    const [controlled] = await getDb().select({ documentId: controlledDocumentVersions.documentId, locationIds: controlledDocuments.locationIds, allocationMode: controlledDocuments.allocationMode, organisationId: controlledDocuments.organisationId })
-      .from(controlledDocumentVersions)
-      .innerJoin(controlledDocuments, eq(controlledDocuments.id, controlledDocumentVersions.controlledDocumentId))
-      .where(and(eq(controlledDocumentVersions.documentId, document.id), eq(controlledDocuments.active, true), eq(controlledDocuments.organisationId, location.organisationId)))
-      .limit(1);
-    if (controlled) {
-      if (controlled.allocationMode !== "all" && !controlled.locationIds.includes(location.id)) throw new ApiError(403, "Document access denied");
-      return document;
-    }
+    if (location.organisationId !== document.organisationId) throw new ApiError(403, "Document access denied");
+    return document;
   }
-  await locationFor(context, document.locationId, false);
+  const location = await locationFor(context, requestedLocationId ?? document.locationId, false);
+  if (location.organisationId !== document.organisationId) throw new ApiError(403, "Document access denied");
   return document;
 }
 
