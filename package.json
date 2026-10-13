@@ -21,6 +21,7 @@
     "test:phase7a-wastage": "node --import=tsx/esm scripts/test-phase7a-wastage.mjs",
     "test:offline-temperature-records": "node --import=tsx/esm scripts/test-offline-temperature-and-records-api.mjs",
     "test:shift-handover": "node scripts/test-shift-handover-api.mjs",
+    "test:android-test-config": "node scripts/test-android-test-config.mjs",
     "test:staff-attribution": "node scripts/test-staff-attribution.mjs",
     "test:auth": "node scripts/test-auth.mjs",
     "db:generate": "drizzle-kit generate",
