@@ -3,7 +3,7 @@ import { getDb } from "../db/client.js";
 import { auditEvents, issueUpdates, issues, rechecks } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
-import { activeMember, locationFor } from "./shared.js";
+import { activeMember, locationFor, now } from "./shared.js";
 import { captureTime, requireEnum, requireString, requireUuid } from "./validation.js";
 import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
@@ -17,9 +17,10 @@ export async function addIssueAction(context: AuthContext, input: { issueId: str
   const action = requireString(input.action, "Corrective action");
   return db.transaction(async (tx) => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "issue-update", payload: input }, async () => {
     if (issue.status === "resolved") throw new ApiError(409, "Resolved issue cannot be changed");
-    const timestamp = captureTime(input.capturedAt);
+    const timestamp = now();
+    const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt);
     await tx.update(issues).set({ action }).where(eq(issues.id, issue.id));
-    await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: action, status: issue.status, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+    await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: action, status: issue.status, createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     await tx.insert(auditEvents).values({ locationId: location.id, userId: context.user.id, type: "corrective_action_added", detail: action, createdAt: timestamp });
     return { issueId: issue.id, status: issue.status };
   }));
@@ -31,7 +32,7 @@ export async function createManualIssue(context: AuthContext, input: { locationI
   const description = requireString(input.description, "Issue description");
   const db = getDb();
   return db.transaction(async tx => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "issue-update", payload: input }, async () => {
-    const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Food safety", title: "Manual issue reported", description, status: "open", createdAt: captureTime(input.capturedAt), createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
+    const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Food safety", title: "Manual issue reported", description, status: "open", createdAt: now(), capturedAt: input.capturedAt === undefined ? null : captureTime(input.capturedAt), createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
     return { issueId: issue.id };
   }));
 }
@@ -58,8 +59,9 @@ export async function addIssueUpdate(context: AuthContext, input: { issueId: str
     }
     if (input.status === "resolved" && input.updateType !== "resolution") throw new ApiError(422, "Resolved issue update must be a resolution");
     if (input.updateType === "resolution" && input.status !== "resolved") throw new ApiError(422, "Resolution update must resolve the issue");
-    const timestamp = captureTime(input.capturedAt);
-    await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: input.updateType, note, status: input.status, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+    const timestamp = now();
+    const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt);
+    await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: input.updateType, note, status: input.status, createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     await tx.update(issues).set({ status: input.status, ...(input.status === "resolved" ? { resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: note } : {}) }).where(eq(issues.id, issue.id));
     return { issueId: issue.id, status: input.status };
   }));

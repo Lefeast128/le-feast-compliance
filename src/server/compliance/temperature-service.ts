@@ -44,12 +44,13 @@ export async function recordTemperature(context: AuthContext, input: { roundId: 
     const preferred = item.preferredTemperature ?? 5;
     const maximum = item.maximumTemperature ?? 8;
     const result = temperatureResult(input.temperature, minimum, preferred, maximum);
-    const createdAt = captureTime(input.capturedAt);
-    const [reading] = await tx.insert(temperatureReadings).values({ roundId: round.id, equipmentId: item.id, locationId: location.id, temperature: input.temperature, result, createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, voided: false, equipmentName: item.name, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum }).onConflictDoNothing({ target: [temperatureReadings.roundId, temperatureReadings.equipmentId, temperatureReadings.voided] }).returning({ id: temperatureReadings.id });
+    const createdAt = now();
+    const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt);
+    const [reading] = await tx.insert(temperatureReadings).values({ roundId: round.id, equipmentId: item.id, locationId: location.id, temperature: input.temperature, result, createdAt, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, voided: false, equipmentName: item.name, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum }).onConflictDoNothing({ target: [temperatureReadings.roundId, temperatureReadings.equipmentId, temperatureReadings.voided] }).returning({ id: temperatureReadings.id });
     if (!reading) throw new ApiError(409, "This fridge already has a reading in this round");
     let issueId: string | null = null;
     if (result === "fail") {
-      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Temperature", title: `${item.name} requires action`, description: `Recorded at ${input.temperature}°C. The configured range is ${minimum}°C to ${maximum}°C.`, originalReading: `${input.temperature}°C`, sourceTemperatureReadingId: reading.id, status: "open", createdAt, createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
+      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Temperature", title: `${item.name} requires action`, description: `Recorded at ${input.temperature}°C. The configured range is ${minimum}°C to ${maximum}°C.`, originalReading: `${input.temperature}°C`, sourceTemperatureReadingId: reading.id, status: "open", createdAt, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId }).returning({ id: issues.id });
       issueId = issue.id;
     }
     return { readingId: reading.id, issueId, result, minimumTemperature: minimum, preferredTemperature: preferred, maximumTemperature: maximum };
@@ -110,15 +111,16 @@ export async function addTemperatureRecheck(context: AuthContext, input: { issue
       minimum = reading.minimumTemperature ?? 0;
       maximum = reading.maximumTemperature;
     }
-    const timestamp = captureTime(input.capturedAt);
+    const timestamp = now();
+    const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt);
     const result = input.temperature >= minimum && input.temperature <= maximum ? "pass" : "fail";
-    await tx.insert(rechecks).values({ issueId: current.issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+    await tx.insert(rechecks).values({ issueId: current.issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     if (result === "pass") {
       const note = `Rechecked at ${input.temperature}°C`;
       await tx.update(issues).set({ status: "resolved", resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: note }).where(eq(issues.id, current.issue.id));
-      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     } else {
-      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "further_action", note: `Recheck remained out of range at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "further_action", note: `Recheck remained out of range at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     }
     return { result, minimumTemperature: minimum, maximumTemperature: maximum };
   }));

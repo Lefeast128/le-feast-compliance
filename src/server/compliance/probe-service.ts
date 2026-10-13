@@ -3,7 +3,7 @@ import { getDb } from "../db/client.js";
 import { foodChecks, issues, issueUpdates, probeProducts, rechecks } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
-import { issueAndMember, locationFor, activeMember } from "./shared.js";
+import { issueAndMember, locationFor, activeMember, now } from "./shared.js";
 import { captureTime, probeResult, requireFiniteNumber, requireString, requireUuid } from "./validation.js";
 import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
@@ -18,15 +18,16 @@ export async function recordFoodCheck(context: AuthContext, input: { locationId:
   const product = productRows.find(item => Array.isArray(item.locationIds) && item.locationIds.includes(location.id));
   if (!product) throw new ApiError(422, "No active probe product is configured for this location");
   return db.transaction(async (tx) => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "probe-reading", payload: input }, async () => {
-    const timestamp = captureTime(input.capturedAt);
+    const timestamp = now();
+    const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt);
     const result = probeResult(input.temperature, product.minimumTemperature);
-    const [check] = await tx.insert(foodChecks).values({ locationId: location.id, product: product.name, quantity, temperature: input.temperature, action: input.action?.trim() || null, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId, probeProductId: product.id, minimumTemperature: product.minimumTemperature, holdMinutes: product.holdMinutes }).returning({ id: foodChecks.id });
+    const [check] = await tx.insert(foodChecks).values({ locationId: location.id, product: product.name, quantity, temperature: input.temperature, action: input.action?.trim() || null, result, createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, probeProductId: product.id, minimumTemperature: product.minimumTemperature, holdMinutes: product.holdMinutes }).returning({ id: foodChecks.id });
     let issueId: string | null = null;
     const correctiveAction = input.action?.trim();
     if (result === "fail") {
-      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Probe", title: `${product.name} probe below minimum`, description: `Recorded at ${input.temperature}°C for quantity ${quantity}. Configured minimum is ${product.minimumTemperature}°C.`, originalReading: `${input.temperature}°C`, sourceFoodCheckId: check.id, status: correctiveAction ? "monitoring" : "open", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId, action: correctiveAction || null }).returning({ id: issues.id });
+      const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Probe", title: `${product.name} probe below minimum`, description: `Recorded at ${input.temperature}°C for quantity ${quantity}. Configured minimum is ${product.minimumTemperature}°C.`, originalReading: `${input.temperature}°C`, sourceFoodCheckId: check.id, status: correctiveAction ? "monitoring" : "open", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId, action: correctiveAction || null }).returning({ id: issues.id });
       issueId = issue.id;
-      if (correctiveAction) await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: correctiveAction, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      if (correctiveAction) await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: correctiveAction, status: "monitoring", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     }
     return { checkId: check.id, issueId, result };
   }));
@@ -59,15 +60,15 @@ export async function addProbeRecheck(context: AuthContext, input: { issueId: st
       if (!product) throw new ApiError(422, "No active probe product is configured for this location");
       minimum = product.minimumTemperature;
     }
-    const timestamp = captureTime(input.capturedAt); const result = probeResult(input.temperature, minimum);
-    await tx.insert(rechecks).values({ issueId: current.issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+    const timestamp = now(); const capturedAt = input.capturedAt === undefined ? null : captureTime(input.capturedAt); const result = probeResult(input.temperature, minimum);
+    await tx.insert(rechecks).values({ issueId: current.issue.id, locationId: location.id, temperature: input.temperature, result, createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     if (result === "pass") {
       const note = `Rechecked ${productName} at ${input.temperature}°C against snapshotted minimum ${minimum}°C`;
       await tx.update(issues).set({ status: "resolved", resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: note }).where(eq(issues.id, current.issue.id));
-      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "resolution", note, status: "resolved", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     } else {
       await tx.update(issues).set({ status: "monitoring" }).where(eq(issues.id, current.issue.id));
-      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "further_action", note: `Recheck for ${productName} remained below snapshotted minimum of ${minimum}°C at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId });
+      await tx.insert(issueUpdates).values({ issueId: current.issue.id, locationId: location.id, updateType: "further_action", note: `Recheck for ${productName} remained below snapshotted minimum of ${minimum}°C at ${input.temperature}°C`, status: "monitoring", createdAt: timestamp, capturedAt, createdBy: context.user.id, teamMemberId: input.teamMemberId });
     }
     return { result };
   }));
