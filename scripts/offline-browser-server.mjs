@@ -20,7 +20,7 @@ let networkOffline = false;
 const ids = {
   org: "00000000-0000-4000-8000-000000001001", location: "00000000-0000-4000-8000-000000001002",
   user: "00000000-0000-4000-8000-000000001003", membership: "00000000-0000-4000-8000-000000001004",
-  member: "00000000-0000-4000-8000-000000001005", question: "00000000-0000-4000-8000-000000001006",
+  member: "00000000-0000-4000-8000-000000001005", question: "00000000-0000-4000-8000-000000001006", admin: "00000000-0000-4000-8000-000000001025",
   cleaning: "00000000-0000-4000-8000-000000001007", cleaningQuestion: "00000000-0000-4000-8000-000000001019", cleaningConcurrent: "00000000-0000-4000-8000-000000001021", memberAlt: "00000000-0000-4000-8000-000000001020", security: "00000000-0000-4000-8000-000000001008",
   additional: "00000000-0000-4000-8000-000000001009", org2: "00000000-0000-4000-8000-000000001010",
   location2: "00000000-0000-4000-8000-000000001011", user2: "00000000-0000-4000-8000-000000001012",
@@ -37,6 +37,7 @@ function fixture() {
 INSERT INTO organisations (id, name, timezone) VALUES ('${ids.org}', 'Offline Test Organisation', 'Europe/London');
 INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location}', '${ids.org}', 'Offline Test Store', 'offline', 'Europe/London');
 INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user}', '${ids.org}', 'offline.staff@example.test', 'offline.staff@example.test', 'Offline Test Staff', 'user', now(), '${credential.hash}', '${credential.salt}');
+INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.admin}', '${ids.org}', 'offline.admin@example.test', 'offline.admin@example.test', 'Offline Test Organisation Admin', 'admin', now(), '${credential.hash}', '${credential.salt}');
 INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership}', '${ids.user}', '${ids.location}', 'staff');
 INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member}', '${ids.location}', 'Offline Test Team Member', 'team');
 INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.memberAlt}', '${ids.location}', 'Offline Test Second Team Member', 'team');
@@ -90,6 +91,7 @@ const handlers = new Map([
   ["/api/compliance/food-checks", await load("api/compliance/food-checks.ts")],
   ["/api/compliance/issues", await load("api/compliance/issues.ts")],
   ["/api/compliance/wastage", await load("api/compliance/wastage.ts")],
+  ["/api/handover", await load("api/handover.ts")],
 ]);
 
 const dynamicHandlers = [
@@ -98,6 +100,8 @@ const dynamicHandlers = [
   [/^\/api\/compliance\/issues\/([^/]+)\/updates$/, "api/compliance/issues/[id]/updates.ts"],
   [/^\/api\/compliance\/issues\/([^/]+)\/recheck$/, "api/compliance/issues/[id]/recheck.ts"],
   [/^\/api\/compliance\/probe-issues\/([^/]+)\/recheck$/, "api/compliance/probe-issues/[id]/recheck.ts"],
+  [/^\/api\/handover\/([^/]+)\/acknowledge$/, "api/handover/[id]/acknowledge.ts"],
+  [/^\/api\/handover\/([^/]+)\/resolve$/, "api/handover/[id]/resolve.ts"],
 ];
 for (const [, path] of dynamicHandlers) dynamicHandlers[dynamicHandlers.findIndex(([, candidate]) => candidate === path)][2] = await load(path);
 
@@ -127,7 +131,7 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === "/__test__/state") {
     const client = await (await import("../src/server/db/client.ts")).getPool().connect();
     try {
-      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM cleaning_completions WHERE location_id = $1) AS cleaning, (SELECT count(*)::int FROM security_responses WHERE location_id = $1) AS security, (SELECT count(*)::int FROM structured_task_responses WHERE location_id = $1) AS structured, (SELECT count(*)::int FROM additional_completions WHERE location_id = $1) AS additional, (SELECT count(*)::int FROM temperature_readings WHERE location_id = $1) AS temperature, (SELECT min(captured_at) FROM temperature_readings WHERE location_id = $1) AS temperature_capture, (SELECT count(*)::int FROM food_checks WHERE location_id = $1) AS probes, (SELECT count(*)::int FROM issues WHERE location_id = $1) AS issues, (SELECT count(*)::int FROM issue_updates WHERE location_id = $1) AS issue_updates, (SELECT count(*)::int FROM rechecks WHERE location_id = $1) AS rechecks, (SELECT count(*)::int FROM wastage_records WHERE location_id = $1) AS wastage, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
+      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM cleaning_completions WHERE location_id = $1) AS cleaning, (SELECT count(*)::int FROM security_responses WHERE location_id = $1) AS security, (SELECT count(*)::int FROM structured_task_responses WHERE location_id = $1) AS structured, (SELECT count(*)::int FROM additional_completions WHERE location_id = $1) AS additional, (SELECT count(*)::int FROM temperature_readings WHERE location_id = $1) AS temperature, (SELECT min(captured_at) FROM temperature_readings WHERE location_id = $1) AS temperature_capture, (SELECT count(*)::int FROM food_checks WHERE location_id = $1) AS probes, (SELECT count(*)::int FROM issues WHERE location_id = $1) AS issues, (SELECT count(*)::int FROM issue_updates WHERE location_id = $1) AS issue_updates, (SELECT count(*)::int FROM rechecks WHERE location_id = $1) AS rechecks, (SELECT count(*)::int FROM wastage_records WHERE location_id = $1) AS wastage, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions, (SELECT count(*)::int FROM shift_handover_notes WHERE location_id = $1) AS handover_notes, (SELECT count(*)::int FROM shift_handover_acknowledgements a JOIN shift_handover_notes n ON n.id = a.note_id WHERE n.location_id = $1) AS handover_acknowledgements, (SELECT count(*)::int FROM shift_handover_resolutions r JOIN shift_handover_notes n ON n.id = r.note_id WHERE n.location_id = $1) AS handover_resolutions", [ids.location]);
       response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify(result.rows[0]));
     } finally { client.release(); }
     return;

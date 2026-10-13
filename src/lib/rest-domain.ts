@@ -50,8 +50,8 @@ const compat = (value: any): any => {
 const idOf = (value: any) => value?._id ?? value?.id ?? value;
 const query = (path: string): Promise<any> => apiRequest<any>(path).then((body) => unwrap<any>(body));
 const post = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
-const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record") => {
-  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage";
+const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record" | "handover-note") => {
+  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "").replace("-note", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage" | "handover";
   const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow === "issue" ? "issues" : workflow);
   const session = readOfflineSession();
   const locationId = body.locationId ?? session?.locationId;
@@ -116,6 +116,12 @@ export const restApi = {
     addIssueAction: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body, "issue-update"),
     addRecheck: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body, "issue-update"),
     addIssueUpdate: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body, "issue-update"),
+    handover: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/handover?locationId=${encodeURIComponent(locationId)}`)),
+      create: (body: AnyRecord) => offlinePost("/api/handover", body, "handover-note"),
+      acknowledge: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/acknowledge`, body),
+      resolve: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/resolve`, body),
+    },
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },
   reports: {
