@@ -22,6 +22,9 @@ const ids = {
   memberA2: "00000000-0000-4000-8000-000000000302",
   memberB1: "00000000-0000-4000-8000-000000000303",
   foodA: "00000000-0000-4000-8000-000000000304",
+  equipmentA: "00000000-0000-4000-8000-000000000305",
+  roundA: "00000000-0000-4000-8000-000000000306",
+  readingA: "00000000-0000-4000-8000-000000000307",
   docA: "00000000-0000-4000-8000-000000000401",
   docB: "00000000-0000-4000-8000-000000000402",
   controlledA: "00000000-0000-4000-8000-000000000501",
@@ -57,6 +60,12 @@ INSERT INTO team_members (id, location_id, name, role) VALUES
   ('${ids.memberB1}', '${ids.storeB1}', 'Team B1', 'team');
 INSERT INTO food_checks (id, location_id, product, quantity, temperature, result, created_by, team_member_id)
 VALUES ('${ids.foodA}', '${ids.storeA1}', 'A-only food check', '1', 4, 'pass', '${ids.managerA}', '${ids.memberA1}');
+INSERT INTO equipment (id, location_id, name, type, minimum_temperature, maximum_temperature, sort_order)
+VALUES ('${ids.equipmentA}', '${ids.storeA1}', 'A-only fridge', 'fridge', 0, 8, 0);
+INSERT INTO temperature_rounds (id, location_id, session, started_at, created_by, team_member_id)
+VALUES ('${ids.roundA}', '${ids.storeA1}', 'AM', now(), '${ids.managerA}', '${ids.memberA1}');
+INSERT INTO temperature_readings (id, round_id, equipment_id, location_id, temperature, result, created_by, team_member_id, equipment_name, minimum_temperature, maximum_temperature)
+VALUES ('${ids.readingA}', '${ids.roundA}', '${ids.equipmentA}', '${ids.storeA1}', 4, 'normal', '${ids.managerA}', '${ids.memberA1}', 'A-only fridge', 0, 8);
 INSERT INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES
   ('00000000-0000-4000-8000-000000000901', '${ids.adminA}', '${tokenHash(token("admin-a"))}', now() + interval '1 hour'),
   ('00000000-0000-4000-8000-000000000902', '${ids.managerA}', '${tokenHash(token("manager-a"))}', now() + interval '1 hour'),
@@ -155,6 +164,7 @@ const test = async () => {
     assert.equal(dashboardA.status, 200);
     assert.equal(dashboardA.body.location.id, ids.storeA1);
     assert.equal(dashboardA.body.foodChecks.some(item => item.product === "A-only food check"), true);
+    assert.equal(dashboardA.body.readings.some(item => item.equipmentName === "A-only fridge"), true);
     assert.equal((await invoke(dashboard, managerA({ locationId: ids.storeA2 }))).status, 403);
     assert.equal((await invoke(dashboard, managerA({ locationId: ids.storeB1 }))).status, 403);
 
