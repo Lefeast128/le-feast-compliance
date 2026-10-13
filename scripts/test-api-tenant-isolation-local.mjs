@@ -21,6 +21,7 @@ const ids = {
   memberA1: "00000000-0000-4000-8000-000000000301",
   memberA2: "00000000-0000-4000-8000-000000000302",
   memberB1: "00000000-0000-4000-8000-000000000303",
+  foodA: "00000000-0000-4000-8000-000000000304",
   docA: "00000000-0000-4000-8000-000000000401",
   docB: "00000000-0000-4000-8000-000000000402",
   controlledA: "00000000-0000-4000-8000-000000000501",
@@ -54,6 +55,8 @@ INSERT INTO team_members (id, location_id, name, role) VALUES
   ('${ids.memberA1}', '${ids.storeA1}', 'Team A1', 'team'),
   ('${ids.memberA2}', '${ids.storeA2}', 'Team A2', 'team'),
   ('${ids.memberB1}', '${ids.storeB1}', 'Team B1', 'team');
+INSERT INTO food_checks (id, location_id, product, quantity, temperature, result, created_by, team_member_id)
+VALUES ('${ids.foodA}', '${ids.storeA1}', 'A-only food check', '1', 4, 'pass', '${ids.managerA}', '${ids.memberA1}');
 INSERT INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES
   ('00000000-0000-4000-8000-000000000901', '${ids.adminA}', '${tokenHash(token("admin-a"))}', now() + interval '1 hour'),
   ('00000000-0000-4000-8000-000000000902', '${ids.managerA}', '${tokenHash(token("manager-a"))}', now() + interval '1 hour'),
@@ -147,6 +150,7 @@ const test = async () => {
     const dashboardA = await invoke(dashboard, managerA({ locationId: ids.storeA1 }));
     assert.equal(dashboardA.status, 200);
     assert.equal(dashboardA.body.location.id, ids.storeA1);
+    assert.equal(dashboardA.body.foodChecks.some(item => item.product === "A-only food check"), true);
     assert.equal((await invoke(dashboard, managerA({ locationId: ids.storeA2 }))).status, 403);
     assert.equal((await invoke(dashboard, managerA({ locationId: ids.storeB1 }))).status, 403);
 
