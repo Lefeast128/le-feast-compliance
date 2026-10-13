@@ -3,7 +3,7 @@ import { getDb } from "../db/client.js";
 import { auditEvents, issueUpdates, issues, rechecks } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
-import { activeMember, locationFor, now } from "./shared.js";
+import { activeMember, locationFor } from "./shared.js";
 import { captureTime, requireEnum, requireString, requireUuid } from "./validation.js";
 import { idempotentOfflineMutation } from "./offline-idempotency.js";
 

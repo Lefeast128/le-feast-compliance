@@ -27,6 +27,7 @@ const ids = {
   membership2: "00000000-0000-4000-8000-000000001013", member2: "00000000-0000-4000-8000-000000001014",
   location3: "00000000-0000-4000-8000-000000001015", user3: "00000000-0000-4000-8000-000000001016",
   membership3: "00000000-0000-4000-8000-000000001017", member3: "00000000-0000-4000-8000-000000001018",
+  equipment: "00000000-0000-4000-8000-000000001022", probeProduct: "00000000-0000-4000-8000-000000001023", wastageItem: "00000000-0000-4000-8000-000000001024",
 };
 const credential = createPasswordCredential("offline-test-password");
 const sql = (text) => run(bin("psql"), ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--dbname", dbUrl], { input: text, encoding: "utf8" });
@@ -45,6 +46,9 @@ INSERT INTO cleaning_tasks (id, location_id, name, task_type, completion_mode, s
 INSERT INTO cleaning_tasks (id, location_id, name, task_type, completion_mode, steps, frequency, weekdays, sort_order) VALUES ('${ids.cleaningConcurrent}', '${ids.location}', 'Offline test: concurrent cleaning result', 'with_steps', 'question', '[{"id":"answer","label":"Concurrent cleaning check?","responseType":"yes_no","required":true}]'::jsonb, 'daily', '[]'::jsonb, 2);
 INSERT INTO security_questions (id, location_id, session, question, task_type, completion_mode, steps, sort_order) VALUES ('${ids.security}', '${ids.location}', 'AM', 'Offline test: doors secure?', 'simple', 'question', '[]'::jsonb, 0);
 INSERT INTO additional_requirements (id, location_id, title, frequency, next_due_at, fields, sort_order) VALUES ('${ids.additional}', '${ids.location}', 'Offline test: probe calibration', 'daily', now() - interval '1 hour', '[{"key":"done","label":"Completed","type":"completed"}]'::jsonb, 0);
+INSERT INTO equipment (id, location_id, name, type, minimum_temperature, preferred_temperature, maximum_temperature, sort_order) VALUES ('${ids.equipment}', '${ids.location}', 'Offline test fridge', 'fridge', 0, 5, 8, 0);
+INSERT INTO probe_products (id, organisation_id, name, minimum_temperature, hold_minutes, location_ids, sort_order) VALUES ('${ids.probeProduct}', '${ids.org}', 'Offline test chicken', 75, 30, '["${ids.location}"]'::jsonb, 0);
+INSERT INTO wastage_items (id, location_id, name, sort_order) VALUES ('${ids.wastageItem}', '${ids.location}', 'Offline test item', 0);
 INSERT INTO organisations (id, name, timezone) VALUES ('${ids.org2}', 'Second Offline Organisation', 'Europe/London');
 INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location2}', '${ids.org}', 'Second Offline Store', 'offline-2', 'Europe/London');
 INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user2}', '${ids.org}', 'offline.manager@example.test', 'offline.manager@example.test', 'Offline Test Manager', 'user', now(), '${credential.hash}', '${credential.salt}');
@@ -81,7 +85,21 @@ const handlers = new Map([
   ["/api/compliance/structured-tasks/responses", await load("api/compliance/structured-tasks/responses.ts")],
   ["/api/additional/complete", await load("api/additional/complete.ts")],
   ["/api/additional", await load("api/additional.ts")],
+  ["/api/compliance/temperature-rounds", await load("api/compliance/temperature-rounds.ts")],
+  ["/api/compliance/temperature-readings", await load("api/compliance/temperature-readings.ts")],
+  ["/api/compliance/food-checks", await load("api/compliance/food-checks.ts")],
+  ["/api/compliance/issues", await load("api/compliance/issues.ts")],
+  ["/api/compliance/wastage", await load("api/compliance/wastage.ts")],
 ]);
+
+const dynamicHandlers = [
+  [/^\/api\/compliance\/temperature-rounds\/([^/]+)\/complete$/, "api/compliance/temperature-rounds/[id]/complete.ts"],
+  [/^\/api\/compliance\/issues\/([^/]+)\/action$/, "api/compliance/issues/[id]/action.ts"],
+  [/^\/api\/compliance\/issues\/([^/]+)\/updates$/, "api/compliance/issues/[id]/updates.ts"],
+  [/^\/api\/compliance\/issues\/([^/]+)\/recheck$/, "api/compliance/issues/[id]/recheck.ts"],
+  [/^\/api\/compliance\/probe-issues\/([^/]+)\/recheck$/, "api/compliance/probe-issues/[id]/recheck.ts"],
+];
+for (const [, path] of dynamicHandlers) dynamicHandlers[dynamicHandlers.findIndex(([, candidate]) => candidate === path)][2] = await load(path);
 
 async function shutdown() {
   try { await (await import("../src/server/db/client.ts")).getPool().end(); } catch {}
@@ -109,16 +127,22 @@ const server = http.createServer(async (request, response) => {
   if (url.pathname === "/__test__/state") {
     const client = await (await import("../src/server/db/client.ts")).getPool().connect();
     try {
-      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM cleaning_completions WHERE location_id = $1) AS cleaning, (SELECT count(*)::int FROM security_responses WHERE location_id = $1) AS security, (SELECT count(*)::int FROM structured_task_responses WHERE location_id = $1) AS structured, (SELECT count(*)::int FROM additional_completions WHERE location_id = $1) AS additional, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
+      const result = await client.query("SELECT (SELECT count(*)::int FROM checklist_responses WHERE location_id = $1) AS responses, (SELECT count(*)::int FROM checklist_sign_offs WHERE location_id = $1) AS signoffs, (SELECT count(*)::int FROM cleaning_completions WHERE location_id = $1) AS cleaning, (SELECT count(*)::int FROM security_responses WHERE location_id = $1) AS security, (SELECT count(*)::int FROM structured_task_responses WHERE location_id = $1) AS structured, (SELECT count(*)::int FROM additional_completions WHERE location_id = $1) AS additional, (SELECT count(*)::int FROM temperature_readings WHERE location_id = $1) AS temperature, (SELECT min(created_at) FROM temperature_readings WHERE location_id = $1) AS temperature_capture, (SELECT count(*)::int FROM food_checks WHERE location_id = $1) AS probes, (SELECT count(*)::int FROM issues WHERE location_id = $1) AS issues, (SELECT count(*)::int FROM issue_updates WHERE location_id = $1) AS issue_updates, (SELECT count(*)::int FROM rechecks WHERE location_id = $1) AS rechecks, (SELECT count(*)::int FROM wastage_records WHERE location_id = $1) AS wastage, (SELECT count(*)::int FROM offline_submissions WHERE location_id = $1) AS submissions", [ids.location]);
       response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify(result.rows[0]));
     } finally { client.release(); }
     return;
   }
   if (networkOffline) { response.writeHead(503, { "Content-Type": "application/json" }); response.end(JSON.stringify({ ok: false, error: "Simulated temporary network failure" })); return; }
-  const handler = handlers.get(url.pathname);
+  let handler = handlers.get(url.pathname);
+  let routeParamId;
+  if (!handler) {
+    const match = dynamicHandlers.find(([pattern]) => pattern.test(url.pathname));
+    if (match) { routeParamId = url.pathname.match(match[0])?.[1]; handler = match[2]; }
+  }
   if (!handler) { response.writeHead(404); response.end("Not found"); return; }
   const body = await bodyOf(request);
   const query = Object.fromEntries(url.searchParams.entries());
+  if (routeParamId) query.id = routeParamId;
   const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key, value ?? undefined]));
   let status = 200;
   const apiResponse = {
@@ -129,7 +153,7 @@ const server = http.createServer(async (request, response) => {
     end(value) { response.statusCode = status; response.end(value); },
   };
   try { await handler({ method: request.method, body, query, headers }, apiResponse); }
-  catch (error) { response.statusCode = 500; response.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Test server error" })); }
+  catch (error) { console.error("offline harness handler error", error); response.statusCode = 500; response.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Test server error" })); }
 });
 
 server.listen(port, "127.0.0.1", () => {

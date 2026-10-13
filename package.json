@@ -19,6 +19,7 @@
     "test:phase6": "node scripts/test-phase6.mjs",
     "test:phase7": "node scripts/test-phase7.mjs",
     "test:phase7a-wastage": "node --import=tsx/esm scripts/test-phase7a-wastage.mjs",
+    "test:offline-temperature-records": "node --import=tsx/esm scripts/test-offline-temperature-and-records-api.mjs",
     "test:staff-attribution": "node scripts/test-staff-attribution.mjs",
     "test:auth": "node scripts/test-auth.mjs",
     "db:generate": "drizzle-kit generate",
