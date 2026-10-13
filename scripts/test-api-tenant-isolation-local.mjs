@@ -88,6 +88,7 @@ const invoke = async (handler, request) => {
     json(value) { body = value; },
     setHeader() {},
     send(value) { sent = value; },
+    end(value) { sent = value; },
   };
   await handler(request, response);
   return { status: statusCode, body, sent };
@@ -119,13 +120,14 @@ const test = async () => {
     process.env.AUTH_SESSION_SECRET = secret;
     process.env.AUTH_ALLOWED_ORIGINS = "http://localhost:5173";
 
-    const [locations, dashboard, controlledDocuments, library, training, reports, organisation, userAccess, document] = await Promise.all([
+    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, document] = await Promise.all([
       import("../api/locations.ts"),
       import("../api/dashboard.ts"),
       import("../api/controlled-documents.ts"),
       import("../api/library.ts"),
       import("../api/training.ts"),
       import("../api/reports/compliance.ts"),
+      import("../api/reports/compliance/export.ts"),
       import("../api/admin/organisation.ts"),
       import("../api/admin/user-access.ts"),
       import("../api/documents/[id].ts"),
@@ -135,6 +137,8 @@ const test = async () => {
     const managerA = session => request("manager-a", session);
     const adminA = session => request("admin-a", session);
     const adminB = session => request("admin-b", session);
+    const reportStart = new Date().toISOString().slice(0, 10);
+    const reportEnd = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
     const locationsA = await invoke(locations, managerA());
     assert.equal(locationsA.status, 200);
@@ -170,9 +174,14 @@ const test = async () => {
     assert.equal((await invoke(training, managerA({ locationId: ids.storeA1 }))).status, 200);
     assert.equal((await invoke(training, managerA({ locationId: ids.storeA2 }))).status, 403);
     assert.equal((await invoke(training, managerA({ locationId: ids.storeB1 }))).status, 403);
-    assert.equal((await invoke(reports, managerA({ locationId: ids.storeA1, start: "2026-01-01", end: "2026-01-02" }))).status, 200);
-    assert.equal((await invoke(reports, managerA({ locationId: ids.storeA2, start: "2026-01-01", end: "2026-01-02" }))).status, 403);
-    assert.equal((await invoke(reports, managerA({ locationId: ids.storeB1, start: "2026-01-01", end: "2026-01-02" }))).status, 403);
+    assert.equal((await invoke(reports, managerA({ locationId: ids.storeA1, start: reportStart, end: reportEnd }))).status, 200);
+    assert.equal((await invoke(reports, managerA({ locationId: ids.storeA2, start: reportStart, end: reportEnd }))).status, 403);
+    assert.equal((await invoke(reports, managerA({ locationId: ids.storeB1, start: reportStart, end: reportEnd }))).status, 403);
+    const exportA = await invoke(exportReport, managerA({ locationId: ids.storeA1, start: reportStart, end: reportEnd, format: "csv" }));
+    assert.equal(exportA.status, 200);
+    assert.match(String(exportA.sent), /"Store","A1"/);
+    assert.doesNotMatch(String(exportA.sent), /B One/);
+    assert.equal((await invoke(exportReport, managerA({ locationId: ids.storeA2, start: reportStart, end: reportEnd, format: "csv" }))).status, 403);
 
     assert.equal((await invoke(organisation, adminA())).status, 200);
     assert.equal((await invoke(organisation, adminB())).status, 200);
