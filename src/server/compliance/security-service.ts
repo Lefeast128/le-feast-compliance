@@ -6,8 +6,9 @@ import { ApiError } from "./http.js";
 import { activeMember, locationFor, now } from "./shared.js";
 import { localDateKey, localDayRange, requireEnum } from "./validation.js";
 import { maybeAutoSignOffStructuredChecklist } from "./structured-task-service.js";
+import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
-export async function saveSecurityResponse(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; questionId: string; issue?: string; teamMemberId: string }) {
+export async function saveSecurityResponse(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; questionId: string; issue?: string; teamMemberId: string; idempotencyKey?: string }) {
   requireEnum(input.session, "session", ["AM", "PM"] as const);
   const location = await locationFor(context, input.locationId); await activeMember(location.id, input.teamMemberId); const db = getDb();
   const [question] = await db.select().from(securityQuestions).where(and(eq(securityQuestions.id, input.questionId), eq(securityQuestions.locationId, location.id))).limit(1);
@@ -15,12 +16,14 @@ export async function saveSecurityResponse(context: AuthContext, input: { locati
   if (question.completionMode === "task") throw new ApiError(422, "Simple completion tasks must use the structured task workflow");
   const range = localDayRange(Date.now(), location.timezone);
   return db.transaction(async (tx) => {
-    const existing = await tx.select({ id: securityResponses.id }).from(securityResponses).where(and(eq(securityResponses.locationId, location.id), eq(securityResponses.session, input.session), eq(securityResponses.questionId, question.id), gte(securityResponses.createdAt, new Date(range.start)), lt(securityResponses.createdAt, new Date(range.end))));
-    if (existing.length) throw new ApiError(409, "Security question already answered today");
-    const timestamp = now();
-    const [response] = await tx.insert(securityResponses).values({ locationId: location.id, session: input.session, questionId: question.id, answer: "yes", issue: input.issue?.trim() || null, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId ?? null }).returning({ id: securityResponses.id });
-    await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.session === "AM" ? "security_am" : "security_pm", dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
-    return { responseId: response.id };
+    return idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "security-response", payload: input }, async () => {
+      const existing = await tx.select({ id: securityResponses.id }).from(securityResponses).where(and(eq(securityResponses.locationId, location.id), eq(securityResponses.session, input.session), eq(securityResponses.questionId, question.id), gte(securityResponses.createdAt, new Date(range.start)), lt(securityResponses.createdAt, new Date(range.end))));
+      if (existing.length) throw new ApiError(409, "Security question already answered today");
+      const timestamp = now();
+      const [response] = await tx.insert(securityResponses).values({ locationId: location.id, session: input.session, questionId: question.id, answer: "yes", issue: input.issue?.trim() || null, createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId ?? null }).returning({ id: securityResponses.id });
+      await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.session === "AM" ? "security_am" : "security_pm", dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
+      return { responseId: response.id };
+    });
   });
 }
 export async function signOffSecurity(context: AuthContext, input: { locationId: string; session: "AM" | "PM"; teamMemberId: string }) {

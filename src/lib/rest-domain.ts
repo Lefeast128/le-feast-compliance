@@ -4,6 +4,9 @@ import { put as putBlob } from "@vercel/blob/client";
 import { apiRequest } from "@/lib/api-client";
 import { dateKeyFrom } from "@/lib/date-key";
 import { MAX_PDF_BYTES } from "@/lib/pdf-constants.js";
+import { enqueueOfflineMutation } from "@/lib/offline/outbox";
+import { readOfflineSession } from "@/lib/offline/device-session";
+import { offlineOperationalWorkflowEnabled } from "@/lib/offline/feature";
 
 type AnyRecord = Record<string, any>;
 
@@ -47,6 +50,16 @@ const compat = (value: any): any => {
 const idOf = (value: any) => value?._id ?? value?.id ?? value;
 const query = (path: string): Promise<any> => apiRequest<any>(path).then((body) => unwrap<any>(body));
 const post = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
+const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response") => {
+  const workflow = operation.replace("-response", "") as "cleaning" | "security" | "additional-check";
+  const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow);
+  const session = readOfflineSession();
+  if (enabled && typeof navigator !== "undefined" && navigator.onLine === false && session && session.locationId === body.locationId && sessionCanWriteForBody(session, body.locationId)) {
+    return enqueueOfflineMutation({ organisationId: session.organisationId, locationId: session.locationId, userId: session.userId, deviceSessionId: session.deviceSessionId }, { operation, endpoint: path, payload: body });
+  }
+  return post(path, body);
+};
+const sessionCanWriteForBody = (session: ReturnType<typeof readOfflineSession>, locationId: unknown) => Boolean(session && session.locationId === locationId && Date.parse(session.expiresAt) > Date.now());
 const patch = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "PATCH", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
 const remove = (path: string): Promise<any> => apiRequest<any>(path, { method: "DELETE" }).then((value) => unwrap<any>(value));
 
@@ -87,16 +100,16 @@ export const restApi = {
     recordProbeRecheck: (body: AnyRecord) => post(`/api/compliance/probe-issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
     saveChecklistResponse: (body: AnyRecord) => post("/api/compliance/checklists/responses", body),
     signOffChecklist: (body: AnyRecord) => post("/api/compliance/checklists/signoff", body),
-    saveSecurityResponse: (body: AnyRecord) => post("/api/compliance/security/responses", body),
+    saveSecurityResponse: (body: AnyRecord) => offlinePost("/api/compliance/security/responses", body, "security-response"),
     signOffSecurity: (body: AnyRecord) => post("/api/compliance/security/signoff", body),
     recordWastage: (body: AnyRecord) => post("/api/compliance/wastage", body),
-    completeCleaningTask: (body: AnyRecord) => post("/api/compliance/cleaning/completions", body),
+    completeCleaningTask: (body: AnyRecord) => offlinePost("/api/compliance/cleaning/completions", body, "cleaning-response"),
     structuredTasks: async ({ locationId, date }: AnyRecord) => {
       const params = new URLSearchParams({ locationId: String(locationId) });
       if (date) params.set("date", dateKey(date));
       return compat(await query(`/api/structured-tasks?${params.toString()}`));
     },
-    saveStructuredTaskResponse: (body: AnyRecord) => post("/api/compliance/structured-tasks/responses", body),
+    saveStructuredTaskResponse: (body: AnyRecord) => offlinePost("/api/compliance/structured-tasks/responses", body, body.area === "cleaning" ? "cleaning-response" : "security-response"),
     signOffStructuredTask: (body: AnyRecord) => post("/api/compliance/structured-tasks/signoff", body),
     createManualIssue: (body: AnyRecord) => post("/api/compliance/issues", body),
     addIssueAction: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body),
@@ -121,7 +134,7 @@ export const restApi = {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/additional?locationId=${encodeURIComponent(locationId)}`)),
     history: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/additional/history?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
     generateUploadUrl: async ({ locationId, data, filename, contentType, purpose }: AnyRecord) => documentsApi.upload({ locationId, data, filename, contentType, purpose: purpose ?? "additional_check_certificate" }),
-    complete: (body: AnyRecord) => post("/api/additional/complete", body),
+    complete: (body: AnyRecord) => offlinePost("/api/additional/complete", body, "additional-check-response"),
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/additional-requirements?locationId=${encodeURIComponent(locationId)}`)),
     add: (body: AnyRecord) => post("/api/admin/additional-requirements", body),
     update: (body: AnyRecord) => patch(`/api/admin/additional-requirements/${encodeURIComponent(idOf(body.requirementId))}`, body),

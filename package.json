@@ -67,7 +67,7 @@
     "test:admin-simplification": "node scripts/test-admin-simplification.mjs",
     "test:admin-acceptance": "node --import=tsx/esm scripts/test-admin-acceptance.mjs",
     "test:pwa": "node scripts/test-pwa.mjs",
-    "test:offline-foundation": "node --import=tsx/esm scripts/test-offline-foundation.mjs && node --import=tsx/esm scripts/test-offline-checklist-expansion.mjs",
+    "test:offline-foundation": "node --import=tsx/esm scripts/test-offline-foundation.mjs && node --import=tsx/esm scripts/test-offline-checklist-expansion.mjs && node --import=tsx/esm scripts/test-offline-operational-idempotency.mjs",
     "offline:test-api": "node --import=tsx/esm scripts/offline-browser-server.mjs",
     "test:bottom-navigation": "node scripts/test-bottom-navigation.mjs",
     "test:api-tenant-isolation-local": "node --import=tsx/esm scripts/test-api-tenant-isolation-local.mjs"

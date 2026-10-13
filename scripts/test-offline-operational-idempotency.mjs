@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
+const helper = await read("src/server/compliance/offline-idempotency.ts");
+const schema = await read("src/server/db/schema.ts");
+const migration = await read("drizzle/0019_offline_submission_payload_hash.sql");
+const rest = await read("src/lib/rest-domain.ts");
+const sources = await Promise.all(["src/server/compliance/cleaning-service.ts", "src/server/compliance/security-service.ts", "src/server/compliance/structured-task-service.ts", "src/server/additional/service.ts"].map(read));
+assert.match(schema, /payloadHash: text\("payload_hash"\)/);
+assert.match(migration, /ADD COLUMN IF NOT EXISTS/);
+assert.match(helper, /payloadHash/);
+assert.match(helper, /reused with different data/);
+assert.match(helper, /status === "synced"/);
+for (const source of sources) assert.match(source, /idempotentOfflineMutation/);
+assert.match(rest, /offlinePost\("\/api\/compliance\/cleaning\/completions"/);
+assert.match(rest, /offlinePost\("\/api\/compliance\/security\/responses"/);
+assert.match(rest, /offlinePost\("\/api\/additional\/complete"/);
+console.log("Offline cleaning, security and additional idempotency tests passed");

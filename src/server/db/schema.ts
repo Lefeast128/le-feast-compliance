@@ -366,6 +366,7 @@ export const offlineSubmissions = pgTable("offline_submissions", {
   locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   operation: text("operation").notNull(),
+  payloadHash: text("payload_hash"),
   status: text("status").notNull().default("processing"),
   response: jsonb("response"),
   createdAt: createdAt(),

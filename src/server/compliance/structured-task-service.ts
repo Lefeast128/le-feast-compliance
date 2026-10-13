@@ -23,6 +23,7 @@ import { activeMember } from "./shared.js";
 import { id, locationFor, text } from "../management/shared.js";
 import type { Transaction } from "../management/shared.js";
 import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
+import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
 export const structuredAreas = ["opening", "closing", "cleaning", "security_am", "security_pm"] as const;
 export type StructuredTaskArea = typeof structuredAreas[number];
@@ -287,7 +288,7 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
   const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
   const problem = typeof input.problem === "string" ? input.problem.trim() : "";
   const action = typeof input.action === "string" ? input.action.trim() : "";
-  return db().transaction(async tx => {
+  return db().transaction(async tx => idempotentOfflineMutation(tx, context, { key: typeof input.idempotencyKey === "string" ? input.idempotencyKey : undefined, organisationId: location[0].organisationId, locationId, operation: area === "cleaning" ? "cleaning-response" : "security-response", payload: input }, async () => {
     const existing = await tx.select({ id: structuredTaskResponses.id }).from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, area), eq(structuredTaskResponses.taskId, row.id), eq(structuredTaskResponses.dateKey, dateKey), eq(structuredTaskResponses.stepId, step.id))).limit(1);
     if (existing.length) throw new ApiError(409, "This task step has already been completed");
     let issueId: string | undefined;
@@ -300,7 +301,7 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
     const [response] = await tx.insert(structuredTaskResponses).values({ locationId, taskArea: area, taskId: row.id, stepId: step.id, responseType: step.responseType, responseValue: value, dateKey, createdBy: context.user.id, teamMemberId: memberId }).returning();
     await maybeAutoSignOffStructuredChecklist(tx, { locationId, area: area as StructuredTaskArea, dateKey, timezone: location[0].timezone, completedBy: context.user.id, teamMemberId: memberId });
     return { responseId: response.id, issueId, taskId: row.id, stepId: step.id };
-  });
+  }));
 }
 
 export async function signOffStructuredChecklist(context: AuthContext, input: Record<string, unknown>) {
