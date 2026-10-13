@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "@/lib/app-version";
-import { readOfflineSession } from "@/lib/offline/device-session";
+import { OFFLINE_SESSION_EVENT, readOfflineAuthSession, readOfflineSession } from "@/lib/offline/device-session";
 import { syncPending } from "@/lib/offline/outbox";
 import {
   applyPwaUpdate,
@@ -32,6 +32,7 @@ export function PwaStatus() {
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
+  const [offlineLease, setOfflineLease] = useState(() => Boolean(readOfflineAuthSession()));
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [updateRegistration, setUpdateRegistration] =
@@ -56,6 +57,8 @@ export function PwaStatus() {
 
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
+    const handleSessionChange = () => setOfflineLease(Boolean(readOfflineAuthSession()));
+    window.addEventListener(OFFLINE_SESSION_EVENT, handleSessionChange);
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     registerPwa(setUpdateRegistration);
     const session = readOfflineSession();
@@ -64,6 +67,7 @@ export function PwaStatus() {
     return () => {
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener(OFFLINE_SESSION_EVENT, handleSessionChange);
       window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
     };
   }, []);
@@ -90,10 +94,11 @@ export function PwaStatus() {
 
   const notice = !isOnline ? (
     <div role="status">
-      <p className="font-semibold">You&apos;re offline</p>
+      <p className="font-semibold">Temporary offline access</p>
       <p className="text-sm text-muted-foreground">
-        Reconnect to continue recording compliance checks.
+        Reconnect to continue syncing your saved checks.
       </p>
+      {!offlineLease && <p className="text-sm text-destructive">Your offline access has expired. Sign in online to continue.</p>}
     </div>
   ) : updateRegistration ? (
     <div role="status">

@@ -7,7 +7,7 @@ import {
 } from "@/lib/api-client";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { clearOfflineSession } from "@/lib/offline/device-session";
+import { clearOfflineSession, readOfflineAuthSession } from "@/lib/offline/device-session";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -55,10 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       applySession(await authApi.getSession());
     } catch (error) {
-      setIsAuthenticated(false);
-      setUser(null);
-      setMemberships([]);
-      setAuthError(errorMessage(error, "Unable to check your session"));
+      const cachedSession = readOfflineAuthSession();
+      const status = error instanceof ApiError ? error.status : 0;
+      if (cachedSession && [0, 502, 503].includes(status)) {
+        applySession(cachedSession);
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+        setMemberships([]);
+        setAuthError(errorMessage(error, "Unable to check your session"));
+      }
     } finally {
       setIsLoading(false);
     }

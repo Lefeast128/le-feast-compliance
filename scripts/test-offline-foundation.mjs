@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 const { createMemoryOfflineStore } = await import("../src/lib/offline/indexeddb.ts");
 const { syncSubmission, OFFLINE_MAX_ATTEMPTS } = await import("../src/lib/offline/outbox.ts");
-const { sessionCanWrite } = await import("../src/lib/offline/device-session.ts");
+const { establishOfflineSession, readOfflineAuthSession, sessionCanWrite, clearOfflineSession } = await import("../src/lib/offline/device-session.ts");
 const { offlineOpeningChecklistEnabled } = await import("../src/lib/offline/feature.ts");
 
 const scope = { organisationId: "org-a", locationId: "site-a", userId: "user-a", deviceSessionId: "device-a" };
@@ -14,6 +14,23 @@ assert.equal(offlineOpeningChecklistEnabled({ VITE_OFFLINE_OPENING_CHECKLIST: "t
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString() }, scope), true, "valid authenticated scope can write");
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() - 1).toISOString() }, scope), false, "expired offline session cannot write");
 assert.equal(sessionCanWrite({ ...scope, authenticatedAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString() }, { ...scope, locationId: "site-b" }), false, "offline scope cannot cross stores");
+
+const storage = new Map();
+globalThis.window = {
+  localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
+  dispatchEvent: () => true,
+};
+const authUser = { id: "user-a", organisationId: "org-a", email: "staff@example.test", name: "Test Staff", role: "user", hasPassword: true };
+const memberships = [{ userId: "user-a", locationId: "site-a", role: "staff" }];
+establishOfflineSession(authUser, "site-a", memberships);
+assert.equal(readOfflineAuthSession().user.id, "user-a", "offline lease restores the authenticated identity");
+assert.equal(readOfflineAuthSession().memberships[0].locationId, "site-a", "offline lease restores only authorised store memberships");
+const lease = JSON.parse(storage.get("le-feast-offline-lease"));
+storage.set("le-feast-offline-lease", JSON.stringify({ ...lease, expiresAt: new Date(Date.now() - 1).toISOString() }));
+assert.equal(readOfflineAuthSession(), null, "expired offline lease requires online reauthentication");
+establishOfflineSession(authUser, "site-a", memberships);
+clearOfflineSession();
+assert.equal(readOfflineAuthSession(), null, "logout invalidates the offline lease");
 
 const store = createMemoryOfflineStore();
 await store.put(submission);

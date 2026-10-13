@@ -20,7 +20,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
 import { formatDateKey } from "@/lib/date-key";
 import { getRoleCapabilities } from "@/lib/role-capabilities";
+import { clearOfflineSession, establishOfflineSession, readOfflineSession } from "@/lib/offline/device-session";
+import { readOpeningSnapshot, writeOpeningSnapshot } from "@/lib/offline/dashboard-snapshot";
 import { useState } from "react";
+import { useEffect } from "react";
 
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
 const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
@@ -36,9 +39,21 @@ export default function Dashboard() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const bounds = monthBounds(calendarMonth);
   const locations = useRestQuery<DashboardLocation[]>("locations", restApi.locations.myLocations, true);
-  const currentLocationId = locationId ?? locations?.[0]?._id ?? null;
+  const currentLocationId = locationId ?? locations?.[0]?._id ?? readOfflineSession()?.locationId ?? null;
   const capabilities = getRoleCapabilities(user, memberships, currentLocationId);
-  const dashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
+  const onlineDashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
+  const [offlineDashboard, setOfflineDashboard] = useState<DashboardData | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOfflineDashboard(currentLocationId ? readOpeningSnapshot(currentLocationId) : null);
+  }, [currentLocationId]);
+  useEffect(() => {
+    if (onlineDashboard && user?.organisationId && currentLocationId) {
+      establishOfflineSession(user, currentLocationId, memberships);
+      writeOpeningSnapshot(onlineDashboard);
+    }
+  }, [currentLocationId, memberships, onlineDashboard, user]);
+  const dashboard = onlineDashboard ?? offlineDashboard;
   const managerReviewStatus = useRestQuery<ManagerReviewStatus | null>(dashboard && dashboard.access?.role !== "staff" ? `manager-reviews-status:${dashboard.location._id}` : null, () => restApi.managerReviews.list({ locationId: dashboard!.location._id }), Boolean(dashboard && dashboard.access?.role !== "staff"));
   const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
   const library = useRestQuery<{ documents: Array<{ id: string; title: string; description?: string | null; category: string; important: boolean; updatedAt?: string; documentUrl?: string | null }> }>(view === "library" && currentLocationId ? `library:${currentLocationId}` : null, () => restApi.library.list({ locationId: currentLocationId }), Boolean(view === "library" && currentLocationId));
@@ -48,6 +63,7 @@ export default function Dashboard() {
 
   function switchLocation(nextLocationId: string) {
     if (!nextLocationId || nextLocationId === currentLocationId) return;
+    clearOfflineSession();
     setLocationId(nextLocationId);
     setView("today");
     workflows.resetForLocation();

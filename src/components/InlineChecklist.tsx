@@ -86,7 +86,7 @@ export default function InlineChecklist({
   onBack,
 }: Props) {
   const saveLegacy = useRestMutation(restApi.compliance.saveChecklistResponse);
-  const { user } = useAuth();
+  const { user, memberships } = useAuth();
   const saveStructured = useRestMutation(
     restApi.compliance.saveStructuredTaskResponse,
   );
@@ -113,8 +113,8 @@ export default function InlineChecklist({
   >([]);
 
   useEffect(() => {
-    if (user?.organisationId) establishOfflineSession(user, locationId);
-  }, [locationId, user]);
+    if (user?.organisationId) establishOfflineSession(user, locationId, memberships);
+  }, [locationId, memberships, user]);
   useEffect(() => installOutboxRuntime(() => user?.organisationId ? ({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }) : null), [locationId, user]);
 
   const effectiveLegacyResponses = [

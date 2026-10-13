@@ -35,4 +35,13 @@ export type OfflineSubmission = OfflineScope & {
 export type OfflineSession = OfflineScope & {
   authenticatedAt: string;
   expiresAt: string;
+  user: {
+    id: string;
+    organisationId: string | null;
+    email: string;
+    name: string | null;
+    role: "user" | "admin";
+    hasPassword: boolean;
+  };
+  memberships: Array<{ userId: string; locationId: string; role: "staff" | "manager" }>;
 };
