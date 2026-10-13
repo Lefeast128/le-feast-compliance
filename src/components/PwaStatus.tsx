@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "@/lib/app-version";
+import { readOfflineSession } from "@/lib/offline/device-session";
+import { syncPending } from "@/lib/offline/outbox";
 import {
   applyPwaUpdate,
   isStandaloneDisplayMode,
@@ -44,6 +46,8 @@ export function PwaStatus() {
     const handleOnline = () => {
       setIsOnline(true);
       window.dispatchEvent(new Event("rest:data-changed"));
+      const session = readOfflineSession();
+      if (session) void syncPending(session).catch(() => undefined);
     };
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -54,6 +58,8 @@ export function PwaStatus() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     registerPwa(setUpdateRegistration);
+    const session = readOfflineSession();
+    if (session) void syncPending(session).catch(() => undefined);
 
     return () => {
       window.removeEventListener("offline", handleOffline);

@@ -52,6 +52,11 @@ export function parseBody(req: ApiRequest, allowEmpty = false) {
   return body as Record<string, unknown>;
 }
 
+export function getHeader(req: ApiRequest, name: string) {
+  const value = req.headers?.[name.toLowerCase()] ?? req.headers?.[name] ?? req.headers?.[name.replace(/(^|-)([a-z])/g, (_, dash, letter) => `${dash}${letter.toUpperCase()}`)];
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export function respondError(res: ApiResponse, error: unknown) {
   if (error instanceof ApiError) {
     res.status(error.status).json({ ok: false, error: error.message });

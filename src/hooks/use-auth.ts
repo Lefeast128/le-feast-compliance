@@ -7,6 +7,7 @@ import {
 } from "@/lib/api-client";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { clearOfflineSession } from "@/lib/offline/device-session";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applySession = useCallback((session: Awaited<ReturnType<typeof authApi.getSession>>) => {
     if (!session.authenticated) {
+      clearOfflineSession();
       setIsAuthenticated(false);
       setUser(null);
       setMemberships([]);
@@ -83,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     try {
       const result = purpose === "setup" ? await authApi.verifyOtp(email, code) : await authApi.verifyOtpFor(email, code, purpose);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
@@ -97,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     try {
       const result = await authApi.login(email, password);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
@@ -110,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     try {
       const result = await authApi.setPassword(password);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
@@ -124,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } finally {
+      clearOfflineSession();
       setIsAuthenticated(false);
       setUser(null);
       setMemberships([]);

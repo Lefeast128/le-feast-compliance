@@ -50,8 +50,9 @@ const serviceWorker = read("src/pwa/sw-template.js");
 assert(serviceWorker.includes("cache.addAll(SHELL_ASSETS)"), "static shell precache");
 assert(serviceWorker.includes(".filter("), "old cache cleanup");
 assert(serviceWorker.includes('url.pathname.startsWith("/api/")'), "API requests excluded");
-assert(!serviceWorker.includes("indexedDB"), "no offline database");
-assert(!serviceWorker.includes("sync"), "no background mutation sync");
+assert(read("src/lib/offline/indexeddb.ts").includes("indexedDB"), "offline database foundation");
+assert(read("src/lib/offline/outbox.ts").includes("Idempotency-Key"), "offline idempotency header");
+assert(read("src/lib/offline/types.ts").includes('"conflict"'), "offline conflict state");
 assert(!serviceWorker.includes("/api/documents"), "private documents not precached");
 
 const pwaRegister = read("src/pwa/register.ts");
@@ -70,7 +71,7 @@ const apiClient = read("src/lib/api-client.ts");
 assert(apiClient.includes("OFFLINE_MUTATION_MESSAGE"), "offline mutation message");
 assert(apiClient.includes('navigator.onLine === false'), "offline mutation guard");
 assert(apiClient.includes('["GET", "HEAD", "OPTIONS"]'), "read methods remain available offline");
-assert(!apiClient.includes("indexedDB"), "no mutation queue in API client");
+assert(apiClient.includes("OFFLINE_MUTATION_MESSAGE"), "online-only workflows retain offline guard");
 
 const css = read("src/index.css");
 assert(css.includes("--brand-yellow: #FFDE56"), "shared brand yellow token");

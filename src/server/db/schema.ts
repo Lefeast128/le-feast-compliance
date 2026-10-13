@@ -359,6 +359,19 @@ export const authSessions = pgTable("auth_sessions", {
   createdAt: createdAt(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), revokedAt: timestampColumn("revoked_at"), lastUsedAt: timestampColumn("last_used_at"), rotatedFromId: uuid("rotated_from_id"),
 }, table => ({ token: uniqueIndex("auth_sessions_token_hash_idx").on(table.tokenHash), user: index("auth_sessions_user_created_idx").on(table.userId, table.createdAt) }));
 
+export const offlineSubmissions = pgTable("offline_submissions", {
+  id: id(),
+  submissionId: text("submission_id").notNull(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  operation: text("operation").notNull(),
+  status: text("status").notNull().default("processing"),
+  response: jsonb("response"),
+  createdAt: createdAt(),
+  completedAt: timestampColumn("completed_at"),
+}, table => ({ submission: uniqueIndex("offline_submissions_submission_id_idx").on(table.submissionId), scope: index("offline_submissions_scope_idx").on(table.organisationId, table.locationId, table.userId) }));
+
 export const foundationTables = {
   organisations, users, locations, memberships, teamMembers, scheduledTasks, equipment,
   temperatureRounds, temperatureReadings, probeProducts, checklistQuestions, checklistResponses,
@@ -367,5 +380,5 @@ export const foundationTables = {
   cleaningCompletions, documents, libraryDocuments, libraryDocumentVersions, trainingRequirements, trainingDocumentVersions, trainingCompletions,
   centralTrainingPublications, centralChecklistItems, centralOperationalItems,
   additionalRequirements, additionalCompletions, structuredTaskResponses, trainingContentVersions, rechecks, issues, issueUpdates, auditEvents, managerReviews,
-  authOtpChallenges, authSessions,
+  authOtpChallenges, authSessions, offlineSubmissions,
 } as const;

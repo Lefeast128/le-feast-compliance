@@ -22,13 +22,17 @@ import {
   Circle,
   Loader2,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
 import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
 import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
+import { useAuth } from "@/hooks/use-auth";
+import { establishOfflineSession, getDeviceSessionId } from "@/lib/offline/device-session";
+import { enqueueOpeningChecklistResponse, installOutboxRuntime } from "@/lib/offline/outbox";
+import { offlineOpeningChecklistEnabled } from "@/lib/offline/feature";
 
 type ChecklistTask = UnifiedItem & {
   title: string;
@@ -82,6 +86,7 @@ export default function InlineChecklist({
   onBack,
 }: Props) {
   const saveLegacy = useRestMutation(restApi.compliance.saveChecklistResponse);
+  const { user } = useAuth();
   const saveStructured = useRestMutation(
     restApi.compliance.saveStructuredTaskResponse,
   );
@@ -106,6 +111,11 @@ export default function InlineChecklist({
   const [localStructuredResponses, setLocalStructuredResponses] = useState<
     StructuredTaskResponse[]
   >([]);
+
+  useEffect(() => {
+    if (user?.organisationId) establishOfflineSession(user, locationId);
+  }, [locationId, user]);
+  useEffect(() => installOutboxRuntime(() => user?.organisationId ? ({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }) : null), [locationId, user]);
 
   const effectiveLegacyResponses = [
     ...legacyResponses,
@@ -269,8 +279,9 @@ export default function InlineChecklist({
       return;
     }
     setSaving(task._id);
+    let queued = false;
     try {
-      await saveLegacy({
+      const payload = {
         locationId,
         checklist,
         questionId: task._id,
@@ -278,7 +289,14 @@ export default function InlineChecklist({
         problem: issue?.problem,
         action: issue?.action,
         teamMemberId: memberId,
-      });
+      };
+      const canQueue = checklist === "opening" && answer !== "no" && offlineOpeningChecklistEnabled() && typeof navigator !== "undefined" && navigator.onLine === false && user?.organisationId;
+      if (canQueue && user?.organisationId) {
+        await enqueueOpeningChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, payload);
+        queued = true;
+      } else {
+        await saveLegacy(payload);
+      }
       const newResponse: ChecklistResponse = {
           _id: `local-${task._id}`,
           questionId: task._id,
@@ -296,7 +314,8 @@ export default function InlineChecklist({
       setExpandedTaskId(null);
       await maybeAutoSignOff(nextLegacy, structured, memberId);
       toast.success(
-        answer === "no" ? "Issue and action recorded" : "Answer recorded",
+        queued ? "Answer saved on this device" : answer === "no" ? "Issue and action recorded" : "Answer recorded",
+        queued ? { description: "It will sync when the connection returns." } : undefined,
       );
     } catch (error) {
       toast.error("Answer could not be saved", { description: error instanceof Error ? error.message : "Please retry." });

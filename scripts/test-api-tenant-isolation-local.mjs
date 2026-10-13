@@ -33,6 +33,7 @@ const ids = {
   controlledVersionB: "00000000-0000-4000-8000-000000000602",
   libraryA: "00000000-0000-4000-8000-000000000701",
   libraryVersionA: "00000000-0000-4000-8000-000000000801",
+  questionA: "00000000-0000-4000-8000-000000000802",
 };
 
 const secret = "local-api-isolation-secret";
@@ -86,6 +87,8 @@ INSERT INTO library_documents (id, organisation_id, title, category, location_id
 VALUES ('${ids.libraryA}', '${ids.orgA}', 'Library A', 'food_safety', '["${ids.storeA1}"]'::jsonb, 'selected', '${ids.controlledA}', '${ids.adminA}');
 INSERT INTO library_document_versions (id, library_document_id, document_id, controlled_document_version_id, version_number, created_by)
 VALUES ('${ids.libraryVersionA}', '${ids.libraryA}', '${ids.docA}', '${ids.controlledVersionA}', 1, '${ids.adminA}');
+INSERT INTO checklist_questions (id, location_id, checklist, question, task_type, completion_mode, steps, sort_order)
+VALUES ('${ids.questionA}', '${ids.storeA1}', 'opening', 'Handwash station ready?', 'simple', 'question', '[]'::jsonb, 0);
 `;
 
 const invoke = async (handler, request) => {
@@ -129,7 +132,7 @@ const test = async () => {
     process.env.AUTH_SESSION_SECRET = secret;
     process.env.AUTH_ALLOWED_ORIGINS = "http://localhost:5173";
 
-    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, document] = await Promise.all([
+    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, document, checklistResponse] = await Promise.all([
       import("../api/locations.ts"),
       import("../api/dashboard.ts"),
       import("../api/controlled-documents.ts"),
@@ -140,6 +143,7 @@ const test = async () => {
       import("../api/admin/organisation.ts"),
       import("../api/admin/user-access.ts"),
       import("../api/documents/[id].ts"),
+      import("../api/compliance/checklists/responses.ts"),
     ]).then(modules => modules.map(module => module.default));
 
     const request = (sessionName, query = {}) => ({ method: "GET", query, headers: { cookie: cookie(token(sessionName)) } });
@@ -208,7 +212,16 @@ const test = async () => {
     assert.equal(wrongStore.sent, undefined);
     assert.equal(wrongOrganisation.sent, undefined);
 
-    console.log("API tenant isolation passed: real auth sessions, API handlers, service queries, same-org store boundaries, cross-org boundaries and controlled-document allocation");
+    const mutation = { method: "POST", headers: { cookie: cookie(token("manager-a")), origin: "http://localhost:5173" }, body: { locationId: ids.storeA1, checklist: "opening", questionId: ids.questionA, answer: "yes", teamMemberId: ids.memberA1 } };
+    const firstChecklistResponse = await invoke(checklistResponse, { ...mutation, headers: { ...mutation.headers, "idempotency-key": "offline-submission-0001" } });
+    assert.equal(firstChecklistResponse.status, 200);
+    const repeatedChecklistResponse = await invoke(checklistResponse, { ...mutation, headers: { ...mutation.headers, "idempotency-key": "offline-submission-0001" } });
+    assert.equal(repeatedChecklistResponse.status, 200);
+    assert.equal(repeatedChecklistResponse.body.data.responseId, firstChecklistResponse.body.data.responseId, "replayed offline submission returns the original server response");
+    const count = sql(dbUrl, `SELECT count(*) FROM checklist_responses WHERE id = '${firstChecklistResponse.body.data.responseId}';`).trim();
+    assert.match(count, /1/);
+
+    console.log("API tenant isolation passed: real auth sessions, API handlers, service queries, same-org store boundaries, cross-org boundaries, controlled-document allocation and idempotent offline replay");
   } finally {
     if (started && process.env.EHO_TEST_DATABASE_DRIVER === "pg") {
       try { await (await import("../src/server/db/client.ts")).getPool().end(); } catch {}

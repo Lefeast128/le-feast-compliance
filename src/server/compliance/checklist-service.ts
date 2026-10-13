@@ -1,19 +1,29 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { checklistQuestions, checklistResponses, checklistSignOffs, issueUpdates, issues } from "../db/schema.js";
+import { checklistQuestions, checklistResponses, checklistSignOffs, issueUpdates, issues, offlineSubmissions } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, locationFor, now } from "./shared.js";
 import { localDateKey, localDayRange, requireEnum, requireUuid } from "./validation.js";
 import { maybeAutoSignOffStructuredChecklist } from "./structured-task-service.js";
 
-export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string }) {
+export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string; idempotencyKey?: string }) {
   requireEnum(input.checklist, "checklist", ["opening", "closing"] as const); requireEnum(input.answer, "answer", ["yes", "no", "na"] as const);
   const location = await locationFor(context, input.locationId); requireUuid(input.questionId, "questionId");
   await activeMember(location.id, input.teamMemberId);
   if (input.answer === "no" && !input.action?.trim()) throw new ApiError(422, "A corrective action is required");
   const db = getDb();
   return db.transaction(async (tx) => {
+    if (input.idempotencyKey) {
+      if (!/^[A-Za-z0-9_-]{16,120}$/.test(input.idempotencyKey)) throw new ApiError(400, "Invalid idempotency key");
+      if (input.checklist !== "opening") throw new ApiError(400, "Offline idempotency is not enabled for this checklist");
+      const [created] = await tx.insert(offlineSubmissions).values({ submissionId: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, userId: context.user.id, operation: "opening-checklist-response", status: "processing" }).onConflictDoNothing({ target: offlineSubmissions.submissionId }).returning({ id: offlineSubmissions.id });
+      if (!created) {
+        const [previous] = await tx.select({ status: offlineSubmissions.status, response: offlineSubmissions.response }).from(offlineSubmissions).where(and(eq(offlineSubmissions.submissionId, input.idempotencyKey), eq(offlineSubmissions.organisationId, location.organisationId), eq(offlineSubmissions.locationId, location.id), eq(offlineSubmissions.userId, context.user.id))).limit(1);
+        if (previous?.status === "synced" && previous.response && typeof previous.response === "object" && "responseId" in previous.response) return previous.response as { responseId: string; existing: true };
+        throw new ApiError(409, "This submission is already being processed");
+      }
+    }
     const [question] = await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.id, input.questionId), eq(checklistQuestions.locationId, location.id))).limit(1);
     if (!question) throw new ApiError(422, "Checklist question does not belong to this location");
     if (question.checklist !== input.checklist) throw new ApiError(422, "Checklist question does not match this checklist");
@@ -29,7 +39,9 @@ export async function saveChecklistResponse(context: AuthContext, input: { locat
       await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: input.action!.trim(), status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId! });
     }
     await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.checklist, dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
-    return { responseId: response.id };
+    const result = { responseId: response.id };
+    if (input.idempotencyKey) await tx.update(offlineSubmissions).set({ status: "synced", response: result, completedAt: timestamp }).where(eq(offlineSubmissions.submissionId, input.idempotencyKey));
+    return result;
   });
 }
 export async function signOffChecklist(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; teamMemberId: string }) {
