@@ -55,7 +55,7 @@ export async function sendOtpEmail(email: string, code: string, expiryMinutes = 
       to: [email],
       subject: "Your Le Feast login code",
       text: [
-        "Le Feast Compliance",
+        "mise. by Le Feast",
         `Your verification code is: ${code}`,
         `This code expires in ${expiryMinutes} minutes.`,
         "If you did not request this code, you can ignore this email.",
@@ -85,15 +85,15 @@ export async function sendInvitationEmail(input: {
     await axios.post("https://api.resend.com/emails", {
       from,
       to: [input.email],
-      subject: "You've been invited to Le Feast Compliance",
+      subject: "You've been invited to mise. by Le Feast",
       text: [
-        "Le Feast Compliance",
+        "mise. by Le Feast",
         `Hello ${input.recipientName},`,
-        `${inviter} has given you access to Le Feast Compliance.`,
+        `${inviter} has given you access to mise. by Le Feast.`,
         "",
         `Your access: ${access}`,
         "Use your invited email address to sign in securely with a verification code.",
-        `Open Le Feast Compliance: ${appUrl}`,
+        `Open mise. by Le Feast: ${appUrl}`,
       ].join("\n"),
     }, { headers: { Authorization: `Bearer ${apiKey}` } });
   } catch (error) {

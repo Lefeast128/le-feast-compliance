@@ -1,7 +1,7 @@
 {
-  "name": "Le Feast Compliance",
-  "short_name": "Le Feast",
-  "description": "Le Feast Compliance",
+  "name": "mise. by Le Feast",
+  "short_name": "mise.",
+  "description": "Store operations and compliance, handled simply.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

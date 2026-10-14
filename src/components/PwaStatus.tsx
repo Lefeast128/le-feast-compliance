@@ -102,7 +102,7 @@ export function PwaStatus() {
     </div>
   ) : updateRegistration ? (
     <div role="status">
-      <p className="font-semibold">A new version of Le Feast Compliance is available.</p>
+      <p className="font-semibold">A new version of mise. is available.</p>
       <button
         type="button"
         className="mt-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
@@ -113,7 +113,7 @@ export function PwaStatus() {
     </div>
   ) : showInstall ? (
     <div role="status" className="flex items-center gap-3">
-      <p className="text-sm font-semibold">Install Le Feast Compliance</p>
+      <p className="text-sm font-semibold">Install mise.</p>
       <button
         type="button"
         className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
@@ -124,7 +124,7 @@ export function PwaStatus() {
     </div>
   ) : showIosGuidance ? (
     <div role="status">
-      <p className="font-semibold">Install Le Feast Compliance</p>
+      <p className="font-semibold">Install mise.</p>
       <p className="text-sm text-muted-foreground">Share → Add to Home Screen</p>
       <button
         type="button"

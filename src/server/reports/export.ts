@@ -297,11 +297,11 @@ const addTable = (sheet: ExcelJS.Worksheet, headers: string[], rows: unknown[][]
 
 export const renderComplianceWorkbook = async (report: ComplianceReport, generatedAt = new Date().toISOString()) => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Le Feast Compliance";
+  workbook.creator = "mise. by Le Feast";
   workbook.created = new Date(generatedAt);
 
   const summary = workbook.addWorksheet("Summary");
-  summary.addRow(["Le Feast Compliance Report"]).font = { bold: true, size: 16 };
+  summary.addRow(["mise. by Le Feast Compliance Report"]).font = { bold: true, size: 16 };
   for (const row of metadataRows(report, generatedAt)) summary.addRow(row.map(cellValue));
   summary.addRow([]);
   summary.addRow(["Summary metrics"]).font = { bold: true };

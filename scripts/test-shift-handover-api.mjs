@@ -69,6 +69,9 @@ try {
   assert.equal(read.value.notes[0].acknowledgedByMe, true);
   expectStatus(await request("POST", `/api/handover/${firstId}/acknowledge`, {}, staff), 200, "acknowledgement replay");
 
+  const simpleMessage = await request("POST", "/api/handover", { locationId: ids.location, message: "Simple store conversation message." }, staff, "handover-note-simple");
+  expectStatus(simpleMessage, 200, "simple message without legacy fields");
+
   const second = await create(staff, ids.location, "handover-note-0002", { title: "Urgent note", message: "Escalate through Issues & Corrective Actions.", category: "urgent" });
   expectStatus(second, 200, "create urgent note");
   expectStatus(await request("GET", `/api/handover?locationId=${ids.location2}`, undefined, staff), 403, "same organisation unauthorised store");
@@ -86,7 +89,7 @@ try {
   expectStatus(history, 200, "resolved note remains in history");
   assert.equal(history.value.notes.find(note => note.id === firstId).resolved, true, "resolved action remains auditable");
   const state = (await request("GET", "/__test__/state")).value;
-  assert.equal(state.handover_notes, 2, "location-scoped notes persist exactly once");
+  assert.equal(state.handover_notes, 3, "location-scoped notes persist exactly once");
   assert.equal(state.handover_acknowledgements, 1, "acknowledgements are immutable and idempotent");
   assert.equal(state.handover_resolutions, 1, "location-scoped resolutions are recorded once per note");
   assert.ok(state.submissions >= 2, "note publication idempotency claims persist");

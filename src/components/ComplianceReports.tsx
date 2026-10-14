@@ -532,7 +532,7 @@ export default function ComplianceReports({
         <section className="inspection-pack-section rounded-3xl border border-black/[0.07] bg-white p-5 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8a6513]">Le Feast Compliance</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8a6513]">mise. by Le Feast</p>
               <h2 className="mt-2 text-3xl font-semibold">Inspection Evidence Pack</h2>
               <p className="mt-2 text-sm text-[#727a74]">{activeLocation?.name ?? packReport?.location?.name} · {reportRangeLabel(range)}</p>
               <p className="mt-1 text-xs text-[#89918b]">Generated {localTime(inspectionPack?.generatedAt, timeZone)} · Store timezone: {timeZone}</p>

@@ -26,6 +26,8 @@ import { useState } from "react";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import ShiftHandoverPanel, { type HandoverData } from "@/components/ShiftHandoverPanel";
+import ProfileMenu from "@/components/dashboard/ProfileMenu";
+import logo from "@/assets/logo.svg";
 
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
 const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
@@ -75,7 +77,7 @@ export default function Dashboard() {
   }, [currentLocationId]);
   const refreshHandover = () => window.dispatchEvent(new Event("rest:data-changed"));
   const activeNavigation = view === "training" ? "library" : view === "calendar" || view === "library" || view === "admin" ? view : "today";
-  const appShell = (content: ReactNode) => <div className="min-h-screen bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))]"><header className="print:hidden"><div className="mx-auto flex h-12 w-full max-w-3xl items-center justify-end px-4"><ShiftHandoverPanel locationId={currentLocationId ?? dashboard?.location._id ?? ""} data={handover ?? undefined} canResolve={capabilities.canViewManagerReviews} open={handoverOpen} onOpenChange={setHandoverOpen} onRefresh={refreshHandover} /></div></header>{content}<BottomNavigation onToday={() => setView("today")} onLibrary={() => setView("library")} onCalendar={() => setView("calendar")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
+  const appShell = (content: ReactNode) => <div className="min-h-screen bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))]"><header className="print:hidden"><div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between gap-4 px-4"><div className="flex min-w-0 items-center gap-2"><img src={logo} alt="mise." width={32} height={32} className="size-8 shrink-0 rounded-lg" /><div className="min-w-0 leading-none"><p className="truncate text-[15px] font-bold tracking-tight text-[#202522]">mise.</p><p className="mt-1 text-[9px] font-medium tracking-wide text-[#727a74]">by Le Feast</p></div></div><div className="flex items-center gap-1"><ShiftHandoverPanel locationId={currentLocationId ?? dashboard?.location._id ?? ""} data={handover ?? undefined} canResolve={capabilities.canViewManagerReviews} open={handoverOpen} onOpenChange={setHandoverOpen} onRefresh={refreshHandover} /><ProfileMenu user={user!} memberships={memberships} locations={locations ?? []} currentLocationId={currentLocationId} onLocationChange={switchLocation} onManagerReviews={openManagerReviews} onAdmin={openManagementView} onLogout={logout} /></div></div></header>{content}<BottomNavigation onToday={() => setView("today")} onLibrary={() => setView("library")} onCalendar={() => setView("calendar")} onAdmin={openManagementView} canUseManagement={capabilities.canUseManagement} active={activeNavigation} /></div>;
   const managerReviewStatus = useRestQuery<ManagerReviewStatus | null>(dashboard && dashboard.access?.role !== "staff" ? `manager-reviews-status:${dashboard.location._id}` : null, () => restApi.managerReviews.list({ locationId: dashboard!.location._id }), Boolean(dashboard && dashboard.access?.role !== "staff"));
   const additional = useRestQuery(dashboard ? `additional:${dashboard.location._id}` : null, () => restApi.additional.dashboard({ locationId: dashboard!.location._id }), Boolean(dashboard));
   const library = useRestQuery<{ documents: Array<{ id: string; title: string; description?: string | null; category: string; important: boolean; updatedAt?: string; documentUrl?: string | null }> }>(view === "library" && currentLocationId ? `library:${currentLocationId}` : null, () => restApi.library.list({ locationId: currentLocationId }), Boolean(view === "library" && currentLocationId));
@@ -145,7 +147,6 @@ export default function Dashboard() {
     onManagerReviews: openManagerReviews,
     canUseManagement: capabilities.canUseManagement,
     managerReviewStatus,
-    onLogout: logout,
     renderTimestamp,
     viewTemperatureRecords,
     viewChecklistRecords,
@@ -157,10 +158,6 @@ export default function Dashboard() {
     additional,
     structuredTasks: workflows.active?.structuredTasks ?? [],
     onOpenStructuredTask: setStructuredTaskArea,
-    isOrganisationAdmin: capabilities.isOrganisationAdmin,
-    locations: locations ?? [],
-    currentLocationId,
-    onLocationChange: switchLocation,
   };
   const mainView = view === "calendar"
     ? <CalendarView month={calendarMonth} setMonth={setCalendarMonth} days={calendar ?? []} onBack={() => setView("today")} onDay={(date: string) => { setSelectedDay(date); setView("day"); }} />

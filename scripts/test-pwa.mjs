@@ -8,8 +8,8 @@ const assert = (condition, message) => {
 };
 
 const manifest = JSON.parse(read("public/manifest.webmanifest"));
-assert(manifest.name === "Le Feast Compliance", "manifest name");
-assert(manifest.short_name === "Le Feast", "manifest short name");
+assert(manifest.name === "mise. by Le Feast", "manifest name");
+assert(manifest.short_name === "mise.", "manifest short name");
 assert(manifest.start_url === "/", "manifest start URL");
 assert(manifest.scope === "/", "manifest scope");
 assert(manifest.display === "standalone", "manifest standalone display");
@@ -64,7 +64,7 @@ const pwaStatus = read("src/components/PwaStatus.tsx");
 assert(pwaStatus.includes("offline") && pwaStatus.includes("Reconnect to continue"), "offline banner");
 assert(pwaStatus.includes("beforeinstallprompt"), "install prompt capture");
 assert(pwaStatus.includes("Share → Add to Home Screen"), "iOS install guidance");
-assert(pwaStatus.includes("A new version of Le Feast Compliance is available."), "update notice");
+assert(pwaStatus.includes("A new version of mise. is available."), "update notice");
 assert(pwaStatus.includes("Version {APP_VERSION}"), "build version visibility");
 
 const apiClient = read("src/lib/api-client.ts");

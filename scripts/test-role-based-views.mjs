@@ -8,6 +8,7 @@ const dashboard = await read("src/pages/Dashboard.tsx");
 const header = await read("src/components/dashboard/DashboardPrimitives.tsx");
 const today = await read("src/components/dashboard/DashboardToday.tsx");
 const journey = await read("src/components/dashboard/DailyChecksJourney.tsx");
+const profileMenu = await read("src/components/dashboard/ProfileMenu.tsx");
 const admin = await read("src/components/AdminSetup.tsx");
 const organisationAdmin = await read("src/components/OrganisationAdmin.tsx");
 const userAccess = await read("src/components/UserAccessAdmin.tsx");
@@ -41,7 +42,8 @@ const checks = [
   () => assert.equal(canManageLocation(adminUser, [], "rochdale"), true),
   () => assert.match(header, /canUseManagement/),
   () => assert.match(header, /onCalendar/),
-  () => assert.match(journey, /aria-label="Sign out"/),
+  () => assert.match(profileMenu, /Log out/),
+  () => assert.match(profileMenu, /permittedLocations/),
   () => assert.match(today, /canUseManagement &&/),
   () => assert.match(dashboard, /view === "admin"[\s\S]*capabilities\.canUseManagement/),
   () => assert.match(dashboard, /if \(view === "managerReviews"\) return capabilities\.canViewManagerReviews/),

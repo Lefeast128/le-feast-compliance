@@ -33,7 +33,6 @@ export type DashboardTodayProps = {
   onManagerReviews: () => void;
   canUseManagement: boolean;
   managerReviewStatus?: ManagerReviewStatus | null;
-  onLogout: () => void | Promise<void>;
   renderTimestamp: number;
   requiredComplete: number;
   equipment: Equipment[];
@@ -90,10 +89,6 @@ export type DashboardTodayProps = {
   addIssueUpdate: (args: Record<string, unknown>) => Promise<unknown>;
   structuredTasks: StructuredTask[];
   onOpenStructuredTask: (area: StructuredTask["area"]) => void;
-  isOrganisationAdmin: boolean;
-  locations: Array<{ _id: string; name: string }>;
-  currentLocationId: string | null;
-  onLocationChange: (locationId: string) => void;
 };
 
 export default function DashboardToday({
@@ -102,7 +97,6 @@ export default function DashboardToday({
   onManagerReviews,
   canUseManagement,
   managerReviewStatus,
-  onLogout,
   renderTimestamp,
   requiredComplete,
   equipment,
@@ -157,10 +151,6 @@ export default function DashboardToday({
   addIssueUpdate,
   structuredTasks,
   onOpenStructuredTask,
-  isOrganisationAdmin,
-  locations,
-  currentLocationId,
-  onLocationChange,
 }: DashboardTodayProps) {
   const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
   const cleaningCompleted = cleaningProgress(
@@ -264,11 +254,6 @@ export default function DashboardToday({
         openIssues={openIssues}
         onIssueSelected={setIssueSelected}
         onReportIssue={() => setIssueOpen(true)}
-        onLogout={onLogout}
-        isOrganisationAdmin={isOrganisationAdmin}
-        locations={locations}
-        currentLocationId={currentLocationId}
-        onLocationChange={onLocationChange}
       />
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>

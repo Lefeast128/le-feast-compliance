@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { shiftHandoverAcknowledgements, shiftHandoverNotes, shiftHandoverResolutions, users } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
@@ -26,7 +26,7 @@ export async function listHandover(context: AuthContext, locationId: string) {
     .from(shiftHandoverNotes)
     .leftJoin(users, eq(users.id, shiftHandoverNotes.createdBy))
     .where(eq(shiftHandoverNotes.locationId, location.id))
-    .orderBy(desc(shiftHandoverNotes.createdAt));
+    .orderBy(asc(shiftHandoverNotes.createdAt));
   const noteIds = noteRows.map(row => row.note.id);
   if (!noteIds.length) return { notes: [], unreadCount: 0 };
   const acknowledgements = await db.select().from(shiftHandoverAcknowledgements).where(and(eq(shiftHandoverAcknowledgements.userId, context.user.id), inArray(shiftHandoverAcknowledgements.noteId, noteIds)));
@@ -46,12 +46,12 @@ export async function listHandover(context: AuthContext, locationId: string) {
   return { notes, unreadCount: notes.filter(note => !note.acknowledgedByMe).length };
 }
 
-export async function createHandover(context: AuthContext, input: { locationId: string; title: string; message: string; shift: string; category: string; idempotencyKey?: string }) {
+export async function createHandover(context: AuthContext, input: { locationId: string; title?: string; message: string; shift?: string; category?: string; idempotencyKey?: string }) {
   const location = await locationFor(context, input.locationId);
-  const title = requireString(input.title, "Title");
+  const title = input.title?.trim() || "Message";
   const message = requireString(input.message, "Message");
-  const shift = requireString(input.shift, "Shift");
-  const category = requireEnum(input.category, "Category", categories);
+  const shift = input.shift?.trim() || "Current shift";
+  const category = input.category ? requireEnum(input.category, "Category", categories) : "information";
   const db = getDb();
   return db.transaction(tx => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "handover-note", payload: input }, async () => {
     const [note] = await tx.insert(shiftHandoverNotes).values({ organisationId: location.organisationId, locationId: location.id, title, message, shift, category, version: 1, createdAt: now(), createdBy: context.user.id }).returning({ id: shiftHandoverNotes.id });

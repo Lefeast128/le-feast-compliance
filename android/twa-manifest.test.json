@@ -1,8 +1,8 @@
 {
   "packageId": "uk.co.lefeast.eho.test",
   "host": "eho.lefeast.co.uk",
-  "name": "Le Feast EHO Test",
-  "launcherName": "EHO Test",
+  "name": "mise. by Le Feast",
+  "launcherName": "mise.",
   "display": "standalone",
   "startUrl": "/",
   "webManifestUrl": "https://eho.lefeast.co.uk/manifest.webmanifest",
