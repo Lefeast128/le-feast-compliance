@@ -1,11 +1,11 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { shiftHandoverAcknowledgements, shiftHandoverNotes, shiftHandoverResolutions, users } from "../db/schema.js";
+import { shiftHandoverAcknowledgements, shiftHandoverNotes, shiftHandoverResolutions, teamMembers, users } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { requireLocationManager } from "../auth/core.js";
 import { ApiError } from "../compliance/http.js";
 import { idempotentOfflineMutation } from "../compliance/offline-idempotency.js";
-import { locationFor, now } from "../compliance/shared.js";
+import { activeMember, locationFor, now } from "../compliance/shared.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
 
 const categories = ["information", "action_required", "urgent"] as const;
@@ -22,23 +22,24 @@ async function noteFor(context: AuthContext, noteId: string) {
 export async function listHandover(context: AuthContext, locationId: string) {
   const location = await locationFor(context, locationId);
   const db = getDb();
-  const noteRows = await db.select({ note: shiftHandoverNotes, authorName: users.name, authorEmail: users.email })
+  const noteRows = await db.select({ note: shiftHandoverNotes, authorName: users.name, authorEmail: users.email, senderName: teamMembers.name })
     .from(shiftHandoverNotes)
     .leftJoin(users, eq(users.id, shiftHandoverNotes.createdBy))
-    .where(eq(shiftHandoverNotes.locationId, location.id))
+    .leftJoin(teamMembers, eq(teamMembers.id, shiftHandoverNotes.createdByTeamMemberId))
+    .where(and(eq(shiftHandoverNotes.locationId, location.id), isNull(shiftHandoverNotes.deletedAt)))
     .orderBy(asc(shiftHandoverNotes.createdAt));
   const noteIds = noteRows.map(row => row.note.id);
   if (!noteIds.length) return { notes: [], unreadCount: 0 };
   const acknowledgements = await db.select().from(shiftHandoverAcknowledgements).where(and(eq(shiftHandoverAcknowledgements.userId, context.user.id), inArray(shiftHandoverAcknowledgements.noteId, noteIds)));
   const allAckRows = await db.select().from(shiftHandoverAcknowledgements).where(inArray(shiftHandoverAcknowledgements.noteId, noteIds));
   const allResolutionRows = await db.select().from(shiftHandoverResolutions).where(inArray(shiftHandoverResolutions.noteId, noteIds));
-  const notes = noteRows.map(({ note, authorName, authorEmail }) => {
+  const notes = noteRows.map(({ note, authorName, authorEmail, senderName }) => {
     const mine = acknowledgements.find(row => row.noteId === note.id && row.noteVersion === note.version);
     const ackCount = allAckRows.filter(row => row.noteId === note.id && row.noteVersion === note.version).length;
     const resolution = allResolutionRows.find(row => row.noteId === note.id);
     return {
       id: note.id, locationId: note.locationId, title: note.title, message: note.message, shift: note.shift, category: note.category,
-      version: note.version, createdAt: note.createdAt, author: { id: note.createdBy, name: authorName, email: authorEmail },
+      version: note.version, createdAt: note.createdAt, senderTeamMemberId: note.createdByTeamMemberId, author: { id: note.createdBy, name: senderName ?? authorName, email: authorEmail },
       acknowledgedByMe: Boolean(mine), acknowledgedAt: mine?.acknowledgedAt ?? null, acknowledgementCount: ackCount,
       resolved: Boolean(resolution), resolvedAt: resolution?.resolvedAt ?? null, resolvedBy: resolution?.resolvedBy ?? null, resolutionNote: resolution?.note ?? null,
     };
@@ -46,17 +47,26 @@ export async function listHandover(context: AuthContext, locationId: string) {
   return { notes, unreadCount: notes.filter(note => !note.acknowledgedByMe).length };
 }
 
-export async function createHandover(context: AuthContext, input: { locationId: string; title?: string; message: string; shift?: string; category?: string; idempotencyKey?: string }) {
+export async function createHandover(context: AuthContext, input: { locationId: string; title?: string; message: string; shift?: string; category?: string; teamMemberId?: string; idempotencyKey?: string }) {
   const location = await locationFor(context, input.locationId);
   const title = input.title?.trim() || "Message";
   const message = requireString(input.message, "Message");
   const shift = input.shift?.trim() || "Current shift";
   const category = input.category ? requireEnum(input.category, "Category", categories) : "information";
+  const sender = input.teamMemberId ? await activeMember(location.id, input.teamMemberId) : null;
   const db = getDb();
   return db.transaction(tx => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "handover-note", payload: input }, async () => {
-    const [note] = await tx.insert(shiftHandoverNotes).values({ organisationId: location.organisationId, locationId: location.id, title, message, shift, category, version: 1, createdAt: now(), createdBy: context.user.id }).returning({ id: shiftHandoverNotes.id });
+    const [note] = await tx.insert(shiftHandoverNotes).values({ organisationId: location.organisationId, locationId: location.id, title, message, shift, category, version: 1, createdAt: now(), createdBy: context.user.id, createdByTeamMemberId: sender?.id ?? null }).returning({ id: shiftHandoverNotes.id });
     return { noteId: note.id, version: 1, serverConfirmed: true };
   }));
+}
+
+export async function deleteHandover(context: AuthContext, noteId: string) {
+  const { db, note, location } = await noteFor(context, noteId);
+  if (note.createdBy !== context.user.id) requireLocationManager(context, location.id, location.organisationId);
+  if (note.deletedAt) return { noteId: note.id, deleted: true, alreadyDeleted: true };
+  await db.update(shiftHandoverNotes).set({ deletedAt: now(), deletedBy: context.user.id }).where(and(eq(shiftHandoverNotes.id, note.id), isNull(shiftHandoverNotes.deletedAt)));
+  return { noteId: note.id, deleted: true, alreadyDeleted: false };
 }
 
 export async function acknowledgeHandover(context: AuthContext, noteId: string) {

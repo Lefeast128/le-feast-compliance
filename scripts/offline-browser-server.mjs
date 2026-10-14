@@ -101,6 +101,7 @@ const dynamicHandlers = [
   [/^\/api\/compliance\/probe-issues\/([^/]+)\/recheck$/, "api/compliance/probe-issues/[id]/recheck.ts"],
   [/^\/api\/handover\/([^/]+)\/acknowledge$/, "api/handover/[id]/acknowledge.ts"],
   [/^\/api\/handover\/([^/]+)\/resolve$/, "api/handover/[id]/resolve.ts"],
+  [/^\/api\/handover\/([^/]+)\/delete$/, "api/handover/[id]/delete.ts"],
 ];
 for (const [, path] of dynamicHandlers) dynamicHandlers[dynamicHandlers.findIndex(([, candidate]) => candidate === path)][2] = await load(path);
 

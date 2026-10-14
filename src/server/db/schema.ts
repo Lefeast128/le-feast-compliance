@@ -334,7 +334,9 @@ export const shiftHandoverNotes = pgTable("shift_handover_notes", {
   id: id(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
   title: text("title").notNull(), message: text("message").notNull(), shift: text("shift").notNull(), category: text("category").notNull(), version: integer("version").notNull().default(1),
   createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
-}, table => ({ locationCreated: index("shift_handover_notes_location_created_idx").on(table.locationId, table.createdAt) }));
+  createdByTeamMemberId: uuid("created_by_team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }),
+  deletedAt: timestampColumn("deleted_at"), deletedBy: uuid("deleted_by").references(() => users.id, { onDelete: "restrict" }),
+}, table => ({ locationCreated: index("shift_handover_notes_location_created_idx").on(table.locationId, table.createdAt), locationActiveCreated: index("shift_handover_notes_location_active_created_idx").on(table.locationId, table.deletedAt, table.createdAt) }));
 export const shiftHandoverAcknowledgements = pgTable("shift_handover_acknowledgements", {
   id: id(), noteId: uuid("note_id").notNull().references(() => shiftHandoverNotes.id, { onDelete: "restrict" }), noteVersion: integer("note_version").notNull(), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }), acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => ({ noteUserVersion: uniqueIndex("shift_handover_ack_note_user_version_idx").on(table.noteId, table.noteVersion, table.userId), note: index("shift_handover_ack_note_idx").on(table.noteId) }));

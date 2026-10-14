@@ -121,6 +121,7 @@ export const restApi = {
       create: (body: AnyRecord) => offlinePost("/api/handover", body, "handover-note"),
       acknowledge: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/acknowledge`, body),
       resolve: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/resolve`, body),
+      delete: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/delete`, body),
     },
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },

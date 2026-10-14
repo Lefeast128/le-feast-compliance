@@ -69,14 +69,22 @@ try {
   assert.equal(read.value.notes[0].acknowledgedByMe, true);
   expectStatus(await request("POST", `/api/handover/${firstId}/acknowledge`, {}, staff), 200, "acknowledgement replay");
 
-  const simpleMessage = await request("POST", "/api/handover", { locationId: ids.location, message: "Simple store conversation message." }, staff, "handover-note-simple");
+  const simpleMessage = await request("POST", "/api/handover", { locationId: ids.location, message: "Simple store conversation message.", teamMemberId: "00000000-0000-4000-8000-000000001005" }, staff, "handover-note-simple");
   expectStatus(simpleMessage, 200, "simple message without legacy fields");
+  const simpleId = simpleMessage.value.noteId;
+  assert.equal((await request("GET", `/api/handover?locationId=${ids.location}`, undefined, staff)).value.notes.find(note => note.id === simpleId).author.name, "Offline Test Team Member", "selected sender name is shown");
+  expectStatus(await request("POST", `/api/handover/${simpleId}/delete`, {}, staff), 200, "author can soft-delete own message");
+  const afterDelete = await request("GET", `/api/handover?locationId=${ids.location}`, undefined, staff);
+  assert.equal(afterDelete.value.notes.some(note => note.id === simpleId), false, "soft-deleted message is hidden from conversation");
+  const stateAfterDelete = (await request("GET", "/__test__/state")).value;
+  assert.equal(stateAfterDelete.handover_notes, 2, "soft deletion does not remove the underlying row");
 
   const second = await create(staff, ids.location, "handover-note-0002", { title: "Urgent note", message: "Escalate through Issues & Corrective Actions.", category: "urgent" });
   expectStatus(second, 200, "create urgent note");
   expectStatus(await request("GET", `/api/handover?locationId=${ids.location2}`, undefined, staff), 403, "same organisation unauthorised store");
   expectStatus(await request("GET", `/api/handover?locationId=${ids.location}`, undefined, other), 403, "other organisation access");
   expectStatus(await create(other, ids.location, "handover-cross-org-0001"), 403, "cross organisation create");
+  expectStatus(await create(staff, ids.location, "handover-wrong-team-member", { teamMemberId: ids.member2 }), 422, "sender must belong to the current store");
 
   const actionForSecondStore = await create(manager, ids.location2, "handover-note-0003", { title: "Second store action" });
   expectStatus(actionForSecondStore, 200, "manager creates assigned-store note");
@@ -89,7 +97,7 @@ try {
   expectStatus(history, 200, "resolved note remains in history");
   assert.equal(history.value.notes.find(note => note.id === firstId).resolved, true, "resolved action remains auditable");
   const state = (await request("GET", "/__test__/state")).value;
-  assert.equal(state.handover_notes, 3, "location-scoped notes persist exactly once");
+  assert.equal(state.handover_notes, 3, "location-scoped note rows persist, including the soft-deleted message");
   assert.equal(state.handover_acknowledgements, 1, "acknowledgements are immutable and idempotent");
   assert.equal(state.handover_resolutions, 1, "location-scoped resolutions are recorded once per note");
   assert.ok(state.submissions >= 2, "note publication idempotency claims persist");
