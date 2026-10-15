@@ -189,8 +189,8 @@ export const catalogueSyncStatus = pgTable("catalogue_sync_status", { id: id(), 
 
 export const markdownProducts = pgTable("markdown_products", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
-  name: text("name").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt(),
-}, table => ({ locationOrder: index("markdown_products_location_order_idx").on(table.locationId, table.active, table.order) }));
+  name: text("name").notNull(), catalogueProductId: uuid("catalogue_product_id").references(() => catalogueProducts.id, { onDelete: "restrict" }), quickSelect: boolean("quick_select").notNull().default(false), source: text("source").notNull().default("custom"), temporaryDateKey: text("temporary_date_key"), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt(),
+}, table => ({ locationOrder: index("markdown_products_location_order_idx").on(table.locationId, table.active, table.order), catalogue: index("markdown_products_catalogue_idx").on(table.locationId, table.catalogueProductId), quickSelect: index("markdown_products_quick_select_idx").on(table.locationId, table.quickSelect, table.active, table.order) }));
 export const markdownSheets = pgTable("markdown_sheets", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), dateKey: text("date_key").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
 }, table => ({ locationDay: uniqueIndex("markdown_sheets_location_day_idx").on(table.locationId, table.dateKey) }));

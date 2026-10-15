@@ -6,6 +6,7 @@ import {
   Gauge,
   ListChecks,
   MessageSquareWarning,
+  ClipboardPenLine,
   PackageSearch,
   ShieldCheck,
   Users,
@@ -25,7 +26,8 @@ export type AdminFeatureKey =
   | "team"
   | "fridges"
   | "probes"
-  | "wastage";
+  | "wastage"
+  | "markdown";
 
 type Feature = {
   key: AdminFeatureKey;
@@ -100,6 +102,12 @@ const features: Feature[] = [
     title: "Wastage",
     description: "Open the TouchOffice-backed wastage catalogue.",
     icon: PackageSearch,
+  },
+  {
+    key: "markdown",
+    title: "Markdown Sheet",
+    description: "Choose this store's quick-select products.",
+    icon: ClipboardPenLine,
   },
 ];
 

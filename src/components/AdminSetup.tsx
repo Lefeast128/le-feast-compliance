@@ -13,6 +13,7 @@ import type {
   AdminTeamResponse,
 } from "@/components/admin/admin-types";
 import WastageCatalogueAdmin from "@/components/WastageCatalogueAdmin";
+import MarkdownSheetAdmin from "@/components/MarkdownSheetAdmin";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
@@ -36,6 +37,7 @@ const featureTitles: Record<AdminFeatureKey, string> = {
   fridges: "Fridges & Temperatures",
   probes: "Probe Products",
   wastage: "Wastage",
+  markdown: "Markdown Sheet",
 };
 
 function FeatureHeader({
@@ -142,6 +144,9 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
           onClose={() => setFeature(null)}
         />
       );
+    }
+    if (feature === "markdown") {
+      return <MarkdownSheetAdmin locationId={selectedLocationId} locationName={currentStore.location.name} onBack={() => setFeature(null)} />;
     }
     return (
       <div className="min-h-screen bg-white text-[#171918]">

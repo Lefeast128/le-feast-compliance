@@ -5,9 +5,9 @@ import type { TeamMember } from "@/components/dashboard/dashboard-types";
 import { Button } from "@/components/ui/button";
 import { restApi } from "@/lib/rest-domain";
 
-type Product = { id?: string; _id?: string; name: string };
+type Product = { id?: string; _id?: string; name: string; plu?: number; catalogueProductId?: string };
 type Item = { id: string; productId: string; productName: string; mode: "use" | "reduce"; quantity: number; completedAt?: string | null; completedTeamMemberId?: string | null };
-type SheetData = { products: Product[]; items: Item[]; reminder: { dateKey: string; count: number; items: Item[] } | null };
+type SheetData = { products: Product[]; catalogue: Product[]; items: Item[]; reminder: { dateKey: string; count: number; items: Item[] } | null };
 type Props = { locationId: string; locationName: string; timeZone?: string; teamMembers: TeamMember[]; canManageProducts?: boolean };
 
 const localDateKey = (timeZone: string) => {
@@ -41,11 +41,14 @@ export default function MarkdownSheetPanel({ locationId, locationName, timeZone 
     setSenderId(stored && activeMembers.some(member => member._id === stored) ? stored : activeMembers[0]?._id ?? "");
   }, [senderKey, activeMembers]);
   const chooseSender = (value: string) => { setSenderId(value); window.sessionStorage.setItem(senderKey, value); };
-  const filteredProducts = useMemo(() => data?.products.filter(product => product.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).slice(0, 30) ?? [], [data?.products, search]);
+  const filteredProducts = useMemo(() => {
+    const source = search.trim() ? (data?.catalogue ?? []).map(product => ({ ...product, catalogueProductId: product.id, id: undefined })) : (data?.products ?? []);
+    return source.filter(product => product.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).slice(0, 30);
+  }, [data?.catalogue, data?.products, search]);
   const itemFor = (productId: string, mode: string) => data?.items.find(item => item.productId === productId && item.mode === mode);
   const change = async (product: Product, mode: "use" | "reduce", delta: 1 | -1) => {
     const productId = idOf(product); const key = `${productId}:${mode}`; setPending(current => new Set(current).add(key)); setError(null);
-    try { await restApi.compliance.markdownSheet.change({ locationId, dateKey, productId, mode, action: "quantity", delta, idempotencyKey: makeKey() }); await load(); }
+    try { await restApi.compliance.markdownSheet.change({ locationId, dateKey, productId: productId || undefined, catalogueProductId: product.catalogueProductId, mode, action: "quantity", delta, idempotencyKey: makeKey() }); await load(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to save the quantity."); }
     finally { setPending(current => { const next = new Set(current); next.delete(key); return next; }); }
   };
@@ -60,10 +63,15 @@ export default function MarkdownSheetPanel({ locationId, locationName, timeZone 
     try { await restApi.compliance.markdownSheet.change({ locationId, dateKey, action: "review-reminder", idempotencyKey: makeKey() }); await load(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to save the reminder confirmation."); }
   };
-  const addProduct = async () => {
+  const addTemporaryProduct = async () => {
     if (!newProduct.trim()) return;
-    try { await restApi.compliance.markdownSheet.addProduct({ locationId, name: newProduct.trim() }); setNewProduct(""); await load(); }
+    try { await restApi.compliance.markdownSheet.change({ locationId, dateKey, temporaryName: newProduct.trim(), mode, action: "quantity", delta: 1, idempotencyKey: makeKey() }); setNewProduct(""); await load(); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to add this product."); }
+  };
+  const saveFutureProduct = async () => {
+    if (!newProduct.trim()) return;
+    try { await restApi.admin.markdownSheet.update({ locationId, action: "add-custom", name: newProduct.trim() }); setNewProduct(""); await load(); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Unable to save this product."); }
   };
   const groups = (mode: "use" | "reduce") => data?.items.filter(item => item.mode === mode && item.quantity > 0) ?? [];
 
@@ -79,7 +87,7 @@ export default function MarkdownSheetPanel({ locationId, locationName, timeZone 
         <div className="mb-3 grid grid-cols-2 gap-2"><Button type="button" className={`h-10 rounded-xl ${mode === "use" ? "bg-brand-yellow text-[#171717]" : "bg-[#f3f3f1] text-[#202522]"}`} onClick={() => setMode("use")}>To Use</Button><Button type="button" className={`h-10 rounded-xl ${mode === "reduce" ? "bg-brand-yellow text-[#171717]" : "bg-[#f3f3f1] text-[#202522]"}`} onClick={() => setMode("reduce")}>To Reduce</Button></div>
         <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">{filteredProducts.map(product => <div key={idOf(product)} className="rounded-2xl border border-black/[0.08] p-2"><p className="min-h-10 text-sm font-semibold leading-5">{product.name}</p><div className="mt-2 grid grid-cols-2 gap-1"><Button type="button" className="h-9 rounded-xl bg-brand-yellow px-2 text-xs text-[#171717]" disabled={pending.has(`${idOf(product)}:${mode}`)} onClick={() => void change(product, mode, 1)}>{mode === "use" ? "Use" : "Reduce"} +</Button><Button type="button" className="h-9 rounded-xl bg-[#f3f3f1] px-2 text-xs text-[#202522]" disabled={pending.has(`${idOf(product)}:${mode}`) || !(itemFor(idOf(product), mode)?.quantity)} onClick={() => void change(product, mode, -1)}>{mode === "use" ? "Use" : "Reduce"} −</Button></div></div>)}</div>
         {(["use", "reduce"] as const).map(mode => <section key={mode} className="mb-5"><h3 className="mb-2 text-sm font-bold">To {mode === "use" ? "Use" : "Reduce"}</h3>{groups(mode).length ? <div className="space-y-2">{groups(mode).map(item => <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-black/[0.08] p-3"><button type="button" aria-label={`${item.completedAt ? "Undo" : "Complete"} ${item.productName}`} onClick={() => void complete(item)} className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 ${item.completedAt ? "border-[#3f8b5b] bg-[#3f8b5b] text-white" : "border-black/[0.2]"}`}>{item.completedAt ? "✓" : ""}</button><div className="min-w-0 flex-1"><p className="font-semibold">{item.productName}</p><p className="text-xs text-[#727a74]">Quantity {item.quantity}{item.completedAt ? " · completed" : " · outstanding"}</p></div><div className="flex items-center gap-1"><Button type="button" variant="ghost" size="icon" className="size-8 rounded-xl" disabled={pending.has(`${item.productId}:${item.mode}`)} onClick={() => void change({ id: item.productId, name: item.productName }, item.mode, -1)} aria-label={`Remove one ${item.productName}`}><Minus className="size-4" /></Button><span className="min-w-5 text-center font-bold">{item.quantity}</span><Button type="button" variant="ghost" size="icon" className="size-8 rounded-xl" disabled={pending.has(`${item.productId}:${item.mode}`)} onClick={() => void change({ id: item.productId, name: item.productName }, item.mode, 1)} aria-label={`Add one ${item.productName}`}><Plus className="size-4" /></Button></div></div>)}</div> : <p className="rounded-xl border border-dashed border-black/[0.12] p-3 text-sm text-[#727a74]">Nothing selected.</p>}</section>)}
-        {canManageProducts && <div className="border-t border-black/[0.07] pt-4"><p className="text-xs font-semibold text-[#4e5851]">Add a prepared ingredient to this store&apos;s catalogue</p><div className="mt-2 flex gap-2"><input value={newProduct} onChange={event => setNewProduct(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-black/[0.1] px-3 text-sm" placeholder="e.g. Chicken filling" /><Button type="button" className="rounded-xl bg-[#202522] text-white" onClick={() => void addProduct()}>Add</Button></div></div>}
+        <div className="border-t border-black/[0.07] pt-4"><p className="text-xs font-semibold text-[#4e5851]">Add a product</p><div className="mt-2 flex flex-col gap-2"><input value={newProduct} onChange={event => setNewProduct(event.target.value)} className="min-w-0 rounded-xl border border-black/[0.1] px-3 text-sm" placeholder="e.g. Chicken filling" /><div className="grid grid-cols-2 gap-2"><Button type="button" className="rounded-xl bg-brand-yellow text-[#171717]" onClick={() => void addTemporaryProduct()}>Just today</Button>{canManageProducts && <Button type="button" className="rounded-xl bg-[#202522] text-white" onClick={() => void saveFutureProduct()}>Save for future</Button>}</div></div></div>
       </div>
     </section>}
   </>;

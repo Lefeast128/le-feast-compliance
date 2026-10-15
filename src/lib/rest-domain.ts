@@ -155,6 +155,10 @@ export const restApi = {
     reorder: (body: AnyRecord) => post(`/api/admin/additional-requirements/${encodeURIComponent(idOf(body.requirementId))}/reorder`, body),
   },
   admin: {
+    markdownSheet: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/markdown-sheet?locationId=${encodeURIComponent(locationId)}`)),
+      update: (body: AnyRecord) => post("/api/admin/markdown-sheet", body),
+    },
     addEquipment: (body: AnyRecord) => post("/api/admin/equipment", body),
     updateEquipmentLimits: (body: AnyRecord) => patch(`/api/admin/equipment/${encodeURIComponent(idOf(body.equipmentId))}`, body),
     setFridgeCount: (body: AnyRecord) => post("/api/admin/equipment/count", body),

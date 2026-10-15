@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { catalogueProducts, markdownProducts, markdownSheetItems, markdownSheets } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
@@ -23,16 +23,6 @@ async function ensureSheet(tx: any, locationId: string, dateKey: string, userId:
   return raced;
 }
 
-async function syncCatalogueProducts(tx: any, locationId: string) {
-  const [configured, catalogue] = await Promise.all([
-    tx.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, locationId), eq(markdownProducts.active, true))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name)),
-    tx.select({ name: catalogueProducts.name }).from(catalogueProducts).where(and(eq(catalogueProducts.locationId, locationId), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.plu)),
-  ]);
-  const names = new Set(configured.map((product: any) => product.name.toLocaleLowerCase()));
-  for (const product of catalogue) if (!names.has(product.name.toLocaleLowerCase())) { await tx.insert(markdownProducts).values({ locationId, name: product.name, order: configured.length }); names.add(product.name.toLocaleLowerCase()); }
-  return tx.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, locationId), eq(markdownProducts.active, true))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name));
-}
-
 async function listItems(db: any, locationId: string, dateKey: string) {
   const [sheet] = await db.select().from(markdownSheets).where(and(eq(markdownSheets.locationId, locationId), eq(markdownSheets.dateKey, dateKey))).limit(1);
   if (!sheet) return { sheet: null, items: [] };
@@ -44,11 +34,33 @@ export async function listMarkdownSheet(context: AuthContext, locationId: string
   const location = await locationFor(context, locationId);
   if (!dateKeyPattern.test(dateKey)) throw new ApiError(422, "dateKey must be YYYY-MM-DD");
   const db = getDb();
-  const products = await syncCatalogueProducts(db, location.id);
+  const products = await db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), eq(markdownProducts.active, true), eq(markdownProducts.quickSelect, true), isNull(markdownProducts.temporaryDateKey))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name));
+  const catalogue = await db.select({ id: catalogueProducts.id, name: catalogueProducts.name, plu: catalogueProducts.plu, department: catalogueProducts.department, group: catalogueProducts.group }).from(catalogueProducts).where(and(eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.name));
   const current = await listItems(db, location.id, dateKey);
   const previous = await listItems(db, location.id, previousDateKey(dateKey));
   const outstanding = previous.items.filter((item: any) => item.quantity > 0 && !item.completedAt && !item.reviewedAt);
-  return { locationId: location.id, dateKey, products, ...current, reminder: outstanding.length ? { dateKey: previousDateKey(dateKey), count: outstanding.reduce((total: number, item: any) => total + item.quantity, 0), items: outstanding } : null };
+  return { locationId: location.id, dateKey, products, favourites: products, catalogue, ...current, reminder: outstanding.length ? { dateKey: previousDateKey(dateKey), count: outstanding.reduce((total: number, item: any) => total + item.quantity, 0), items: outstanding } : null };
+}
+
+async function resolveProduct(tx: any, locationId: string, dateKey: string, input: Record<string, unknown>) {
+  if (typeof input.productId === "string" && input.productId) {
+    const productId = requireUuid(input.productId, "productId");
+    const [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.id, productId), eq(markdownProducts.locationId, locationId), eq(markdownProducts.active, true))).limit(1);
+    if (!product) throw new ApiError(422, "Product is not available at this store");
+    return product;
+  }
+  if (typeof input.catalogueProductId === "string" && input.catalogueProductId) {
+    const catalogueProductId = requireUuid(input.catalogueProductId, "catalogueProductId");
+    const [catalogueProduct] = await tx.select().from(catalogueProducts).where(and(eq(catalogueProducts.id, catalogueProductId), eq(catalogueProducts.locationId, locationId), eq(catalogueProducts.active, true))).limit(1);
+    if (!catalogueProduct) throw new ApiError(422, "Product is not available at this store");
+    let [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, locationId), eq(markdownProducts.catalogueProductId, catalogueProduct.id), isNull(markdownProducts.temporaryDateKey))).limit(1);
+    if (!product) [product] = await tx.insert(markdownProducts).values({ locationId, catalogueProductId: catalogueProduct.id, name: catalogueProduct.name, source: "catalogue", order: 0 }).returning();
+    return product;
+  }
+  const name = requireString(input.temporaryName, "Product name").slice(0, 120);
+  let [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, locationId), eq(markdownProducts.name, name), eq(markdownProducts.temporaryDateKey, dateKey), eq(markdownProducts.active, true))).limit(1);
+  if (!product) [product] = await tx.insert(markdownProducts).values({ locationId, name, source: "temporary", temporaryDateKey: dateKey, order: 0 }).returning();
+  return product;
 }
 
 export async function updateMarkdownSheet(context: AuthContext, input: Record<string, unknown>) {
@@ -67,10 +79,8 @@ export async function updateMarkdownSheet(context: AuthContext, input: Record<st
       if (previous[0]) await tx.update(markdownSheetItems).set({ reviewedAt: now(), reviewedBy: context.user.id }).where(eq(markdownSheetItems.sheetId, previous[0].id));
       return { dateKey: reminderDate, reviewed: true, serverConfirmed: true };
     }
-    const productId = requireUuid(input.productId, "productId");
     const mode = requireEnum(input.mode, "mode", modes);
-    const [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.id, productId), eq(markdownProducts.locationId, location.id), eq(markdownProducts.active, true))).limit(1);
-    if (!product) throw new ApiError(422, "Product is not available at this store");
+    const product = await resolveProduct(tx, location.id, dateKey, input);
     const [existing] = await tx.select().from(markdownSheetItems).where(and(eq(markdownSheetItems.sheetId, sheet.id), eq(markdownSheetItems.productId, product.id), eq(markdownSheetItems.mode, mode))).limit(1);
     if (action === "complete") {
       const memberId = await activeMember(location.id, requireUuid(input.teamMemberId, "teamMemberId")).then(member => member.id);
@@ -96,7 +106,61 @@ export async function addMarkdownProduct(context: AuthContext, input: { location
   const location = await locationFor(context, input.locationId);
   requireLocationManager(context, location.id, location.organisationId);
   const name = requireString(input.name, "Product name").slice(0, 120);
-  const [created] = await getDb().insert(markdownProducts).values({ locationId: location.id, name, order: 0 }).returning();
+  const [created] = await getDb().insert(markdownProducts).values({ locationId: location.id, name, source: "custom", quickSelect: false, order: 0 }).returning();
   return created;
+}
+
+async function managerLocation(context: AuthContext, locationId: string) {
+  const location = await locationFor(context, locationId);
+  requireLocationManager(context, location.id, location.organisationId);
+  return location;
+}
+
+export async function listMarkdownConfig(context: AuthContext, locationId: string) {
+  const location = await managerLocation(context, locationId);
+  const db = getDb();
+  const [configured, catalogue] = await Promise.all([
+    db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), isNull(markdownProducts.temporaryDateKey))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name)),
+    db.select({ id: catalogueProducts.id, name: catalogueProducts.name, plu: catalogueProducts.plu, department: catalogueProducts.department, group: catalogueProducts.group }).from(catalogueProducts).where(and(eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.name)),
+  ]);
+  return { locationId: location.id, configured, catalogue };
+}
+
+export async function updateMarkdownConfig(context: AuthContext, input: Record<string, unknown>) {
+  const location = await managerLocation(context, requireUuid(input.locationId, "locationId"));
+  const action = requireEnum(input.action, "action", ["add-catalogue", "add-custom", "update", "reorder"] as const);
+  const db = getDb();
+  if (action === "add-catalogue") {
+    const catalogueProductId = requireUuid(input.catalogueProductId, "catalogueProductId");
+    const [catalogueProduct] = await db.select().from(catalogueProducts).where(and(eq(catalogueProducts.id, catalogueProductId), eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).limit(1);
+    if (!catalogueProduct) throw new ApiError(422, "Product is not available at this store");
+    const [existing] = await db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), eq(markdownProducts.catalogueProductId, catalogueProduct.id), isNull(markdownProducts.temporaryDateKey))).limit(1);
+    if (existing) return db.update(markdownProducts).set({ name: catalogueProduct.name, active: true, quickSelect: true }).where(eq(markdownProducts.id, existing.id)).returning();
+    const [created] = await db.insert(markdownProducts).values({ locationId: location.id, catalogueProductId: catalogueProduct.id, name: catalogueProduct.name, source: "catalogue", quickSelect: true, order: 0 }).returning();
+    return created;
+  }
+  if (action === "add-custom") {
+    const name = requireString(input.name, "Product name").slice(0, 120);
+    const [created] = await db.insert(markdownProducts).values({ locationId: location.id, name, source: "custom", quickSelect: true, order: 0 }).returning();
+    return created;
+  }
+  if (action === "reorder") {
+    if (!Array.isArray(input.productIds)) throw new ApiError(422, "productIds must be an array");
+    const productIds = input.productIds as unknown[];
+    await db.transaction(async (tx: any) => {
+      for (const [order, value] of productIds.entries()) await tx.update(markdownProducts).set({ order }).where(and(eq(markdownProducts.id, requireUuid(value, "productId")), eq(markdownProducts.locationId, location.id), isNull(markdownProducts.temporaryDateKey)));
+    });
+    return { saved: true };
+  }
+  const productId = requireUuid(input.productId, "productId");
+  const [product] = await db.select().from(markdownProducts).where(and(eq(markdownProducts.id, productId), eq(markdownProducts.locationId, location.id), isNull(markdownProducts.temporaryDateKey))).limit(1);
+  if (!product) throw new ApiError(404, "Markdown product not found");
+  const values: Record<string, unknown> = {};
+  if (typeof input.active === "boolean") values.active = input.active;
+  if (typeof input.quickSelect === "boolean") values.quickSelect = input.quickSelect;
+  if (typeof input.order === "number" && Number.isInteger(input.order)) values.order = input.order;
+  if (!Object.keys(values).length) throw new ApiError(422, "No configuration changes supplied");
+  const [updated] = await db.update(markdownProducts).set(values).where(eq(markdownProducts.id, product.id)).returning();
+  return updated;
 }
 

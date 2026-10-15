@@ -162,6 +162,13 @@
       "when": 1792000800000,
       "tag": "0024_markdown_sheets",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792004400000,
+      "tag": "0025_markdown_product_configuration",
+      "breakpoints": true
     }
   ]
 }
