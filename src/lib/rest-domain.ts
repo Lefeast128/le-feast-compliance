@@ -50,8 +50,8 @@ const compat = (value: any): any => {
 const idOf = (value: any) => value?._id ?? value?.id ?? value;
 const query = (path: string): Promise<any> => apiRequest<any>(path).then((body) => unwrap<any>(body));
 const post = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
-const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record" | "handover-note") => {
-  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "").replace("-note", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage" | "handover";
+const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record" | "handover-note" | "markdown-sheet") => {
+  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "").replace("-note", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage" | "handover" | "markdown-sheet";
   const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow === "issue" ? "issues" : workflow);
   const session = readOfflineSession();
   const locationId = body.locationId ?? session?.locationId;
@@ -122,6 +122,11 @@ export const restApi = {
       acknowledge: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/acknowledge`, body),
       resolve: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/resolve`, body),
       delete: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/delete`, body),
+    },
+    markdownSheet: {
+      list: async ({ locationId, dateKey }: AnyRecord) => compat(await query(`/api/markdown-sheet?locationId=${encodeURIComponent(locationId)}&dateKey=${encodeURIComponent(dateKey)}`)),
+      change: (body: AnyRecord) => offlinePost("/api/markdown-sheet", body, "markdown-sheet"),
+      addProduct: (body: AnyRecord) => post("/api/markdown-sheet", { ...body, action: "add-product" }),
     },
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },

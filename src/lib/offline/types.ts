@@ -28,7 +28,8 @@ export type OfflineSubmission = OfflineScope & {
     | "probe-reading"
     | "issue-update"
     | "wastage-record"
-    | "handover-note";
+    | "handover-note"
+    | "markdown-sheet";
   endpoint: string;
   method: "POST";
   capturedAt: string;
