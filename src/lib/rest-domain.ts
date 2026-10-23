@@ -180,6 +180,13 @@ export const restApi = {
     updateWastageItem: (body: AnyRecord) => patch(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`, body),
     deleteWastageItem: (body: AnyRecord) => remove(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`),
     reorderWastageItem: (body: AnyRecord) => post(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}/reorder`, body),
+    wastageManagement: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/wastage?locationId=${encodeURIComponent(locationId)}`)),
+      addCategory: (body: AnyRecord) => post("/api/admin/wastage", body),
+      updateCategory: ({ categoryId, ...body }: AnyRecord) => patch(`/api/admin/wastage/${encodeURIComponent(idOf(categoryId))}`, body),
+      deleteCategory: ({ categoryId }: AnyRecord) => remove(`/api/admin/wastage/${encodeURIComponent(idOf(categoryId))}`),
+      reorderCategory: (body: AnyRecord) => post(`/api/admin/wastage/${encodeURIComponent(idOf(body.categoryId))}/reorder`, body),
+    },
     updateStructuredTask: (body: AnyRecord) => patch(`/api/admin/structured-tasks/${encodeURIComponent(idOf(body.taskId))}`, body),
     addTrainingRequirement: (body: AnyRecord) => post("/api/admin/training-requirements", body),
     updateTrainingRequirement: (body: AnyRecord) => patch(`/api/admin/training-requirements/${encodeURIComponent(idOf(body.requirementId))}`, body),

@@ -169,6 +169,13 @@
       "when": 1792004400000,
       "tag": "0025_markdown_product_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792022400000,
+      "tag": "0026_wastage_admin_configuration",
+      "breakpoints": true
     }
   ]
 }
