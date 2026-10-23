@@ -52,6 +52,9 @@ const trainingAudienceLabels: Record<string, string> = {
   managers_only: "Managers only",
   selected_people: "Selected people",
 };
+const cleaningWeekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const cleaningDaysFor = (task: AdminCleaningTask) => task.frequency === "daily" ? [0, 1, 2, 3, 4, 5, 6] : task.frequency === "weekly" || task.frequency === "specific_days" ? task.weekdays : [];
+const cleaningFrequencyLabel = (frequency: AdminCleaningTask["frequency"]) => frequency === "daily" ? "Daily" : frequency === "weekly" ? "Weekly" : frequency === "specific_days" ? "Specific days" : "After use";
 
 export default function AdminStoreOverview({
   store,
@@ -544,6 +547,8 @@ export default function AdminStoreOverview({
             action="Add task"
             onAdd={promptAddCleaning}
           >
+            <div className="mb-4 rounded-xl border border-black/[0.07] bg-[#fafbf9] p-3"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Weekly overview</p><p className="text-xs text-[#89918b]">Scheduled tasks by weekday</p></div><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">{cleaningWeekdays.map((day, dayIndex) => { const tasks = store.cleaningTasks.filter(task => cleaningDaysFor(task).includes(dayIndex)); return <div key={day} className="rounded-lg border border-black/[0.07] bg-white p-2"><p className="text-[10px] font-bold uppercase tracking-wide text-[#89918b]">{day.slice(0, 3)}</p>{tasks.length ? <div className="mt-1 space-y-1">{tasks.map(task => <p key={task._id} className="truncate text-xs font-semibold" title={task.name}>{task.name}</p>)}</div> : <p className="mt-1 text-xs text-[#89918b]">None</p>}</div>; })}</div></div>
+            {(() => { const overlappingDays = cleaningWeekdays.map((day, dayIndex) => ({ day, tasks: store.cleaningTasks.filter(task => cleaningDaysFor(task).includes(dayIndex)) })).filter(entry => entry.tasks.length > 1); return overlappingDays.length ? <div className="mb-4 rounded-xl border border-[#f0d98a] bg-[#fffdf4] p-3 text-sm"><p className="font-semibold">Potential schedule overlap</p><p className="mt-1 text-xs text-[#7b6b2a]">More than one cleaning task is scheduled on {overlappingDays.map(entry => entry.day).join(", ")}. Review the tasks below if that overlap is intentional.</p></div> : null; })()}
             <div className="space-y-2">
               {store.cleaningTasks.map((item, index) => (
                 <div
@@ -572,8 +577,8 @@ export default function AdminStoreOverview({
                     </p>
                     <p className="text-xs text-[#89918b]">
                       {item.frequency === "weekly" || item.frequency === "specific_days"
-                        ? `${item.frequency === "weekly" ? "Weekly" : "Specific days"}: ${cleaningWeekdaySummary(item.frequency, item.weekdays)}`
-                        : cleaningWeekdaySummary(item.frequency, item.weekdays)}
+                        ? `${cleaningFrequencyLabel(item.frequency)}: ${cleaningWeekdaySummary(item.frequency, item.weekdays)}`
+                        : cleaningFrequencyLabel(item.frequency)}
                     </p>
                   </div>
                   </div>
