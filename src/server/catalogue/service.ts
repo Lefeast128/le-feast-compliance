@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { auditEvents, catalogueProducts, catalogueSyncStatus, locations } from "../db/schema.js";
+import { auditEvents, catalogueProducts, catalogueSyncStatus, locations, wastageCategories, wastageItems } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireBoolean, requireString, requireUuid } from "../compliance/validation.js";
@@ -132,8 +132,14 @@ export async function listWastageCatalogue(context: AuthContext, locationId: str
     const pattern = `%${term}%`;
     filters.push(or(ilike(catalogueProducts.name, pattern), sql`${catalogueProducts.plu}::text ILIKE ${pattern}`) as typeof filters[number]);
   }
-  const products = await getDb().select({ id: catalogueProducts.id, plu: catalogueProducts.plu, name: catalogueProducts.name, department: catalogueProducts.department, group: catalogueProducts.group, category: catalogueProducts.wastageCategory, needsCategoryReview: catalogueProducts.needsCategoryReview }).from(catalogueProducts).where(and(...filters)).orderBy(asc(catalogueProducts.plu));
-  return { locationId: location.id, products };
+  const [products, manualProducts, categories] = await Promise.all([
+    getDb().select({ id: catalogueProducts.id, plu: catalogueProducts.plu, name: catalogueProducts.name, department: catalogueProducts.department, group: catalogueProducts.group, category: catalogueProducts.wastageCategory, needsCategoryReview: catalogueProducts.needsCategoryReview, source: sql<"catalogue">`'catalogue'` }).from(catalogueProducts).where(and(...filters)).orderBy(asc(catalogueProducts.plu)),
+    getDb().select({ id: wastageItems.id, name: wastageItems.name, category: wastageItems.category, source: sql<"manual">`'manual'`, active: wastageItems.active, excludedFromWastage: sql<boolean>`false` }).from(wastageItems).where(and(eq(wastageItems.locationId, location.id), eq(wastageItems.active, true))).orderBy(asc(wastageItems.order), asc(wastageItems.name)),
+    getDb().select({ id: wastageCategories.id, name: wastageCategories.name, order: wastageCategories.order }).from(wastageCategories).where(and(eq(wastageCategories.locationId, location.id), eq(wastageCategories.active, true))).orderBy(asc(wastageCategories.order), asc(wastageCategories.name)),
+  ]);
+  const termForManual = term.toLocaleLowerCase();
+  const filteredManual = termForManual ? manualProducts.filter(product => product.name.toLocaleLowerCase().includes(termForManual)) : manualProducts;
+  return { locationId: location.id, products: [...products, ...filteredManual], categories };
 }
 
 export async function updateCatalogueWastageConfig(context: AuthContext, productId: string, input: Record<string, unknown>) {

@@ -13,6 +13,7 @@ type SyncStatus = { lastSuccessfulSyncAt?: string | null; lastError?: string | n
 type CatalogueResponse = { products?: CatalogueAdminProduct[]; syncStatus?: SyncStatus | null };
 type CatalogueData = { locationId: string; products: CatalogueAdminProduct[]; syncStatus: SyncStatus | null };
 type WastageManagement = { manualProducts: Array<{ id: string; name: string; category?: string | null; active: boolean; order: number }>; categories: Array<{ id: string; name: string; active: boolean; order: number }>; };
+type ManualProductEditor = { id?: string; name: string; category: string };
 
 const locationIdOf = (location: LocationOption) => location._id ?? location.id ?? "";
 const safeError = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
@@ -36,6 +37,7 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
   const [tab, setTab] = useState<"products" | "categories">("products");
   const [management, setManagement] = useState<WastageManagement | null>(null);
   const [managementRevision, setManagementRevision] = useState(0);
+  const [manualEditor, setManualEditor] = useState<ManualProductEditor | null>(null);
   const updateWastage = useRestMutation(restApi.catalogue.updateWastage);
   const refreshCatalogue = useRestMutation(restApi.catalogue.refresh);
   const addManual = useRestMutation(restApi.admin.addWastageItem);
@@ -107,22 +109,21 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
     }
   }
 
-  async function addManualProduct() {
-    const name = window.prompt("Add permanent manual wastage product");
-    if (!name?.trim()) return;
-    const category = window.prompt("Category (optional)", "") ?? "";
-    await addManual({ locationId: activeLocationId, name: name.trim(), category: category.trim() || null });
+  async function saveManualProduct() {
+    if (!manualEditor?.name.trim()) return;
+    if (manualEditor.id) {
+      await updateManual({ itemId: manualEditor.id, name: manualEditor.name.trim(), category: manualEditor.category || null });
+      toast.success("Manual wastage product updated");
+    } else {
+      await addManual({ locationId: activeLocationId, name: manualEditor.name.trim(), category: manualEditor.category || null });
+      toast.success("Manual wastage product added");
+    }
+    setManualEditor(null);
     setManagementRevision(value => value + 1);
-    toast.success("Manual wastage product added");
   }
 
-  async function editManualProduct(product: WastageManagement["manualProducts"][number]) {
-    const name = window.prompt("Edit manual wastage product", product.name);
-    if (!name?.trim()) return;
-    const category = window.prompt("Category (optional)", product.category ?? "");
-    await updateManual({ itemId: product.id, name: name.trim(), category: category?.trim() || null });
-    setManagementRevision(value => value + 1);
-    toast.success("Manual wastage product updated");
+  function editManualProduct(product: WastageManagement["manualProducts"][number]) {
+    setManualEditor({ id: product.id, name: product.name, category: product.category ?? "" });
   }
 
   async function archiveManualProduct(product: WastageManagement["manualProducts"][number]) {
@@ -189,7 +190,7 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
       {refreshError && <p className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{refreshError}</p>}
       <div className="mt-7 grid gap-3 sm:grid-cols-4"><SummaryCard label="Active products" value={products.length} /><SummaryCard label="Awaiting review" value={pendingCount} tone={pendingCount ? "pending" : "normal"} /><SummaryCard label="Included for wastage" value={includedCount} /><SummaryCard label="Excluded from wastage" value={excludedCount} /></div>
       <div className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5"><div className="flex flex-col gap-2 text-sm text-[#727a74] sm:flex-row sm:justify-between"><span>Last successful TouchOffice sync: <strong className="text-[#202522]">{formatSyncTime(catalogue?.syncStatus?.lastSuccessfulSyncAt)}</strong></span>{catalogue?.syncStatus?.lastError && <span className="text-[#8f3a31]">Latest sync error: {catalogue.syncStatus.lastError}</span>}</div></div>
-      <section className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Manual products</h2><p className="mt-1 text-sm text-[#727a74]">Permanent store products remain independent of TouchOffice synchronisation.</p></div><Button type="button" onClick={() => void addManualProduct()} className="bg-brand-yellow text-[#171717]"><Plus className="mr-2 size-4" />Add product</Button></div><div className="mt-4 space-y-2">{management?.manualProducts.filter(product => product.active).map(product => <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.07] p-3"><div><p className="font-semibold">{product.name}</p><p className="text-xs text-[#727a74]">{product.category || "Uncategorised"}</p></div><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Edit ${product.name}`} onClick={() => void editManualProduct(product)}><Pencil className="size-4" /></Button><Button type="button" variant="ghost" size="icon" className="text-[#b64738]" aria-label={`Archive ${product.name}`} onClick={() => void archiveManualProduct(product)}><Trash2 className="size-4" /></Button></div></div>)}{!management?.manualProducts.some(product => product.active) && <p className="text-sm text-[#89918b]">No permanent manual products configured.</p>}</div></section>
+      <section className="mt-5 rounded-2xl border border-black/[0.07] bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Manual products</h2><p className="mt-1 text-sm text-[#727a74]">Permanent store products remain independent of TouchOffice synchronisation.</p></div><Button type="button" onClick={() => setManualEditor({ name: "", category: "" })} className="bg-brand-yellow text-[#171717]"><Plus className="mr-2 size-4" />Add product</Button></div><div className="mt-4 space-y-2">{management?.manualProducts.filter(product => product.active).map(product => <div key={product.id} className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.07] p-3"><div><p className="font-semibold">{product.name}</p><p className="text-xs text-[#727a74]">{product.category || "Uncategorised"}</p></div><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Edit ${product.name}`} onClick={() => editManualProduct(product)}><Pencil className="size-4" /></Button><Button type="button" variant="ghost" size="icon" className="text-[#b64738]" aria-label={`Archive ${product.name}`} onClick={() => void archiveManualProduct(product)}><Trash2 className="size-4" /></Button></div></div>)}{!management?.manualProducts.some(product => product.active) && <p className="text-sm text-[#89918b]">No permanent manual products configured.</p>}</div></section>
       <section className="mt-6 rounded-2xl border border-black/[0.07] bg-white p-5 sm:p-6"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><label className="block flex-1 text-sm font-semibold">Search product or PLU<div className="relative mt-2"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#89918b]" /><Input value={search} onChange={event => setSearch(event.target.value)} className="h-12 pl-9" placeholder="Search product or PLU" /></div></label><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><label className="text-sm font-semibold">Review<select value={reviewFilter} onChange={event => setReviewFilter(event.target.value as CatalogueReviewFilter)} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="pending">Awaiting review</option><option value="all">All</option><option value="reviewed">Reviewed</option></select></label><label className="text-sm font-semibold">Availability<select value={availabilityFilter} onChange={event => setAvailabilityFilter(event.target.value as CatalogueAvailabilityFilter)} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="all">All</option><option value="included">Included</option><option value="excluded">Excluded</option></select></label></div></div></section>
       {loading && <div className="mt-6 rounded-2xl border border-black/[0.07] bg-white p-6 text-sm text-[#727a74]">Loading TouchOffice catalogue…</div>}
       {!loading && error && <div className="mt-6 rounded-2xl border border-[#efc8c3] bg-[#fff8f6] p-6 text-sm text-[#8f3a31]">{error}</div>}
@@ -197,8 +198,13 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
       {!loading && !error && products.length > 0 && !filteredProducts.length && <div className="mt-6 rounded-2xl border border-black/[0.07] bg-white p-6 text-sm text-[#727a74]">{reviewFilter === "pending" && !pendingCount ? "No products are awaiting review." : "No products match this search or filter."}</div>}
       {!loading && !error && filteredProducts.length > 0 && <div className="mt-6 space-y-3">{filteredProducts.map(product => <ProductRow key={product.id} product={product} onEdit={() => openEditor(product)} />)}</div>}
     </main> : <WastageCategoriesPanel categories={management?.categories ?? []} onAdd={() => void addWastageCategory()} onEdit={category => void editWastageCategory(category)} onArchive={category => void archiveWastageCategory(category)} onReorder={(category, direction) => { void reorderCategory({ categoryId: category.id, direction }).then(() => setManagementRevision(value => value + 1)); }} />}
-    {editor && <CatalogueEditor editor={editor} product={products.find(product => product.id === editor.productId)} categorySuggestions={categorySuggestions} saving={saving} error={saveError} onChange={setEditor} onSave={saveEditor} onClose={() => setEditor(resetCatalogueEditor())} />}
+    {editor && <CatalogueEditor editor={editor} product={products.find(product => product.id === editor.productId)} categorySuggestions={Array.from(new Set([...(management?.categories ?? []).filter(category => category.active).map(category => category.name), ...categorySuggestions]))} saving={saving} error={saveError} onChange={setEditor} onSave={saveEditor} onClose={() => setEditor(resetCatalogueEditor())} />}
+    {manualEditor && <ManualProductEditor editor={manualEditor} categories={(management?.categories ?? []).filter(category => category.active)} onChange={setManualEditor} onSave={() => void saveManualProduct()} onClose={() => setManualEditor(null)} />}
   </div>;
+}
+
+function ManualProductEditor({ editor, categories, onChange, onSave, onClose }: { editor: ManualProductEditor; categories: WastageManagement["categories"]; onChange: (editor: ManualProductEditor) => void; onSave: () => void; onClose: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center sm:p-5"><div className="w-full max-w-lg rounded-t-3xl bg-white p-6 sm:rounded-3xl"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Wastage products</p><h2 className="mt-2 text-2xl font-semibold">{editor.id ? "Edit manual product" : "Add manual product"}</h2></div><Button variant="ghost" size="icon" onClick={onClose} aria-label="Close manual product editor"><X /></Button></div><label className="mt-6 block text-sm font-semibold">Product name<Input autoFocus value={editor.name} onChange={event => onChange({ ...editor, name: event.target.value })} className="mt-2 h-12" placeholder="e.g. Prepared soup" maxLength={200} /></label><label className="mt-4 block text-sm font-semibold">Waste category<select value={editor.category} onChange={event => onChange({ ...editor, category: event.target.value })} className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="">Uncategorised</option>{categories.map(category => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label><Button disabled={!editor.name.trim()} onClick={onSave} className="mt-6 h-12 w-full bg-brand-yellow font-semibold text-[#171717]">Save product</Button></div></div>;
 }
 
 function WastageCategoriesPanel({ categories, onAdd, onEdit, onArchive, onReorder }: { categories: WastageManagement["categories"]; onAdd: () => void; onEdit: (category: WastageManagement["categories"][number]) => void; onArchive: (category: WastageManagement["categories"][number]) => void; onReorder: (category: WastageManagement["categories"][number], direction: "up" | "down") => void }) {

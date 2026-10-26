@@ -32,6 +32,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [probeQuantity, setProbeQuantity] = useState("");
   const [wastageOpen, setWastageOpen] = useState(false);
   const [wastageCatalogue, setWastageCatalogue] = useState<WastagePickerProduct[]>([]);
+  const [wastageCategories, setWastageCategories] = useState<string[]>([]);
   const [wastageCatalogueLoading, setWastageCatalogueLoading] = useState(false);
   const [wastageCatalogueError, setWastageCatalogueError] = useState<string | null>(null);
   const [cleaningList, setCleaningList] = useState(false);
@@ -65,13 +66,15 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     if (!wastageOpen || !catalogueLocationId) return;
     let cancelled = false;
     restApi.catalogue.wastage({ locationId: catalogueLocationId })
-      .then((result: { products?: WastagePickerProduct[] }) => {
+      .then((result: { products?: WastagePickerProduct[]; categories?: Array<{ name: string }> }) => {
         if (cancelled) return;
         setWastageCatalogue(result?.products ?? []);
+        setWastageCategories((result?.categories ?? []).map(category => category.name));
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         setWastageCatalogue([]);
+        setWastageCategories([]);
         setWastageCatalogueError(error instanceof Error ? error.message : "Unable to load wastage catalogue");
       })
       .finally(() => {
@@ -442,7 +445,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     active, equipment, openIssues, memberName, amRound, pmRound, pendingAmRound, pendingPmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
     round, roundId, roundCompleterId, setRoundCompleterId, roundIssues, issueProgress, setIssueProgress, roundEquipment, roundReadings, temperatures, setTemperatures, roundSubmitting,
     probeOpen, setProbeOpen, probeProduct, setProbeProduct, probeTemperature, setProbeTemperature, probeFailed, setProbeFailed, probeIssueId, setProbeIssueId, probeQuantity, setProbeQuantity,
-    wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
+    wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCategories, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
     issueOpen, setIssueOpen, issueSelected, setIssueSelected,
     beginRound, completeTemperatureRound, saveTemperatureActions, completeRecoveredTemperatureRound, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,

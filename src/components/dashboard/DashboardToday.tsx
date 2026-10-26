@@ -79,6 +79,7 @@ export type DashboardTodayProps = {
   openWastage: () => void;
   setWastageOpen: Dispatch<SetStateAction<boolean>>;
   wastageCatalogue: WastagePickerProduct[];
+  wastageCategories: string[];
   wastageCatalogueLoading: boolean;
   wastageCatalogueError: string | null;
   saveWastage: (
@@ -143,6 +144,7 @@ export default function DashboardToday({
   openWastage,
   setWastageOpen,
   wastageCatalogue,
+  wastageCategories,
   wastageCatalogueLoading,
   wastageCatalogueError,
   saveWastage,
@@ -288,6 +290,7 @@ export default function DashboardToday({
       {wastageOpen && (
         <StaffWastageModal
           products={wastageCatalogue}
+          configuredCategories={wastageCategories}
           teamMembers={dashboard.teamMembers}
           loading={wastageCatalogueLoading}
           error={wastageCatalogueError}

@@ -29,7 +29,7 @@ export async function recordWastage(context: AuthContext, input: { locationId: s
       const [item] = await tx.select().from(wastageItems).where(and(eq(wastageItems.id, itemId), eq(wastageItems.locationId, location.id))).limit(1);
       if (!item) throw new ApiError(422, "Wastage item does not belong to this location");
       if (!item.active) throw new ApiError(422, "Wastage item is inactive");
-      return insertWastage(tx, { locationId: location.id, itemId: item.id, itemName: item.name, quantity, notes: input.notes, noWaste: false, source: "legacy", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
+      return insertWastage(tx, { locationId: location.id, itemId: item.id, itemName: item.name, categorySnapshot: item.category, quantity, notes: input.notes, noWaste: false, source: "legacy", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
     }
     if (mode.source === "adhoc") return insertWastage(tx, { locationId: location.id, itemName: mode.itemName, quantity, notes: input.notes, noWaste: false, source: "adhoc", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
 
