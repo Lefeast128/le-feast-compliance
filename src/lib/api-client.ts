@@ -49,6 +49,18 @@ export class ApiError extends Error {
 export const OFFLINE_MUTATION_MESSAGE =
   "You're offline. Reconnect before submitting this check.";
 
+let inFlightMutations = 0;
+
+export function getInFlightMutationCount() {
+  return inFlightMutations;
+}
+
+function publishMutationCount() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("app:mutation-state", { detail: { pending: inFlightMutations } }));
+  }
+}
+
 const parseBody = (text: string): unknown => {
   if (!text) return null;
 
@@ -74,24 +86,30 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, {
-    ...init,
-    credentials: "include",
-    headers,
-  });
-  const text = await response.text();
-  const body = parseBody(text);
+  const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+  if (isMutation) { inFlightMutations += 1; publishMutationCount(); }
+  try {
+    const response = await fetch(path, {
+      ...init,
+      credentials: "include",
+      headers,
+    });
+    const text = await response.text();
+    const body = parseBody(text);
 
-  if (!response.ok) {
-    const message =
-      typeof body === "object" && body !== null && "error" in body &&
-      typeof body.error === "string"
-        ? body.error
-        : "Request failed";
-    throw new ApiError(response.status, message, body);
+    if (!response.ok) {
+      const message =
+        typeof body === "object" && body !== null && "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Request failed";
+      throw new ApiError(response.status, message, body);
+    }
+
+    return body as T;
+  } finally {
+    if (isMutation) { inFlightMutations = Math.max(0, inFlightMutations - 1); publishMutationCount(); }
   }
-
-  return body as T;
 }
 
 export const authApi = {

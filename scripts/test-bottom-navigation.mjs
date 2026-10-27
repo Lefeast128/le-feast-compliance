@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const primitives = await readFile(new URL("../src/components/dashboard/DashboardPrimitives.tsx", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
+const apiClient = await readFile(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
 const today = await readFile(new URL("../src/components/dashboard/DashboardToday.tsx", import.meta.url), "utf8");
 const journey = await readFile(new URL("../src/components/dashboard/DailyChecksJourney.tsx", import.meta.url), "utf8");
 const profileMenu = await readFile(new URL("../src/components/dashboard/ProfileMenu.tsx", import.meta.url), "utf8");
@@ -38,16 +39,25 @@ assert.match(taskIssueModal, /fixed inset-0 z-30/, "issue reporting overlay also
 assert.match(today, /onClose=\{\(\) => \{[\s\S]*setProbeOpen\(false\)/, "probe dismissal restores the main navigation state");
 assert.equal((dashboard.match(/<BottomNavigation /g) ?? []).length, 1, "Dashboard owns one persistent navigation bar");
 assert.match(dashboard, /const mainView = view === "calendar"/, "main destinations share a parent shell");
-assert.match(dashboard, /activeNavigation = view === "training" \? "library" : view === "calendar" \|\| view === "library" \|\| view === "admin"/, "Training keeps the Library tab active");
-assert.match(dashboard, /onOpenTraining=\{\(\) => setView\("training"\)\}/, "Library opens the preserved Training experience");
-assert.match(dashboard, /onBack=\{\(\) => setView\("library"\)\}/, "Training returns to Library");
+assert.match(dashboard, /activeNavigation = view === "training" \|\| view === "library" \? "library" : view === "calendar" \|\| view === "day" \? "calendar"/, "Training and archived days highlight their parent tab");
+assert.match(dashboard, /view === "managerReviews" && capabilities\.canUseManagement/, "Manager Reviews highlights Admin only for authorised management users");
+assert.match(dashboard, /onOpenTraining=\{\(\) => navigateTo\("training"\)\}/, "Library opens the preserved Training experience");
+assert.match(dashboard, /onBack=\{\(\) => navigateTo\("library"\)\}/, "Training returns to Library");
 assert.doesNotMatch(today, /<BottomNavigation /, "Daily Checks does not mount a duplicate navigation bar");
 assert.doesNotMatch(library, /<BottomNavigation /, "Library does not mount a duplicate navigation bar");
-assert.match(dashboard, /if \(workflows\.round/, "focused temperature workflows remain outside the main navigation shell");
-assert.match(dashboard, /if \(structuredTaskArea\)/, "focused structured workflows remain outside the main navigation shell");
-assert.match(dashboard, /if \(workflows\.cleaningList\)/, "focused cleaning workflows remain outside the main navigation shell");
-assert.match(dashboard, /if \(workflows\.checklistList\)/, "focused checklist workflows remain outside the main navigation shell");
-assert.match(dashboard, /if \(workflows\.security/, "focused security workflows remain outside the main navigation shell");
+for (const route of ["OperationalRecordsView", "TemperatureActionScreen", "TemperatureRoundEntry", "StructuredTaskWorkflow", "InlineCleaning", "InlineChecklist", "SecurityScreen", "MobileDayView", "AdditionalChecksView", "ManagerReviews"]) {
+  assert.match(dashboard, new RegExp(`appShell\\(<${route}`), `${route} stays inside the shared navigation shell`);
+}
+assert.match(dashboard, /function navigateTo\(destination: DashboardView\)/, "navigation uses one central route handler");
+assert.match(dashboard, /requestNavigation\(\(\) => \{ exitActiveWorkflow\(\); setView\(destination\); \}\)/, "Daily Checks navigation exits active workflows after confirmation");
+assert.match(dashboard, /Unsubmitted values on this screen will be discarded/, "navigation warns before discarding unfinished work");
+assert.match(dashboard, /AlertDialogCancel autoFocus>Stay/, "users can stay and retain the current workflow state");
+assert.match(dashboard, /AlertDialogAction disabled=\{workflows\.roundSubmitting \|\| pendingMutations > 0\}/, "navigation cannot interrupt an active compliance submission");
+assert.match(apiClient, /app:mutation-state/, "API writes publish an in-flight mutation count");
+assert.match(dashboard, /app:mutation-state/, "navigation waits until any API write finishes");
+assert.match(dashboard, /if \(workflows\.round \|\| structuredTaskArea \|\| workflows\.cleaningList \|\| workflows\.checklistList \|\| workflows\.security\) workflows\.resetForLocation\(\)/, "workflow state is cleared only after the user confirms leaving");
+assert.match(dashboard, /onBack=\{\(\) => navigateTo\("today"\)\}/, "workflow back controls use the same unsaved-work guard");
+assert.match(dashboard, /clearOfflineSession\(\)/, "store switching invalidates the previous offline session");
 assert.match(primitives, /canUseManagement \? \[\["Admin"/, "Admin is only added for authorised users");
 assert.doesNotMatch(today, /<Header/, "dashboard content no longer mounts the legacy dashboard header");
 assert.doesNotMatch(journey, /Daily compliance journey|Internal compliance workspace|Your Daily Checks/, "dashboard no longer shows the legacy intro header");
