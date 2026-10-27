@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { catalogueProducts, markdownProducts, markdownSheetItems, markdownSheets } from "../db/schema.js";
+import { catalogueProducts, markdownProducts, markdownSheetItems, markdownSheets, wastageItems, auditEvents } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { requireLocationManager } from "../auth/core.js";
 import { ApiError } from "./errors.js";
@@ -11,7 +11,6 @@ import { requireEnum, requireFiniteNumber, requireString, requireUuid } from "./
 
 const modes = ["use", "reduce"] as const;
 const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
-const previousDateKey = (dateKey: string) => { const date = new Date(`${dateKey}T12:00:00Z`); date.setUTCDate(date.getUTCDate() - 1); return date.toISOString().slice(0, 10); };
 
 async function ensureSheet(tx: any, locationId: string, dateKey: string, userId: string) {
   const [existing] = await tx.select().from(markdownSheets).where(and(eq(markdownSheets.locationId, locationId), eq(markdownSheets.dateKey, dateKey))).limit(1);
@@ -34,19 +33,35 @@ export async function listMarkdownSheet(context: AuthContext, locationId: string
   const location = await locationFor(context, locationId);
   if (!dateKeyPattern.test(dateKey)) throw new ApiError(422, "dateKey must be YYYY-MM-DD");
   const db = getDb();
-  const products = await db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), eq(markdownProducts.active, true), eq(markdownProducts.quickSelect, true), isNull(markdownProducts.temporaryDateKey))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name));
+  const profiles = await db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), eq(markdownProducts.active, true), isNull(markdownProducts.temporaryDateKey))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name));
   const catalogue = await db.select({ id: catalogueProducts.id, name: catalogueProducts.name, plu: catalogueProducts.plu, department: catalogueProducts.department, group: catalogueProducts.group }).from(catalogueProducts).where(and(eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.name));
+  const manual = await db.select().from(wastageItems).where(and(eq(wastageItems.locationId, location.id), eq(wastageItems.active, true)));
+  const products = profiles.filter(product => product.quickSelect && (!product.wastageItemId || manual.some(item => item.id === product.wastageItemId)) && (!product.catalogueProductId || catalogue.some(item => item.id === product.catalogueProductId)));
+  const reusable = profiles.filter(product => !product.catalogueProductId && !product.wastageItemId);
+  const available = [...catalogue.map(product => ({ ...product, catalogueProductId: product.id, markdownProductId: profiles.find(profile => profile.catalogueProductId === product.id)?.id })), ...manual.map(product => ({ ...product, wastageItemId: product.id, markdownProductId: profiles.find(profile => profile.wastageItemId === product.id)?.id })), ...reusable];
   const current = await listItems(db, location.id, dateKey);
-  const previous = await listItems(db, location.id, previousDateKey(dateKey));
-  const outstanding = previous.items.filter((item: any) => item.quantity > 0 && !item.completedAt && !item.reviewedAt);
-  return { locationId: location.id, dateKey, products, favourites: products, catalogue, ...current, reminder: outstanding.length ? { dateKey: previousDateKey(dateKey), count: outstanding.reduce((total: number, item: any) => total + item.quantity, 0), items: outstanding } : null };
+  const outstandingRows = await db.select({ item: markdownSheetItems, productName: markdownProducts.name, dateKey: markdownSheets.dateKey }).from(markdownSheetItems).innerJoin(markdownSheets, eq(markdownSheets.id, markdownSheetItems.sheetId)).innerJoin(markdownProducts, eq(markdownProducts.id, markdownSheetItems.productId)).where(and(eq(markdownSheets.locationId, location.id), lt(markdownSheets.dateKey, dateKey), gt(markdownSheetItems.quantity, 0), isNull(markdownSheetItems.completedAt), isNull(markdownSheetItems.reviewedAt))).orderBy(asc(markdownSheets.dateKey), asc(markdownProducts.name));
+  const outstanding = outstandingRows.map(row => ({ ...row.item, productName: row.productName, dateKey: row.dateKey }));
+  return { locationId: location.id, dateKey, products, favourites: products, catalogue: available, ...current, reminder: outstanding.length ? { dateKey: outstanding[0].dateKey, count: outstanding.reduce((total: number, item: any) => total + item.quantity, 0), items: outstanding } : null };
+}
+
+async function manualProfile(tx: any, locationId: string, rawId: unknown) {
+  const itemId = requireUuid(rawId, "wastageItemId");
+  const [item] = await tx.select().from(wastageItems).where(and(eq(wastageItems.id, itemId), eq(wastageItems.locationId, locationId), eq(wastageItems.active, true))).limit(1);
+  if (!item) throw new ApiError(422, "Product is not available at this store");
+  await tx.insert(markdownProducts).values({ locationId, wastageItemId: item.id, name: item.name, source: "manual", quickSelect: false }).onConflictDoNothing();
+  const [profile] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, locationId), eq(markdownProducts.wastageItemId, item.id))).limit(1);
+  return profile;
 }
 
 async function resolveProduct(tx: any, locationId: string, dateKey: string, input: Record<string, unknown>) {
+  if (input.wastageItemId) return manualProfile(tx, locationId, input.wastageItemId);
   if (typeof input.productId === "string" && input.productId) {
     const productId = requireUuid(input.productId, "productId");
     const [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.id, productId), eq(markdownProducts.locationId, locationId), eq(markdownProducts.active, true))).limit(1);
     if (!product) throw new ApiError(422, "Product is not available at this store");
+    if (product.wastageItemId) await manualProfile(tx, locationId, product.wastageItemId);
+    if (product.temporaryDateKey && product.temporaryDateKey !== dateKey) throw new ApiError(422, "One-off product belongs to a different day");
     return product;
   }
   if (typeof input.catalogueProductId === "string" && input.catalogueProductId) {
@@ -71,13 +86,18 @@ export async function updateMarkdownSheet(context: AuthContext, input: Record<st
   const action = requireEnum(input.action, "action", ["quantity", "complete", "review-reminder"] as const);
   const db = getDb();
   return db.transaction((tx: any) => idempotentOfflineMutation(tx, context, { key: typeof input.idempotencyKey === "string" ? input.idempotencyKey : undefined, organisationId: location.organisationId, locationId: location.id, operation: "markdown-sheet", payload: input }, async () => {
+    // Serialize changes to one day's sheet, including simultaneous taps from different devices.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${location.id + ":" + dateKey}, 0))`);
+    const member = await activeMember(location.id, requireUuid(input.teamMemberId, "teamMemberId"));
     const sheet = await ensureSheet(tx, location.id, dateKey, context.user.id);
+    await tx.insert(auditEvents).values({ locationId: location.id, userId: context.user.id, type: "markdown_sheet_action", detail: JSON.stringify({ action, dateKey, staffId: member.id, productId: input.productId, delta: input.delta, mode: input.mode, reminderItemId: input.reminderItemId }), createdAt: now() });
     if (action === "review-reminder") {
-      const reminderDate = previousDateKey(dateKey);
-      await tx.update(markdownSheetItems).set({ reviewedAt: now(), reviewedBy: context.user.id }).where(and(eq(markdownSheetItems.locationId, location.id), eq(markdownSheetItems.sheetId, sheet.id)));
-      const previous = await tx.select({ id: markdownSheets.id }).from(markdownSheets).where(and(eq(markdownSheets.locationId, location.id), eq(markdownSheets.dateKey, reminderDate))).limit(1);
-      if (previous[0]) await tx.update(markdownSheetItems).set({ reviewedAt: now(), reviewedBy: context.user.id }).where(eq(markdownSheetItems.sheetId, previous[0].id));
-      return { dateKey: reminderDate, reviewed: true, serverConfirmed: true };
+      const itemId = requireUuid(input.reminderItemId, "reminderItemId");
+      const [previous] = await tx.select({ id: markdownSheets.id }).from(markdownSheets).innerJoin(markdownSheetItems, eq(markdownSheetItems.sheetId, markdownSheets.id)).where(and(eq(markdownSheets.locationId, location.id), lt(markdownSheets.dateKey, dateKey), eq(markdownSheetItems.id, itemId))).limit(1);
+      if (!previous) throw new ApiError(404, "Previous sheet not found");
+      const [reviewed] = await tx.update(markdownSheetItems).set({ reviewedAt: now(), reviewedBy: context.user.id }).where(and(eq(markdownSheetItems.id, itemId), eq(markdownSheetItems.sheetId, previous.id), eq(markdownSheetItems.locationId, location.id), isNull(markdownSheetItems.reviewedAt))).returning();
+      if (!reviewed) throw new ApiError(409, "Item already reviewed or unavailable; refresh the sheet");
+      return { itemId, reviewed: true, serverConfirmed: true };
     }
     const mode = requireEnum(input.mode, "mode", modes);
     const product = await resolveProduct(tx, location.id, dateKey, input);
@@ -85,7 +105,7 @@ export async function updateMarkdownSheet(context: AuthContext, input: Record<st
     if (action === "complete") {
       const memberId = await activeMember(location.id, requireUuid(input.teamMemberId, "teamMemberId")).then(member => member.id);
       if (!existing || existing.quantity < 1) throw new ApiError(422, "Add a quantity before completing this item");
-      const completed = existing.completedAt === null;
+      const completed = typeof input.completed === "boolean" ? input.completed : existing.completedAt === null;
       await tx.update(markdownSheetItems).set({ completedAt: completed ? now() : null, completedBy: completed ? context.user.id : null, completedTeamMemberId: completed ? memberId : null }).where(eq(markdownSheetItems.id, existing.id));
       return { itemId: existing.id, completed, serverConfirmed: true };
     }
@@ -123,13 +143,18 @@ export async function listMarkdownConfig(context: AuthContext, locationId: strin
     db.select().from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), isNull(markdownProducts.temporaryDateKey))).orderBy(asc(markdownProducts.order), asc(markdownProducts.name)),
     db.select({ id: catalogueProducts.id, name: catalogueProducts.name, plu: catalogueProducts.plu, department: catalogueProducts.department, group: catalogueProducts.group }).from(catalogueProducts).where(and(eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).orderBy(asc(catalogueProducts.name)),
   ]);
-  return { locationId: location.id, configured, catalogue };
+  const manual = await db.select().from(wastageItems).where(and(eq(wastageItems.locationId, location.id), eq(wastageItems.active, true)));
+  return { locationId: location.id, configured, catalogue: [...catalogue, ...manual.map(item => ({ ...item, wastageItemId: item.id }))] };
 }
 
 export async function updateMarkdownConfig(context: AuthContext, input: Record<string, unknown>) {
   const location = await managerLocation(context, requireUuid(input.locationId, "locationId"));
-  const action = requireEnum(input.action, "action", ["add-catalogue", "add-custom", "update", "reorder"] as const);
+  const action = requireEnum(input.action, "action", ["add-catalogue", "add-manual", "add-custom", "update", "reorder"] as const);
   const db = getDb();
+  if (action === "add-manual") return db.transaction(async tx => {
+    const profile = await manualProfile(tx, location.id, input.wastageItemId);
+    return tx.update(markdownProducts).set({ quickSelect: true, active: true }).where(eq(markdownProducts.id, profile.id)).returning();
+  });
   if (action === "add-catalogue") {
     const catalogueProductId = requireUuid(input.catalogueProductId, "catalogueProductId");
     const [catalogueProduct] = await db.select().from(catalogueProducts).where(and(eq(catalogueProducts.id, catalogueProductId), eq(catalogueProducts.locationId, location.id), eq(catalogueProducts.active, true))).limit(1);

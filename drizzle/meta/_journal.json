@@ -176,6 +176,13 @@
       "when": 1792022400000,
       "tag": "0026_wastage_admin_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793059200000,
+      "tag": "0027_shared_manual_products",
+      "breakpoints": true
     }
   ]
 }

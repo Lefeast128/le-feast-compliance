@@ -2,7 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
+import type { AdditionalDashboard, AdditionalRequirement, TeamMember } from "@/components/dashboard/dashboard-types";
+import TemperatureGauge from "@/components/TemperatureGauge";
+import CorrectiveActionControl from "@/components/CorrectiveActionControl";
+import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
 import OperationalHeader from "@/components/dashboard/OperationalHeader";
 import { operationalDateLabel } from "@/lib/operational-date";
 import { additionalCheckHasFailure } from "@/shared/additional-check-validation";
@@ -14,14 +18,16 @@ const dueLabel = (value: number) =>
     year: "numeric",
   });
 type Props = {
+  locationId: string;
   locationName: string;
-  requirements: any[];
-  completions: any[];
-  teamMembers: any[];
-  onComplete: (data: any) => Promise<void>;
+  requirements: AdditionalDashboard["requirements"];
+  completions: AdditionalDashboard["completions"];
+  teamMembers: TeamMember[];
+  onComplete: (data: { requirementId: string; teamMemberId: string; answers: {key:string; value:string}[]; certificate:File|null; certificateReference:string }) => Promise<void>;
   onBack: () => void;
 };
 export default function AdditionalChecksView({
+  locationId,
   locationName,
   requirements,
   completions,
@@ -29,10 +35,10 @@ export default function AdditionalChecksView({
   onComplete,
   onBack,
 }: Props) {
-  const [selected, setSelected] = useState<any>(null);
+  const [selected, setSelected] = useState<AdditionalRequirement | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [member, setMember] = useState("");
-  const [activeMemberId, setActiveMemberId] = useState("");
+  const [activeMemberId, setActiveMemberId] = useActiveTeamMember(locationId, teamMembers);
   const [certificate, setCertificate] = useState<File | null>(null);
   const [reference, setReference] = useState("");
   const [saving, setSaving] = useState(false);
@@ -53,6 +59,7 @@ export default function AdditionalChecksView({
   }).length;
   async function submit() {
     const effectiveMember = member || activeMemberId;
+    if (!teamMembers.some(person => person._id === effectiveMember)) return;
     if (!selected || !effectiveMember || saving) return;
     setSaving(true);
     setError(null);
@@ -145,8 +152,9 @@ export default function AdditionalChecksView({
               <p className="mt-2 text-sm text-[#727a74]">
                 {selected.description ?? `Due ${dueLabel(selected.nextDueAt)}`}
               </p>
+              <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers} value={member || activeMemberId} onChange={setMember} /></div>
               <div className="mt-6 space-y-4">
-                {selected.fields.map((field: any) => {
+                {selected.fields.map((field) => {
                   if (field.type === "pdf") return null;
                   if (field.type === "actions" && !hasFailedValue) return null;
                   return (
@@ -184,24 +192,10 @@ export default function AdditionalChecksView({
                           <option value="">Select status</option>
                           <option value="completed">Completed</option>
                         </select>
-                      ) : field.type === "actions" && field.options?.length ? (
-                        <select
-                          value={values[field.key] ?? ""}
-                          onChange={(event) =>
-                            setValues((current) => ({
-                              ...current,
-                              [field.key]: event.target.value,
-                            }))
-                          }
-                          className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                        >
-                          <option value="">Select action</option>
-                          {field.options.map((option: string) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
+                      ) : field.type === "actions" ? (
+                        <CorrectiveActionControl context={selected.title} options={field.options?.length ? field.options : undefined} value={values[field.key] ?? ""} onChange={value => setValues(current => ({ ...current, [field.key]: value }))} />
+                      ) : field.type === "temperature" ? (
+                        <TemperatureGauge value={values[field.key] ?? ""} setValue={value => setValues(current => ({ ...current, [field.key]: value }))} min={-30} max={150} safeMin={field.minimum ?? -30} safeMax={field.maximum ?? 150} />
                       ) : (
                         <Input
                           type={
@@ -228,7 +222,7 @@ export default function AdditionalChecksView({
                     </label>
                   );
                 })}
-                {selected.fields.some((field: any) => field.type === "pdf") && (
+                {selected.fields.some((field) => field.type === "pdf") && (
                   <label className="block text-sm font-semibold">
                     Upload certificate / PDF
                     <input
@@ -248,7 +242,6 @@ export default function AdditionalChecksView({
                   Corrective Action Taken
                   <textarea required value={reference} onChange={(event) => setReference(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] p-3" placeholder="Describe what was done to address the failed reading" />
                 </label>}
-                <StaffAttributionLine value={member || activeMemberId} teamMembers={teamMembers} onChange={setMember} label="Change person for this additional check" />
               </div>
               {error && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
               <Button
@@ -257,7 +250,7 @@ export default function AdditionalChecksView({
                   saving ||
                   !(member || activeMemberId) ||
                   (hasFailedValue && !reference.trim()) ||
-                  (selected.fields.some((field: any) => field.type === "pdf") &&
+                  (selected.fields.some((field) => field.type === "pdf") &&
                     !certificate)
                 }
                 className="mt-7 h-14 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"

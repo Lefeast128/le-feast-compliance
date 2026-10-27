@@ -65,22 +65,28 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     const catalogueLocationId = dashboard?.location?._id ?? currentLocationId;
     if (!wastageOpen || !catalogueLocationId) return;
     let cancelled = false;
-    restApi.catalogue.wastage({ locationId: catalogueLocationId })
+    let generation = 0;
+    const refresh = () => { const request = ++generation; return restApi.catalogue.wastage({ locationId: catalogueLocationId })
       .then((result: { products?: WastagePickerProduct[]; categories?: Array<{ name: string }> }) => {
-        if (cancelled) return;
+        if (cancelled || request !== generation) return;
+        setWastageCatalogueError(null);
         setWastageCatalogue(result?.products ?? []);
         setWastageCategories((result?.categories ?? []).map(category => category.name));
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || request !== generation) return;
         setWastageCatalogue([]);
         setWastageCategories([]);
         setWastageCatalogueError(error instanceof Error ? error.message : "Unable to load wastage catalogue");
       })
       .finally(() => {
-        if (!cancelled) setWastageCatalogueLoading(false);
-      });
-    return () => { cancelled = true; };
+        if (!cancelled && request === generation) setWastageCatalogueLoading(false);
+      }); };
+    void refresh();
+    window.addEventListener("rest:data-changed", refresh);
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("rest:data-changed", refresh); window.removeEventListener("focus", refresh); };
   }, [wastageOpen, dashboard?.location?._id, currentLocationId]);
 
   const active = dashboard;
@@ -371,8 +377,9 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   async function completeCleaning(taskId: string, teamMemberId: string) {
     if (!dashboard) return;
-    await completeCleaningTask({ locationId: dashboard.location._id, taskId, teamMemberId });
-    toast.success("Cleaning job completed");
+    const result = await completeCleaningTask({ locationId: dashboard.location._id, taskId, teamMemberId });
+    toast.success(result?.state === "pending" ? "Cleaning saved on this device — pending sync" : "Cleaning job recorded");
+    return result;
   }
 
   async function reportCleaningIssue(description: string, teamMemberId: string) {

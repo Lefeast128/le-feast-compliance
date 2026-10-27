@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { restApi, useRestMutation, useRestQuery } from "@/lib/rest-domain";
 
 type Product = { id: string; name: string; source: string; active: boolean; quickSelect: boolean; order: number; plu?: number | null; catalogueProductId?: string | null };
-type CatalogueProduct = { id: string; name: string; plu?: number | null; department?: string | null };
+type CatalogueProduct = { wastageItemId?: string; id: string; name: string; plu?: number | null; department?: string | null };
 
 export default function MarkdownSheetAdmin({ locationId, locationName, onBack }: { locationId: string; locationName: string; onBack: () => void }) {
   const [search, setSearch] = useState("");
@@ -17,7 +17,7 @@ export default function MarkdownSheetAdmin({ locationId, locationName, onBack }:
   const otherConfigured = configured.filter(product => !product.quickSelect || !product.active).sort((a, b) => a.name.localeCompare(b.name));
   const catalogue = useMemo(() => (data?.catalogue ?? []).filter(product => product.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).slice(0, 30), [data?.catalogue, search]);
   const save = async (body: Record<string, unknown>) => { await update({ locationId, ...body }); setRevision(value => value + 1); };
-  const addCatalogue = async (product: CatalogueProduct) => save({ action: "add-catalogue", catalogueProductId: product.id });
+  const addCatalogue = async (product: CatalogueProduct) => save(product.wastageItemId ? { action: "add-manual", wastageItemId: product.wastageItemId } : { action: "add-catalogue", catalogueProductId: product.id });
   const addCustom = async () => { if (customName.trim()) { await save({ action: "add-custom", name: customName.trim() }); setCustomName(""); } };
   const reorder = async (index: number, direction: -1 | 1) => { const next = [...favourites]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; await save({ action: "reorder", productIds: next.map(product => product.id) }); };
 

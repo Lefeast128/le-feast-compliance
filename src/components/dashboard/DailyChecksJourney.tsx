@@ -93,36 +93,6 @@ export function DailyChecksJourney({
         </section>
       )}
 
-      <section id="issues-section" className="mt-8" aria-labelledby="issues-heading">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Attention area</p>
-            <h2 id="issues-heading" className="mt-1 text-xl font-semibold">Issues & corrective actions</h2>
-          </div>
-        </div>
-        <div className={`rounded-3xl border p-5 sm:p-6 ${openIssues.length ? "border-[#efc8c3] bg-[#fff8f6]" : "border-[#cfe3d5] bg-[#fbfefb]"}`}>
-          {openIssues.length ? (
-            <>
-              <p className="flex items-center gap-2 text-lg font-semibold text-[#8f3a31]"><AlertTriangle className="size-5" /> {openIssues.length} action{openIssues.length === 1 ? "" : "s"} required</p>
-              <div className="mt-4 space-y-3">
-                {openIssues.slice(0, 3).map((issue) => (
-                  <button type="button" key={issue._id} className="w-full rounded-2xl bg-white p-4 text-left shadow-[0_3px_12px_rgba(23,25,24,0.04)]" onClick={() => onIssueSelected(issue)}>
-                    <p className="font-semibold">{issue.title}</p>
-                    <p className="mt-1 text-sm text-[#727a74]">{issue.description}</p>
-                    {issue.action && <p className="mt-2 text-xs text-[#8f3a31]">{issue.action}</p>}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="flex items-center gap-2 font-semibold text-[#2d7951]"><CheckCircle2 className="size-5" /> No unresolved issues</p>
-          )}
-          <Button variant={openIssues.length ? "outline" : "default"} className={`mt-5 ${openIssues.length ? "" : "bg-[#202522] text-white"}`} onClick={onReportIssue}>
-            <Plus className="mr-2 size-4" /> Report an issue
-          </Button>
-        </div>
-      </section>
-
       {canUseManagement && (
         <section className="mt-8 rounded-2xl border border-[#ead797] bg-brand-yellow/10 p-4 sm:p-5" aria-label="Manager reviews">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -137,6 +107,37 @@ export function DailyChecksJourney({
           </div>
         </section>
       )}
+
+      <section id="issues-section" className="mt-8" aria-labelledby="issues-heading">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Attention area</p>
+            <h2 id="issues-heading" className="mt-1 text-xl font-semibold">Issues & corrective actions</h2>
+          </div>
+        </div>
+        <div className={`rounded-3xl border p-5 sm:p-6 ${openIssues.length ? "border-[#efc8c3] bg-[#fff8f6]" : "border-[#cfe3d5] bg-[#fbfefb]"}`}>
+          {openIssues.length ? (
+            <>
+              <p className="flex items-center gap-2 text-lg font-semibold text-[#8f3a31]"><AlertTriangle className="size-5" /> {openIssues.length} action{openIssues.length === 1 ? "" : "s"} required</p>
+              <div className="mt-4 space-y-3">
+                {openIssues.map((issue) => (
+                  <button type="button" key={issue._id} className="w-full rounded-2xl bg-white p-4 text-left shadow-[0_3px_12px_rgba(23,25,24,0.04)]" onClick={() => onIssueSelected(issue)}>
+                    <p className="font-semibold">{issue.title}</p>
+                    <p className="mt-1 text-xs text-neutral-600">{issue.category} · {issue.teamMemberName ?? "Staff recorded in history"} · {issue.status === "monitoring" ? "Monitoring" : "Open"} · Review / resolve</p>
+                    <p className="mt-1 text-sm text-[#727a74]">{issue.description}</p>
+                    {issue.action && <p className="mt-2 text-xs text-[#8f3a31]">{issue.action}</p>}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="flex items-center gap-2 font-semibold text-[#2d7951]"><CheckCircle2 className="size-5" /> No unresolved issues</p>
+          )}
+          <Button variant={openIssues.length ? "outline" : "default"} className={`mt-5 ${openIssues.length ? "" : "bg-[#202522] text-white"}`} onClick={onReportIssue}>
+            <Plus className="mr-2 size-4" /> Report an issue
+          </Button>
+        </div>
+      </section>
 
     </main>
   );

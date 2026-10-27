@@ -122,6 +122,7 @@ export default defineConfig(({ command }) => {
   },
   // Performance hints
   server: { allowedHosts: true,
+    watch: { ignored: ["**/.eho-offline-browser-*/**", "**/.workflow-*.log"] },
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,

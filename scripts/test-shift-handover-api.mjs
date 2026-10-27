@@ -10,6 +10,7 @@ const ids = {
   location: "00000000-0000-4000-8000-000000001002",
   location2: "00000000-0000-4000-8000-000000001011",
   location3: "00000000-0000-4000-8000-000000001015",
+  member2: "00000000-0000-4000-8000-000000001014",
   staff: "offline.staff@example.test",
   manager: "offline.manager@example.test",
   admin: "offline.admin@example.test",
@@ -25,7 +26,7 @@ const ready = new Promise((resolve, reject) => {
   server.stdout.on("data", check); server.stderr.on("data", check);
   server.on("exit", code => reject(new Error(`Harness exited (${code}): ${output}`)));
 });
-const close = () => new Promise(resolve => { server.once("exit", resolve); server.kill("SIGTERM"); });
+const close = () => server.exitCode !== null ? Promise.resolve() : new Promise(resolve => { server.once("exit", resolve); server.kill("SIGTERM"); });
 const request = async (method, path, body, cookie, key) => {
   const headers = { Origin: origin };
   if (cookie) headers.Cookie = cookie;

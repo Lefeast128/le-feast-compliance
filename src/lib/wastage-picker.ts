@@ -7,7 +7,7 @@ export type WastagePickerProduct = {
   category?: string | null;
   department?: string | null;
   group?: string | null;
-  source?: "catalogue" | "manual";
+  source?: "catalogue" | "manual" | "markdown";
   active?: boolean;
   excludedFromWastage?: boolean;
 };
@@ -17,7 +17,7 @@ export const ALL_WASTAGE_CATEGORY = "All";
 export type WastagePickerDraft = {
   mode: WastagePickerMode;
   catalogueProductId: string;
-  catalogueProductSource: "catalogue" | "manual";
+  catalogueProductSource: "catalogue" | "manual" | "markdown";
   adHocItemName: string;
   quantity: string;
   notes: string;
@@ -46,7 +46,7 @@ export function sortWastageProducts(products: WastagePickerProduct[]) {
 export function getWastagePickerCategories(products: WastagePickerProduct[]) {
   const categories = new Set(eligibleWastageProducts(products).map(wastagePickerCategory));
   categories.delete(ALL_WASTAGE_CATEGORY);
-  return [ALL_WASTAGE_CATEGORY, ...Array.from(categories).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }))];
+  return Array.from(categories).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
 }
 
 export function filterWastageProducts(products: WastagePickerProduct[], search: string, selectedCategory = ALL_WASTAGE_CATEGORY) {
@@ -75,7 +75,7 @@ export function buildWastagePayload(draft: WastagePickerDraft) {
   if (!isPositiveQuantity(draft.quantity)) throw new Error("Enter a positive quantity");
   if (draft.mode === "catalogue") {
     if (!draft.catalogueProductId) throw new Error("Select a catalogue product");
-    return { noWaste: false, [draft.catalogueProductSource === "manual" ? "itemId" : "catalogueProductId"]: draft.catalogueProductId, quantity: draft.quantity.trim(), teamMemberId: draft.teamMemberId, ...(draft.notes.trim() ? { notes: draft.notes.trim() } : {}) };
+    return { noWaste: false, [draft.catalogueProductSource === "manual" ? "itemId" : draft.catalogueProductSource === "markdown" ? "markdownProductId" : "catalogueProductId"]: draft.catalogueProductId, quantity: draft.quantity.trim(), teamMemberId: draft.teamMemberId, ...(draft.notes.trim() ? { notes: draft.notes.trim() } : {}) };
   }
   const adHocItemName = draft.adHocItemName.trim();
   if (!adHocItemName) throw new Error("Enter an item name");

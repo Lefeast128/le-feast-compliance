@@ -39,9 +39,10 @@ export function afterUseCleaningStatus(hasAfterUseTasks: boolean, recordedCount:
 }
 
 export function localWeekdayForDate(dateKey: string, timeZone: string) {
-  const timestamp = Date.parse(`${dateKey}T12:00:00Z`);
-  const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(new Date(timestamp));
-  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+  // dateKey already represents the store-local calendar date. Converting UTC noon
+  // back into a timezone would shift it a day in UTC+13/+14 stores.
+  new Intl.DateTimeFormat("en-GB", { timeZone }); // Validate the configured timezone.
+  return new Date(`${dateKey}T12:00:00Z`).getUTCDay();
 }
 
 /**

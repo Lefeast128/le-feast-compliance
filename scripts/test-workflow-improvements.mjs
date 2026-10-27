@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { cleaningRunsOn, localWeekdayForDate } from '../src/shared/cleaning-scheduling.ts';
+import { getWastagePickerCategories, filterWastageProducts, buildWastagePayload, emptyWastagePickerDraft } from '../src/lib/wastage-picker.ts';
+
+const products = [{ id: 'a', name: 'Zebra', category: 'Prepared', source: 'manual' }, { id: 'b', name: 'apple', category: 'Prepared' }, { id: 'c', name: 'Bread' }];
+assert.deepEqual(getWastagePickerCategories(products), ['Other', 'Prepared']);
+assert.deepEqual(filterWastageProducts(products, '', 'Prepared').map(p => p.name), ['apple', 'Zebra']);
+assert.deepEqual(filterWastageProducts(products, '', 'Other').map(p => p.name), ['Bread']);
+assert.throws(() => buildWastagePayload(emptyWastagePickerDraft()), /team member/);
+assert.equal(buildWastagePayload({ ...emptyWastagePickerDraft(), teamMemberId: 'staff', catalogueProductId: 'custom', catalogueProductSource: 'markdown', quantity: '2' }).markdownProductId, 'custom');
+assert.equal(cleaningRunsOn('specific_days', [1, 3], localWeekdayForDate('2026-10-27', 'Europe/London')), false);
+assert.equal(cleaningRunsOn('weekly', [2], localWeekdayForDate('2026-10-27', 'Europe/London')), true);
+assert.equal(cleaningRunsOn('weekly', [], 1), true);
+assert.equal(cleaningRunsOn('daily', [], 0), true);
+assert.equal(localWeekdayForDate('2026-10-27', 'Pacific/Kiritimati'), 2);
+assert.equal(localWeekdayForDate('2026-10-25', 'Europe/London'), 0);
+assert.equal(cleaningRunsOn('after_use', [], 0), true);
+
+const server = spawn(process.execPath, ['--import=tsx/esm', 'scripts/offline-browser-server.mjs'], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, EHO_OFFLINE_TEST_DATABASE_URL: '', EHO_OFFLINE_TEST_API_PORT: '4174' } });
+let output = '';
+server.stdout.on('data', b => { output += b; });
+server.stderr.on('data', b => { output += b; });
+const origin = 'http://127.0.0.1:5173';
+const request = async (method, path, body, cookie, key) => {
+  const response = await fetch('http://127.0.0.1:4174' + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const json = await response.json(); return { status: response.status, data: json.data ?? json, cookie: response.headers.get('set-cookie')?.split(';')[0] };
+};
+const locationId = '00000000-0000-4000-8000-000000001002', teamMemberId = '00000000-0000-4000-8000-000000001005';
+const post = (path, data, cookie, key) => request('POST', path, data, cookie, key);
+const get = (path, cookie) => request('GET', path, undefined, cookie);
+const ok = result => { assert.equal(result.status, 200, JSON.stringify(result)); return result.data; };
+try {
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('Harness startup timeout: ' + output.slice(-3000))), 45000);
+    const check = () => { if (output.includes('"ready":true')) { clearTimeout(timer); resolve(); } };
+    server.stdout.on('data', check);
+    server.once('exit', code => { clearTimeout(timer); reject(Error('Harness exited ' + code + ': ' + output.slice(-3000))); });
+  });
+  const admin = (await post('/api/auth/login', { email: 'offline.admin@example.test', password: 'offline-test-password' })).cookie;
+  const staff = (await post('/api/auth/login', { email: 'offline.staff@example.test', password: 'offline-test-password' })).cookie;
+  const foreign = (await post('/api/auth/login', { email: 'other.staff@example.test', password: 'offline-test-password' })).cookie;
+  assert.ok(admin && staff && foreign);
+  const category = ok(await post('/api/admin/wastage', { locationId, name: 'Prepared ingredients' }, admin));
+  const product = ok(await post('/api/admin/wastage-items', { locationId, name: 'Apple filling', category: category.name }, admin));
+  assert.equal((await post('/api/admin/wastage', { locationId, name: 'Forbidden' }, staff)).status, 403);
+  let picker = ok(await get('/api/catalogue/wastage?locationId=' + locationId, staff));
+  assert.ok(picker.categories.some(c => c.name === category.name));
+  assert.ok(picker.products.some(p => p.id === product.id && p.category === category.name));
+  assert.equal((await get('/api/catalogue/wastage?locationId=' + locationId, foreign)).status, 403);
+  const dateKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+  const sheet = ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff));
+  assert.ok(sheet.catalogue.some(p => p.wastageItemId === product.id));
+  const entry = { locationId, dateKey, wastageItemId: product.id, teamMemberId, action: 'quantity', mode: 'use', delta: 1, idempotencyKey: 'workflow-sheet-000001' };
+  ok(await post('/api/markdown-sheet', entry, staff));
+  ok(await post('/api/markdown-sheet', entry, staff));
+  assert.equal((await post('/api/markdown-sheet', { ...entry, delta: -1 }, staff)).status, 409);
+  const updated = ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff));
+  assert.equal(updated.items.find(i => i.productName === product.name).quantity, 1);
+  const increments = await Promise.all([2,3].map(n => post('/api/markdown-sheet', { ...entry, idempotencyKey: 'workflow-sheet-concurrent-' + n }, staff)));
+  increments.forEach(ok);
+  assert.equal(ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff)).items.find(i => i.productName === product.name).quantity, 3);
+  const past = { ...entry, dateKey: '2026-01-01', idempotencyKey: 'workflow-sheet-previous' };
+  const prior = ok(await post('/api/markdown-sheet', past, staff));
+  let reminders = ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff));
+  assert.ok(reminders.reminder.items.some(i => i.id === prior.itemId));
+  // Merely opening/reloading never clears the outstanding action.
+  reminders = ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff));
+  assert.ok(reminders.reminder.items.some(i => i.id === prior.itemId));
+  ok(await post('/api/markdown-sheet', { locationId, dateKey, action: 'review-reminder', reminderItemId: prior.itemId, teamMemberId, idempotencyKey: 'workflow-review-previous' }, staff));
+  assert.equal(ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff)).reminder, null);
+  const waste = { locationId, itemId: product.id, teamMemberId, noWaste: false, quantity: '2' };
+  const result = ok(await post('/api/compliance/wastage', waste, staff, 'workflow-waste-000001'));
+  assert.deepEqual(ok(await post('/api/compliance/wastage', waste, staff, 'workflow-waste-000001')), result);
+  const custom = ok(await post('/api/admin/markdown-sheet', { locationId, action: 'add-custom', name: 'Custom pastry' }, admin));
+  picker = ok(await get('/api/catalogue/wastage?locationId=' + locationId, staff));
+  assert.ok(picker.products.some(p => p.id === custom.id && p.source === 'markdown'));
+  ok(await post('/api/compliance/wastage', { locationId, markdownProductId: custom.id, teamMemberId, noWaste: false, quantity: '1' }, staff, 'workflow-custom-000001'));
+  const failure = { locationId, area: 'cleaning', taskId: '00000000-0000-4000-8000-000000001007', stepId: 'simple', value: 'issue_reported', teamMemberId, problem: 'Surface unavailable', action: 'Removed equipment from use' };
+  assert.equal((await post('/api/compliance/structured-tasks/responses', { ...failure, action: '' }, staff)).status, 422);
+  const reported = ok(await post('/api/compliance/structured-tasks/responses', failure, staff, 'workflow-issue-000001'));
+  assert.ok(reported.issueId && reported.responseId);
+  const dashboard = ok(await get('/api/dashboard?locationId=' + locationId, staff));
+  assert.equal(dashboard.structuredTaskResponses.find(r => r.id === reported.responseId).responseValue, 'issue_reported');
+  assert.notEqual(dashboard.issues.find(i => i.id === reported.issueId).status, 'resolved');
+  assert.equal((await post('/api/compliance/structured-tasks/responses', failure, foreign)).status, 403);
+  ok(await request('PATCH', '/api/admin/wastage/' + category.id, { name: 'Preparation' }, admin));
+  picker = ok(await get('/api/catalogue/wastage?locationId=' + locationId, staff));
+  assert.ok(picker.categories.some(c => c.name === 'Preparation'));
+  assert.equal(picker.products.find(p => p.id === product.id).category, 'Preparation');
+  assert.equal((await request('PATCH', '/api/admin/wastage/' + category.id, { name: 'Forbidden' }, foreign)).status, 403);
+  ok(await request('DELETE', '/api/admin/wastage-items/' + product.id, undefined, admin));
+  assert.ok(!ok(await get('/api/catalogue/wastage?locationId=' + locationId, staff)).products.some(p => p.id === product.id));
+  assert.ok(!ok(await get(`/api/markdown-sheet?locationId=${locationId}&dateKey=${dateKey}`, staff)).catalogue.some(p => p.wastageItemId === product.id));
+  assert.equal((await post('/api/compliance/wastage', waste, staff, 'workflow-archived-0001')).status, 422);
+  console.log('PASS: real authentication/API/PostgreSQL category, shared products, issue outcome, replay, permissions; scheduling and picker behaviour.');
+} finally {
+  if (server.exitCode === null) { const closed = once(server, 'exit'); server.kill('SIGTERM'); await closed; }
+}

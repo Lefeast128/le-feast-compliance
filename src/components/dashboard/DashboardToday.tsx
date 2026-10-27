@@ -289,6 +289,7 @@ export default function DashboardToday({
       )}
       {wastageOpen && (
         <StaffWastageModal
+          locationId={dashboard.location._id}
           products={wastageCatalogue}
           configuredCategories={wastageCategories}
           teamMembers={dashboard.teamMembers}

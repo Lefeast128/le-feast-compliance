@@ -19,7 +19,7 @@ type Props = {
   responses: StructuredTaskResponse[];
   completions: CleaningCompletion[];
   teamMembers: TeamMember[];
-  onComplete: (taskId: string, teamMemberId: string) => Promise<void>;
+  onComplete: (taskId: string, teamMemberId: string) => Promise<unknown>;
   onIssue?: (description: string, teamMemberId: string) => Promise<void>;
   onBack: () => void;
 };

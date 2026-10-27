@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { auditEvents, catalogueProducts, catalogueSyncStatus, locations, wastageCategories, wastageItems } from "../db/schema.js";
+import { auditEvents, catalogueProducts, catalogueSyncStatus, locations, markdownProducts, wastageCategories, wastageItems } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireBoolean, requireString, requireUuid } from "../compliance/validation.js";
@@ -139,7 +139,9 @@ export async function listWastageCatalogue(context: AuthContext, locationId: str
   ]);
   const termForManual = term.toLocaleLowerCase();
   const filteredManual = termForManual ? manualProducts.filter(product => product.name.toLocaleLowerCase().includes(termForManual)) : manualProducts;
-  return { locationId: location.id, products: [...products, ...filteredManual], categories };
+  const shared = await getDb().select({ id: markdownProducts.id, name: markdownProducts.name, active: markdownProducts.active, source: sql<"markdown">`'markdown'` }).from(markdownProducts).where(and(eq(markdownProducts.locationId, location.id), eq(markdownProducts.active, true), isNull(markdownProducts.temporaryDateKey), isNull(markdownProducts.catalogueProductId), isNull(markdownProducts.wastageItemId)));
+  const filteredShared = shared.filter(product => !search || product.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  return { locationId: location.id, products: [...products, ...filteredManual, ...filteredShared].sort((a, b) => a.name.localeCompare(b.name)), categories };
 }
 
 export async function updateCatalogueWastageConfig(context: AuthContext, productId: string, input: Record<string, unknown>) {

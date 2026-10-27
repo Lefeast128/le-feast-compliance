@@ -3,10 +3,20 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api(?:/|$)).*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
-    { "path": "/api/cron/catalogue-sync", "schedule": "0 * * * *" },
-    { "path": "/api/cron/wastage-sync", "schedule": "0 * * * *" }
-  ]
+    {
+      "path": "/api/cron/catalogue-sync",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/wastage-sync",
+      "schedule": "0 * * * *"
+    }
+  ],
+  "ignoreCommand": "node scripts/vercel-ignore-unrelated.mjs"
 }

@@ -18,6 +18,7 @@ import {
   type StructuredStepResponseType,
 } from "../db/schema.js";
 import { ApiError } from "./errors.js";
+import { cleaningRunsOn, localWeekdayForDate } from "../../shared/cleaning-scheduling.js";
 import { localDateKey, localDayRange } from "../dashboard/time.js";
 import { activeMember } from "./shared.js";
 import { id, locationFor, text } from "../management/shared.js";
@@ -67,6 +68,7 @@ export function validateStructuredSteps(value: unknown, taskType: StructuredTask
       description: typeof item.description === "string" && item.description.trim() ? item.description.trim() : null,
       responseType: responseType as StructuredStepResponseType,
       required: item.required !== false,
+      correctiveActions: Array.isArray(item.correctiveActions) ? [...new Set(item.correctiveActions.filter((action): action is string => typeof action === "string").map(action => action.trim()).filter(Boolean))].slice(0, 20) : undefined,
     } satisfies StructuredStepDefinition;
   });
   if (taskType === "with_steps" && !steps.length) throw new ApiError(422, "At least one task step is required");
@@ -206,7 +208,7 @@ export async function listStructuredTasks(context: AuthContext, input: { locatio
   const versionsById = new Map([...checklistVersions, ...cleaningVersions, ...securityVersions].map(row => [row.id, row as TaskRow]));
   return {
     dateKey,
-    tasks: [...checklists, ...cleaning, ...security].map(dto),
+    tasks: [...checklists, ...cleaning.filter(task => cleaningRunsOn(task.frequency, task.weekdays, localWeekdayForDate(dateKey, location[0].timezone))), ...security].map(dto),
     responses: responses.map(row => {
       const task = versionsById.get(row.taskId);
       return { ...row, createdAt: row.createdAt.toISOString(), taskVersionRootId: task ? checklistVersionRoot(task) : null, taskDefinitionKey: task ? checklistDefinitionKey(task) : null };
@@ -282,7 +284,8 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
   const requestedStepId = typeof input.stepId === "string" ? input.stepId : "";
   const step = structuredResponseStepForTask(row, requestedStepId);
   if (!step) throw new ApiError(404, "Task step not found");
-  const value = validateStructuredTaskResponse(step, input.value);
+  const reportingIssue = input.value === "issue_reported";
+  const value = reportingIssue ? "issue_reported" : validateStructuredTaskResponse(step, input.value);
   const memberId = id(input.teamMemberId, "teamMemberId");
   await activeMember(locationId, memberId);
   const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
@@ -292,7 +295,7 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
     const existing = await tx.select({ id: structuredTaskResponses.id }).from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, area), eq(structuredTaskResponses.taskId, row.id), eq(structuredTaskResponses.dateKey, dateKey), eq(structuredTaskResponses.stepId, step.id))).limit(1);
     if (existing.length) throw new ApiError(409, "This task step has already been completed");
     let issueId: string | undefined;
-    if (step.responseType === "yes_no" && value === "no") {
+    if (reportingIssue || (step.responseType === "yes_no" && value === "no")) {
       if (!problem || !action) throw new ApiError(422, "A problem and corrective action are required");
       const [issue] = await tx.insert(issues).values({ locationId, category: "Operational task", title: `${rowTitle(row)}: ${step.label}`, description: problem, status: "monitoring", createdBy: context.user.id, teamMemberId: memberId, action }).returning({ id: issues.id });
       issueId = issue?.id;

@@ -113,6 +113,7 @@ export const getDashboard = async (context: AuthContext, locationId: string): Pr
   const userNames = new Map(userRows.map(user => [user.id, user.name ?? user.email]));
   const issueData = issueRows.map(issue => ({
     ...serialize(issue),
+    teamMemberName: teamMemberRows.find(member => member.id === issue.teamMemberId)?.name ?? null,
     createdByName: userNames.get(issue.createdBy) ?? "Staff member",
     resolvedByName: issue.resolvedBy ? userNames.get(issue.resolvedBy) ?? "Manager" : undefined,
     updates: issueUpdateRows.filter(update => update.issueId === issue.id).map(update => ({ ...serialize(update), createdByName: userNames.get(update.createdBy) ?? "Staff member" })),

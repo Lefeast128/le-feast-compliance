@@ -9,6 +9,8 @@ import { readOfflineSession } from "@/lib/offline/device-session";
 import { offlineOperationalWorkflowEnabled } from "@/lib/offline/feature";
 
 type AnyRecord = Record<string, any>;
+const changes = typeof window !== "undefined" && typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("mise:records-changed") : null;
+if (changes) changes.onmessage = () => window.dispatchEvent(new Event("rest:data-changed"));
 
 export type UserAccessLocation = { id: string; name: string; shortName: string };
 export type UserAccessRole = "staff" | "manager";
@@ -332,6 +334,7 @@ export function useRestMutation<TArgs extends AnyRecord, TResult = any>(operatio
   return useCallback(async (args: TArgs) => {
     const result = await operation(args);
     window.dispatchEvent(new Event("rest:data-changed"));
+    changes?.postMessage("invalidate");
     return result;
   }, [operation]);
 }

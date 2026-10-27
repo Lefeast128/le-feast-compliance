@@ -73,6 +73,7 @@ export function ProbeModal({
       eyebrow="Food probes"
       onClose={onClose}
     >
+      <div className="mb-5"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing probe as" /></div>
       <label className="block text-sm font-semibold">
         Product
         <select
@@ -116,7 +117,7 @@ export function ProbeModal({
           </p>
         </div>
       )}
-      <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing probe as" /></div>
+
       {error && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
       <Button
         aria-label="Mark complete"

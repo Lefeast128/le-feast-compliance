@@ -11,8 +11,8 @@ const run = (command, args, options = {}) => execFileSync(command, args, { stdio
 const bin = (name) => execFileSync("which", [name], { encoding: "utf8" }).trim();
 const port = Number(process.env.EHO_OFFLINE_TEST_API_PORT ?? 4174);
 const pgPort = port + 1;
-const externalDbUrl = process.env.EHO_OFFLINE_TEST_DATABASE_URL;
-const dataDir = externalDbUrl ? null : mkdtempSync(join("/private/tmp", "eho-offline-browser-"));
+const externalDbUrl = process.env.EHO_OFFLINE_TEST_DATABASE_URL?.trim() || undefined;
+const dataDir = externalDbUrl ? null : mkdtempSync(join(process.cwd(), ".eho-offline-browser-"));
 const dbUrl = externalDbUrl ?? `postgresql://postgres@127.0.0.1:${pgPort}/postgres`;
 let started = false;
 let networkOffline = false;
@@ -90,10 +90,17 @@ const handlers = new Map([
   ["/api/compliance/food-checks", await load("api/compliance/food-checks.ts")],
   ["/api/compliance/issues", await load("api/compliance/issues.ts")],
   ["/api/compliance/wastage", await load("api/compliance/wastage.ts")],
+  ["/api/catalogue/wastage", await load("api/catalogue/wastage.ts")],
+  ["/api/admin/wastage", await load("api/admin/wastage.ts")],
+  ["/api/admin/wastage-items", await load("api/admin/wastage-items.ts")],
+  ["/api/markdown-sheet", await load("api/markdown-sheet.ts")],
+  ["/api/admin/markdown-sheet", await load("api/admin/markdown-sheet.ts")],
   ["/api/handover", await load("api/handover.ts")],
 ]);
 
 const dynamicHandlers = [
+  [/^\/api\/admin\/wastage\/([^/]+)$/, "api/admin/wastage/[id].ts"],
+  [/^\/api\/admin\/wastage-items\/([^/]+)$/, "api/admin/wastage-items/[id].ts"],
   [/^\/api\/compliance\/temperature-rounds\/([^/]+)\/complete$/, "api/compliance/temperature-rounds/[id]/complete.ts"],
   [/^\/api\/compliance\/issues\/([^/]+)\/action$/, "api/compliance/issues/[id]/action.ts"],
   [/^\/api\/compliance\/issues\/([^/]+)\/updates$/, "api/compliance/issues/[id]/updates.ts"],

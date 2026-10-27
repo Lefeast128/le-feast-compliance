@@ -1,5 +1,6 @@
+import TemperatureGauge from "@/components/TemperatureGauge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BookOpen, CalendarDays, Check, ChevronRight, ClipboardCheck, Moon, RotateCcw, ShieldCheck, Sun, Thermometer, X } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarDays, Check, ChevronRight, ClipboardCheck, Moon, ShieldCheck, Sun, Thermometer, X } from "lucide-react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 export function Top({ title, onBack }: { title: string; onBack: () => void }) {
@@ -33,15 +34,7 @@ export function BottomNavigation({ onToday, onCalendar, onLibrary, onAdmin, canU
 }
 
 export function TemperatureInput({ value, setValue, min, max, safeMin, safeMax }: { value: string; setValue: Dispatch<SetStateAction<string>>; min: number; max: number; safeMin: number; safeMax: number }) {
-  const hasValue = value !== "";
-  const numeric = hasValue ? Number(value) : NaN;
-  const outOfRange = hasValue && (numeric < safeMin || numeric > safeMax);
-  const update = (next: string) => { if (next === "") { setValue(""); return; } const parsed = Number(next); if (!Number.isNaN(parsed)) setValue(next); };
-  const scrollTo = (next: number) => setValue(Math.max(min, Math.min(max, Math.round(next * 10) / 10)).toFixed(1));
-  const position = hasValue && !Number.isNaN(numeric) ? Math.max(0, Math.min(100, ((numeric - min) / (max - min)) * 100)) : 0;
-  const safeStart = Math.max(0, Math.min(100, ((safeMin - min) / (max - min)) * 100));
-  const safeWidth = Math.max(4, Math.min(100 - safeStart, ((safeMax - safeMin) / (max - min)) * 100));
-  return <div className="mt-3 rounded-2xl border border-black/[0.08] bg-white p-4 shadow-[0_4px_16px_rgba(23,25,24,0.04)]"><div className="flex items-start justify-between gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[#e2f5e8] text-[#27814f]" aria-hidden="true"><Thermometer className="size-5" strokeWidth={2.25} /></div><div className="flex items-center gap-2"><label className="sr-only">Temperature in degrees Celsius</label><input aria-label="Temperature in degrees Celsius" inputMode="decimal" type="number" min={min} max={max} step="0.1" value={value} onChange={event => update(event.target.value)} onBlur={() => { if (hasValue && !Number.isNaN(numeric)) setValue(Math.max(min, Math.min(max, numeric)).toFixed(1)); }} placeholder="—" className={`h-12 w-24 border-0 bg-transparent px-0 text-right text-4xl font-semibold tracking-tight outline-none focus:ring-0 ${outOfRange ? "text-[#b64738]" : "text-[#202522]"}`} /><span className="text-lg font-semibold text-[#727a74]">°C</span><Button type="button" variant="ghost" size="icon" className="size-11 rounded-xl border border-black/[0.08]" onClick={() => setValue("")} aria-label="Clear temperature"><RotateCcw className="size-4" /></Button></div></div><div className="mt-7"><div className="relative h-3 rounded-full bg-[#e7e9e5]"><div className={`absolute inset-y-0 rounded-full ${outOfRange ? "bg-[#e5a39a]" : "bg-brand-yellow"}`} style={{ left: `${safeStart}%`, width: `${safeWidth}%` }} /><span className={`pointer-events-none absolute top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${outOfRange ? "bg-[#b64738]" : "bg-[#202522]"}`} style={{ left: `${position}%` }} /><input aria-label="Scroll to choose temperature" type="range" min={min} max={max} step="0.1" value={hasValue && !Number.isNaN(numeric) ? numeric : safeMin} onChange={event => scrollTo(Number(event.target.value))} className="absolute inset-0 h-3 w-full cursor-pointer opacity-0" /></div></div><div className="mt-4 flex items-center justify-between gap-3"><span className={`rounded-full px-4 py-2 text-xs font-semibold ${outOfRange ? "bg-[#fff0ed] text-[#b64738]" : hasValue ? "bg-[#e2f5e8] text-[#27814f]" : "bg-[#f1f2ef] text-[#727a74]"}`}>{outOfRange ? "OUT OF RANGE" : hasValue ? "SAFE" : "SCROLL TO ENTER"}</span></div><div className="mt-2 flex justify-between text-xs text-[#89918b]"><span>{min}°</span><span>Safe {safeMin}°–{safeMax}°</span><span>{max}°</span></div></div>;
+  return <TemperatureGauge value={value} setValue={setValue} min={min} max={max} safeMin={safeMin} safeMax={safeMax} />;
 }
 
 export function NumericWheel({ value, setValue, min = 1, max = 100, label }: { value: string; setValue: Dispatch<SetStateAction<string>>; min?: number; max?: number; label: string }) {

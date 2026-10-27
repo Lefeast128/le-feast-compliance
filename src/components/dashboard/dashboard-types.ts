@@ -51,6 +51,7 @@ export type ManagerReviewStatus = {
 };
 
 export type DashboardIssue = {
+  teamMemberName?: string | null;
   _id: string;
   status: string;
   title: string;
@@ -82,6 +83,7 @@ export type ChecklistQuestion = {
 };
 
 export type StructuredStep = {
+  correctiveActions?: string[];
   id: string;
   label: string;
   description?: string | null;
@@ -242,7 +244,9 @@ export type IssueProgress = {
   actionsSaved: boolean;
 };
 
+export type AdditionalField = { key: string; label: string; type: string; minimum?: number; maximum?: number; options?: string[]; required?: boolean };
+export type AdditionalRequirement = { _id: string; versionRootId?: string; title: string; description?: string; nextDueAt: number; fields: AdditionalField[] };
 export type AdditionalDashboard = {
-  requirements: unknown[];
-  completions: unknown[];
+  requirements: AdditionalRequirement[];
+  completions: { requirementRootId?: string; nextDueAt?: number }[];
 };

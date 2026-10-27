@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { catalogueProducts, wastageItems, wastageRecords } from "../db/schema.js";
+import { catalogueProducts, markdownProducts, wastageItems, wastageRecords } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, locationFor } from "./shared.js";
@@ -10,7 +10,7 @@ import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
 type InsertExecutor = Pick<ReturnType<typeof getDb>, "insert">;
 
-export async function recordWastage(context: AuthContext, input: { locationId: string; itemId?: string; catalogueProductId?: string; adHocItemName?: string; quantity?: string; notes?: string; noWaste: boolean; teamMemberId: string; idempotencyKey?: string; capturedAt?: string }) {
+export async function recordWastage(context: AuthContext, input: { locationId: string; markdownProductId?: string; itemId?: string; catalogueProductId?: string; adHocItemName?: string; quantity?: string; notes?: string; noWaste: boolean; teamMemberId: string; idempotencyKey?: string; capturedAt?: string }) {
   if (typeof input.noWaste !== "boolean") throw new ApiError(400, "noWaste must be boolean");
   const location = await locationFor(context, input.locationId);
   await activeMember(location.id, input.teamMemberId);
@@ -24,6 +24,11 @@ export async function recordWastage(context: AuthContext, input: { locationId: s
   const quantity = mode.source === "no_waste" ? undefined : requirePositiveNumberString(input.quantity);
   return db.transaction(async tx => idempotentOfflineMutation(tx, context, { key: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, operation: "wastage-record", payload: input }, async () => {
     if (mode.source === "no_waste") return insertWastage(tx, { locationId: location.id, notes: input.notes, noWaste: true, source: "no_waste", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
+    if (mode.source === "markdown") {
+      const [product] = await tx.select().from(markdownProducts).where(and(eq(markdownProducts.id, requireUuid(mode.productId, "markdownProductId")), eq(markdownProducts.locationId, location.id))).limit(1);
+      if (!product || !product.active || product.temporaryDateKey || product.catalogueProductId || product.wastageItemId) throw new ApiError(422, "Permanent manual product is not available at this store");
+      return insertWastage(tx, { locationId: location.id, markdownProductId: product.id, itemName: product.name, quantity, notes: input.notes, noWaste: false, source: "manual", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
+    }
     if (mode.source === "legacy") {
       const itemId = requireUuid(mode.itemId, "itemId");
       const [item] = await tx.select().from(wastageItems).where(and(eq(wastageItems.id, itemId), eq(wastageItems.locationId, location.id))).limit(1);
@@ -44,7 +49,7 @@ export async function recordWastage(context: AuthContext, input: { locationId: s
     return insertWastage(tx, { locationId: location.id, ...catalogueWastageSnapshot(product), quantity, notes: input.notes, noWaste: false, source: "catalogue", userId: context.user.id, teamMemberId: input.teamMemberId, capturedAt: input.capturedAt });
   }));
 }
-async function insertWastage(db: InsertExecutor, input: { locationId: string; itemId?: string; catalogueProductId?: string; itemName?: string | null; cataloguePlu?: number | null; categorySnapshot?: string | null; quantity?: string; notes?: string; noWaste: boolean; source: "no_waste" | "legacy" | "catalogue" | "adhoc"; userId: string; teamMemberId: string; capturedAt?: string }) {
-  const [record] = await db.insert(wastageRecords).values({ locationId: input.locationId, itemId: input.itemId ?? null, catalogueProductId: input.catalogueProductId ?? null, itemName: input.itemName ?? null, cataloguePlu: input.cataloguePlu ?? null, categorySnapshot: input.categorySnapshot ?? null, wastageSource: input.source, quantity: input.quantity ?? null, notes: input.notes?.trim() || null, noWaste: input.noWaste, createdAt: new Date(), capturedAt: input.capturedAt === undefined ? null : captureTime(input.capturedAt), createdBy: input.userId, teamMemberId: input.teamMemberId }).returning({ id: wastageRecords.id });
+async function insertWastage(db: InsertExecutor, input: { locationId: string; markdownProductId?: string; itemId?: string; catalogueProductId?: string; itemName?: string | null; cataloguePlu?: number | null; categorySnapshot?: string | null; quantity?: string; notes?: string; noWaste: boolean; source: "no_waste" | "legacy" | "catalogue" | "adhoc" | "manual"; userId: string; teamMemberId: string; capturedAt?: string }) {
+  const [record] = await db.insert(wastageRecords).values({ locationId: input.locationId, markdownProductId: input.markdownProductId ?? null, itemId: input.itemId ?? null, catalogueProductId: input.catalogueProductId ?? null, itemName: input.itemName ?? null, cataloguePlu: input.cataloguePlu ?? null, categorySnapshot: input.categorySnapshot ?? null, wastageSource: input.source, quantity: input.quantity ?? null, notes: input.notes?.trim() || null, noWaste: input.noWaste, createdAt: new Date(), capturedAt: input.capturedAt === undefined ? null : captureTime(input.capturedAt), createdBy: input.userId, teamMemberId: input.teamMemberId }).returning({ id: wastageRecords.id });
   return { recordId: record.id };
 }

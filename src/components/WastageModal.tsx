@@ -1,82 +1,61 @@
 import { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ALL_WASTAGE_CATEGORY, buildWastagePayload, emptyWastagePickerDraft, filterWastageProducts, getWastagePickerCategories, isPositiveQuantity, setWastagePickerMode, wastagePickerCategory, type WastagePickerDraft, type WastagePickerMode, type WastagePickerProduct } from "@/lib/wastage-picker";
+import { buildWastagePayload, emptyWastagePickerDraft, filterWastageProducts, getWastagePickerCategories, isPositiveQuantity, setWastagePickerMode, type WastagePickerDraft, type WastagePickerMode, type WastagePickerProduct } from "@/lib/wastage-picker";
 import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
+import { WorkflowSteps } from "@/components/WorkflowSteps";
 
-type TeamMember = { _id?: string; id?: string; name: string };
 type Props = {
-  products: WastagePickerProduct[];
-  configuredCategories?: string[];
-  teamMembers: TeamMember[];
-  loading: boolean;
-  error: string | null;
-  onSave: (payload: ReturnType<typeof buildWastagePayload>) => Promise<void>;
-  onClose: () => void;
+  locationId: string; products: WastagePickerProduct[]; configuredCategories?: string[];
+  teamMembers: { _id?: string; id?: string; name: string }[];
+  loading: boolean; error: string | null;
+  onSave: (payload: ReturnType<typeof buildWastagePayload>) => Promise<void>; onClose: () => void;
 };
 
-const memberId = (member: TeamMember) => member._id ?? member.id ?? "";
-
-export default function WastageModal({ products, configuredCategories = [], teamMembers, loading, error, onSave, onClose }: Props) {
-  const [draft, setDraft] = useState<WastagePickerDraft>(() => emptyWastagePickerDraft());
+export default function WastageModal({ locationId, products, configuredCategories = [], teamMembers, loading, error, onSave, onClose }: Props) {
+  const members = useMemo(() => teamMembers.map(member => ({ _id: member._id ?? member.id ?? "", name: member.name })), [teamMembers]);
+  const [memberId, setMemberId] = useActiveTeamMember(locationId, members);
+  const [draft, setDraft] = useState<WastagePickerDraft>(emptyWastagePickerDraft);
+  const [step, setStep] = useState(0);
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState(ALL_WASTAGE_CATEGORY);
+  const [category, setCategory] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const categories = useMemo(() => Array.from(new Set([...configuredCategories, ...getWastagePickerCategories(products).filter(item => item !== ALL_WASTAGE_CATEGORY)])).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" })).reduce((all, item) => all.includes(item) ? all : [...all, item], [ALL_WASTAGE_CATEGORY]), [configuredCategories, products]);
-  const selectedCategory = categories.includes(category) ? category : ALL_WASTAGE_CATEGORY;
-  const filteredProducts = useMemo(() => filterWastageProducts(products, search, selectedCategory), [products, search, selectedCategory]);
-  const setMode = (mode: WastagePickerMode) => {
-    setDraft(current => setWastagePickerMode(current, mode));
-    setSearch("");
-    setSaveError(null);
-  };
+  const categories = useMemo(() => [...new Set([...configuredCategories, ...getWastagePickerCategories(products)])], [configuredCategories, products]);
+  const selectedCategory = categories.includes(category) ? category : "";
+  const filteredProducts = useMemo(() => selectedCategory ? filterWastageProducts(products, search, selectedCategory) : [], [products, search, selectedCategory]);
+  const selectedProduct = products.find(product => product.id === draft.catalogueProductId && (product.source ?? "catalogue") === draft.catalogueProductSource);
+  const validMember = members.some(member => member._id === memberId);
+  const validProduct = draft.mode === "no_waste" || (draft.mode === "adhoc" ? Boolean(draft.adHocItemName.trim()) : Boolean(selectedProduct));
+  const validDetails = draft.mode === "no_waste" || isPositiveQuantity(draft.quantity);
+  const setMode = (mode: WastagePickerMode) => { setDraft(current => setWastagePickerMode(current, mode)); setSearch(""); };
   const update = <K extends keyof WastagePickerDraft>(key: K, value: WastagePickerDraft[K]) => setDraft(current => ({ ...current, [key]: value }));
+  const canNext = validMember && (step === 0 || (step === 1 ? draft.mode !== "catalogue" || Boolean(selectedCategory) : step === 2 ? validProduct : validProduct && validDetails));
   const submit = async () => {
-    setSaveError(null);
-    try {
-      setSaving(true);
-      await onSave(buildWastagePayload(draft));
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Unable to record wastage");
-    } finally {
-      setSaving(false);
-    }
+    if (!validMember || !validProduct || !validDetails || saving) return;
+    setSaveError(null); setSaving(true);
+    try { await onSave(buildWastagePayload({ ...draft, teamMemberId: memberId })); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : "Unable to record wastage"); }
+    finally { setSaving(false); }
   };
-  const selectedProduct = products.find(product => product.id === draft.catalogueProductId);
-  const canSave = Boolean(draft.teamMemberId) && (draft.mode === "no_waste" || (isPositiveQuantity(draft.quantity) && (draft.mode === "catalogue" ? Boolean(draft.catalogueProductId) : Boolean(draft.adHocItemName.trim()))));
-
   return <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/30 sm:items-center sm:p-5">
-    <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 sm:rounded-3xl sm:p-8">
-      <div className="flex items-start justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Daily checks</p><h2 className="mt-2 text-2xl font-semibold">Record wastage</h2></div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close wastage form"><X /></Button>
-      </div>
-      <div className="mt-6 grid grid-cols-3 gap-2" role="tablist" aria-label="Wastage type">
-        <ModeButton active={draft.mode === "catalogue"} onClick={() => setMode("catalogue")}>Catalogue</ModeButton>
-        <ModeButton active={draft.mode === "adhoc"} onClick={() => setMode("adhoc")}>Add manually</ModeButton>
-        <ModeButton active={draft.mode === "no_waste"} onClick={() => setMode("no_waste")}>No Waste</ModeButton>
-      </div>
-      {draft.mode === "catalogue" && <div className="mt-5">
-        <label className="block text-sm font-semibold">Search product or PLU<div className="relative mt-2"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#89918b]" /><Input autoFocus value={search} onChange={event => setSearch(event.target.value)} className="h-12 pl-9" placeholder="Search product or PLU" /></div></label>
-        {loading && <p className="mt-4 rounded-xl bg-[#fafbf9] p-4 text-sm text-[#727a74]">Loading TouchOffice products…</p>}
-        {!loading && error && <div className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-4 text-sm text-[#8f3a31]"><p>Catalogue products could not be loaded.</p><p className="mt-1">You can add an item manually instead.</p><Button type="button" variant="outline" className="mt-3 h-11" onClick={() => setMode("adhoc")}>Add an item manually</Button></div>}
-        {!loading && !error && <div className="mt-4" role="tablist" aria-label="Wastage category"><p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-[#89918b]">Category</p><div className="-mx-1 flex min-w-0 gap-2 overflow-x-auto px-1 pb-1">{categories.map(item => <button type="button" role="tab" aria-selected={selectedCategory === item} key={item} onClick={() => setCategory(item)} className={`min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold ${selectedCategory === item ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#171918]"}`}>{item}</button>)}</div></div>}
-        {!loading && !error && !filteredProducts.length && <div className="mt-4 rounded-xl bg-[#fafbf9] p-4 text-sm text-[#727a74]">No matching TouchOffice products. If the item is legitimate but missing, choose Add manually.</div>}
-        {!loading && !error && filteredProducts.length > 0 && <div className="mt-3 max-h-56 space-y-2 overflow-y-auto" role="listbox" aria-label="Wastage products">{filteredProducts.map(product => <button type="button" role="option" aria-selected={draft.catalogueProductId === product.id} key={product.id} onClick={() => { update("catalogueProductId", product.id); update("catalogueProductSource", product.source ?? "catalogue"); }} className={`w-full rounded-xl border p-3 text-left ${draft.catalogueProductId === product.id ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.08] bg-white"}`}><span className="block font-semibold">{product.name}</span><span className={`mt-1 block text-xs ${draft.catalogueProductId === product.id ? "text-white/75" : "text-[#727a74]"}`}>{product.source === "manual" ? "Manual product" : `PLU ${product.plu ?? "—"}`} · {wastagePickerCategory(product)}</span></button>)}</div>}
-        {selectedProduct && <p className="mt-3 text-sm text-[#727a74]">Selected: <span className="font-semibold text-[#171918]">{selectedProduct.name}</span></p>}
-      </div>}
-      {draft.mode === "adhoc" && <div className="mt-5"><label className="block text-sm font-semibold">Item name<Input autoFocus value={draft.adHocItemName} onChange={event => update("adHocItemName", event.target.value)} className="mt-2 h-12" placeholder="Enter item name" maxLength={200} /></label><p className="mt-2 text-xs text-[#89918b]">Use this only when the item is not available in the TouchOffice catalogue.</p></div>}
-      {draft.mode !== "no_waste" && <label className="mt-4 block text-sm font-semibold">Quantity<Input type="number" min="0.01" step="any" inputMode="decimal" value={draft.quantity} onChange={event => update("quantity", event.target.value)} className="mt-2 h-12" placeholder="e.g. 3" /></label>}
-      <label className="mt-4 block text-sm font-semibold">Notes (optional)<textarea value={draft.notes} onChange={event => update("notes", event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3" placeholder="Reason or context" /></label>
-      <div className="mt-5"><ActiveStaffControl teamMembers={teamMembers.map(member => ({ _id: memberId(member), name: member.name }))} value={draft.teamMemberId} onChange={value => update("teamMemberId", value)} label="Recording wastage as" /></div>
-      {saveError && <p className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{saveError}</p>}
-      <Button disabled={!canSave || saving} className="mt-7 h-14 w-full bg-brand-yellow font-semibold text-[#171717]" onClick={submit}>{saving ? "Saving…" : draft.mode === "no_waste" ? "Save no waste" : "Save wastage record"}</Button>
-    </div>
+    <section role="dialog" aria-modal="true" aria-label="Record wastage" className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl">
+      <div className="mb-5 flex items-center justify-between"><h2 className="text-2xl font-semibold">Record wastage</h2><Button variant="ghost" size="icon" onClick={onClose} disabled={saving} aria-label="Close wastage form"><X /></Button></div>
+      {step === 0 && <ActiveStaffControl teamMembers={members} value={memberId} onChange={setMemberId} label="Recording wastage as" />}
+      {step > 0 && <p className="mb-4 text-sm">Recording as <strong>{members.find(member => member._id === memberId)?.name ?? "Select your name"}</strong></p>}
+      {step === 1 && <>
+        <div className="mb-4 grid grid-cols-3 gap-2">{(["catalogue", "adhoc", "no_waste"] as const).map(mode => <Button key={mode} variant="outline" aria-pressed={draft.mode === mode} className={`min-h-11 px-2 ${draft.mode === mode ? "bg-brand-yellow text-black" : ""}`} onClick={() => setMode(mode)}>{mode === "catalogue" ? "Products" : mode === "adhoc" ? "Add manually" : "No Waste"}</Button>)}</div>
+        {draft.mode === "catalogue" && <><h3 className="mb-3 font-semibold">Choose a category</h3>{loading && <p>Loading products…</p>}{error && <p role="alert">{error} You can still add a one-off item manually.</p>}<div className="grid grid-cols-2 gap-2">{categories.map(item => <Button key={item} variant="outline" aria-pressed={selectedCategory === item} className={`min-h-11 h-auto whitespace-normal ${selectedCategory === item ? "bg-brand-yellow text-black" : ""}`} onClick={() => { setCategory(item); update("catalogueProductId", ""); }}>{item}</Button>)}</div></>}
+        {draft.mode === "no_waste" && <p>You are recording that there was no waste today.</p>}
+        {draft.mode === "adhoc" && <p>Add a one-off item without changing the store catalogue.</p>}
+      </>}
+      {step === 2 && <>{draft.mode === "catalogue" ? <><label className="font-semibold">Search {selectedCategory}<Input className="my-3 min-h-11" value={search} onChange={event => setSearch(event.target.value)} placeholder="Product name or PLU" /></label><div className="max-h-[42dvh] space-y-2 overflow-y-auto">{filteredProducts.map(product => <button key={`${product.source}:${product.id}`} type="button" aria-pressed={selectedProduct?.id === product.id} onClick={() => setDraft(current => ({ ...current, catalogueProductId: product.id, catalogueProductSource: product.source ?? "catalogue" }))} className={`min-h-11 w-full rounded-xl border p-3 text-left ${selectedProduct?.id === product.id ? "bg-brand-yellow" : "bg-white"}`}>{product.name}</button>)}{!filteredProducts.length && <p>No matching products. Go back to choose another category or add manually.</p>}</div></> : draft.mode === "adhoc" ? <label className="font-semibold">Item name<Input className="mt-3 min-h-11" maxLength={200} value={draft.adHocItemName} onChange={event => update("adHocItemName", event.target.value)} /></label> : <p>No products to select for a No Waste record.</p>}</>}
+      {step === 3 && <>{draft.mode !== "no_waste" && <label className="block font-semibold">Quantity<Input className="my-3 min-h-11" type="number" min="0.01" step="any" inputMode="decimal" value={draft.quantity} onChange={event => update("quantity", event.target.value)} /></label>}<label className="block font-semibold">Notes (optional)<textarea className="mt-3 min-h-20 w-full rounded-xl border p-3" value={draft.notes} onChange={event => update("notes", event.target.value)} /></label></>}
+      {step === 4 && <div className="rounded-xl border p-4"><h3 className="font-semibold">Check before saving</h3><p className="mt-2">{draft.mode === "no_waste" ? "No waste today" : `${draft.quantity} × ${draft.mode === "adhoc" ? draft.adHocItemName : selectedProduct?.name ?? "Product unavailable — go back"}`}</p>{draft.notes && <p className="mt-2 whitespace-pre-wrap">{draft.notes}</p>}</div>}
+      {saveError && <p role="alert" className="mt-4 text-red-700">{saveError}</p>}
+      <WorkflowSteps steps={["Staff", "Category", "Product", "Details", "Confirmation"]} step={step} onBack={() => setStep(value => value - 1)} onNext={() => step === 4 ? void submit() : setStep(value => value + 1)} canNext={canNext} busy={saving} confirm="Confirm and save" />
+    </section>
   </div>;
-}
-
-function ModeButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
-  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-11 rounded-xl border px-2 text-xs font-semibold sm:text-sm ${active ? "border-[#202522] bg-[#202522] text-white" : "border-black/[0.1] bg-white text-[#171918]"}`}>{children}</button>;
 }

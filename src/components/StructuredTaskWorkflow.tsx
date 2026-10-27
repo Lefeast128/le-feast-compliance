@@ -1,3 +1,5 @@
+import CorrectiveActionControl from "@/components/CorrectiveActionControl";
+import { WorkflowSteps } from "@/components/WorkflowSteps";
 import { Button } from "@/components/ui/button";
 import { restApi, useRestMutation } from "@/lib/rest-domain";
 import type {
@@ -29,7 +31,7 @@ type Props = {
   }>;
   teamMembers: TeamMember[];
   signOffRecorded?: boolean;
-  onCompleteCleaning?: (taskId: string, teamMemberId: string) => Promise<void>;
+  onCompleteCleaning?: (taskId: string, teamMemberId: string) => Promise<unknown>;
   onReportCleaningIssue?: (description: string, teamMemberId: string) => Promise<void>;
   onBack: () => void;
 };
@@ -54,11 +56,11 @@ export default function StructuredTaskWorkflow({
   teamMembers,
   signOffRecorded = false,
   onCompleteCleaning,
-  onReportCleaningIssue,
   onBack,
 }: Props) {
+  const [requestedTaskIndex, setTaskIndex] = useState(0);
+  const taskIndex = Math.min(requestedTaskIndex, Math.max(0, tasks.filter(task => task.area === area).length - 1));
   const save = useRestMutation(restApi.compliance.saveStructuredTaskResponse);
-  const reportIssue = useRestMutation(restApi.compliance.createManualIssue);
   const signOff = useRestMutation(restApi.compliance.signOffStructuredTask);
   const [values, setValues] = useState<Record<string, string>>({});
   const [members, setMembers] = useState<Record<string, string>>({});
@@ -173,6 +175,7 @@ export default function StructuredTaskWorkflow({
         && task.taskType !== "with_steps"
         && task.completionMode === "task"
         && step.id === "simple"
+        && value !== "issue_reported"
         && Boolean(onCompleteCleaning);
       const result = usesLegacyCleaningCompletion
         ? await onCompleteCleaning!(task._id, memberId)
@@ -181,11 +184,12 @@ export default function StructuredTaskWorkflow({
             area,
             taskId: task._id,
             stepId: step.id,
-            value: step.responseType === "confirm" ? "confirmed" : value,
+            value: value === "issue_reported" ? value : step.responseType === "confirm" ? "confirmed" : value,
             teamMemberId: memberId,
             problem: issue?.problem,
             action: issue?.action,
           });
+      if (result && typeof result === "object" && "state" in result && result.state === "pending") { setIssueOpen(null); toast.success("Saved on this device — pending sync"); return result; }
       const nextResponse: StructuredTaskResponse = {
           _id: `local-${key}`,
           taskArea: area,
@@ -194,7 +198,7 @@ export default function StructuredTaskWorkflow({
           taskDefinitionKey: task.definitionKey,
           stepId: step.id,
           responseType: step.responseType,
-          responseValue: step.responseType === "confirm" ? "confirmed" : value,
+          responseValue: value === "issue_reported" ? value : step.responseType === "confirm" ? "confirmed" : value,
           dateKey: new Date().toISOString().slice(0, 10),
           createdAt: new Date().toISOString(),
           teamMemberId: memberId,
@@ -217,32 +221,7 @@ export default function StructuredTaskWorkflow({
     task: StructuredTask,
     step: StructuredStep,
   ) {
-    const key = `${task._id}:${step.id}`;
-    const memberId = members[key] || activeMemberId;
-    const issue = issues[key];
-    if (!memberId || !issue?.problem.trim() || saving) return;
-    setSaving(`issue:${key}`);
-    try {
-      const description = `${task.title}${step.id === "simple" ? "" : ` — ${step.label}`}\n\n${issue.problem.trim()}`;
-      if (area === "cleaning" && onReportCleaningIssue) {
-        await onReportCleaningIssue(description, memberId);
-      } else {
-        await reportIssue({
-          locationId,
-          teamMemberId: memberId,
-          description,
-        });
-      }
-      setIssueOpen(null);
-      setIssues((current) => ({
-        ...current,
-        [key]: { problem: "", action: "" },
-      }));
-    } catch (error) {
-      toast.error("The issue could not be reported", { description: error instanceof Error ? error.message : "Please retry." });
-    } finally {
-      setSaving(null);
-    }
+    await saveStep(task, step, "issue_reported");
   }
 
   return (
@@ -278,7 +257,7 @@ export default function StructuredTaskWorkflow({
           </Button>
         </section>}
         {completedAt && <section className="rounded-2xl border border-[#b9dfc5] bg-[#f3fbf5] p-4 text-[#2d7951]" role="status"><div className="flex items-start gap-3"><Check className="mt-0.5 size-5 shrink-0" /><div><p className="font-semibold">Checklist complete</p><p className="mt-1 text-sm">Completed at {responseTime(completedAt)}. All required steps are recorded.</p><Button type="button" variant="outline" className="mt-3 border-[#9bcaaa] text-[#2d7951]" onClick={onBack}>View all checks</Button></div></div></section>}
-        {areaTasks.map((task) => {
+        {areaTasks.slice(taskIndex, taskIndex + 1).map((task) => {
           const steps = stepsFor(task);
           const requiredSteps = steps.filter((step) => step.required !== false);
           const complete = requiredSteps.filter((step) =>
@@ -312,7 +291,7 @@ export default function StructuredTaskWorkflow({
                   return (
                     <div
                       key={step.id}
-                      className={`rounded-xl border p-4 ${response ? "border-[#cfe3d5] bg-[#fbfefb]" : "border-black/[0.07]"}`}
+                      className={`rounded-xl border p-4 ${response && ["no", "issue_reported"].includes(response.responseValue) ? "border-red-200 bg-red-50" : response ? "border-[#cfe3d5] bg-[#fbfefb]" : "border-black/[0.07]"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -331,9 +310,9 @@ export default function StructuredTaskWorkflow({
                           </p>
                         </div>
                         {response && (
-                          <span className="text-right text-xs font-semibold text-[#2d7951]">
+                          <span className={`text-right text-xs font-semibold ${["no", "issue_reported"].includes(response.responseValue) ? "text-red-700" : "text-[#2d7951]"}`}>
                             <span className="flex items-center gap-1">
-                              Completed <Check className="size-4" />
+                              {["no", "issue_reported"].includes(response.responseValue) ? "Issue reported" : "Complete"} <Check className="size-4" />
                             </span>
                             <span className="block font-normal">
                               {teamMembers.find(
@@ -462,22 +441,7 @@ export default function StructuredTaskWorkflow({
                                 className="mt-3 min-h-24 w-full rounded-xl border border-black/[0.1] bg-white p-3 text-sm"
                                 placeholder="Short explanation"
                               />
-                              {step.responseType === "yes_no" && (
-                                <textarea
-                                  value={issue.action}
-                                  onChange={(event) =>
-                                    setIssues((current) => ({
-                                      ...current,
-                                      [key]: {
-                                        ...issue,
-                                        action: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="mt-3 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3 text-sm"
-                                  placeholder="What action was taken?"
-                                />
-                              )}
+                              <CorrectiveActionControl context={`${area} ${task.title} ${step.label}`} options={step.correctiveActions?.length ? step.correctiveActions : undefined} value={issue.action} onChange={action => setIssues(current => ({ ...current, [key]: { ...issue, action } }))} />
                               <div className="mt-3 flex gap-2">
                                 <Button
                                   type="button"
@@ -490,8 +454,7 @@ export default function StructuredTaskWorkflow({
                                   type="button"
                                   disabled={
                                     !issue.problem.trim() ||
-                                    (step.responseType === "yes_no" &&
-                                      !issue.action.trim()) ||
+                                    !issue.action.trim() ||
                                     saving?.startsWith("issue:") ||
                                     !(members[key] || activeMemberId)
                                   }
@@ -521,6 +484,7 @@ export default function StructuredTaskWorkflow({
             No structured tasks are due here today.
           </p>
         )}
+        {areaTasks.length > 0 && <WorkflowSteps steps={areaTasks.map(task => task.title)} step={taskIndex} onBack={() => setTaskIndex(index => Math.max(0, index - 1))} onNext={() => taskIndex < areaTasks.length - 1 ? setTaskIndex(index => index + 1) : onBack()} canNext={Boolean(activeMemberId) && !saving} confirm="View all checks" />}
       </main>
     </div>
   );
