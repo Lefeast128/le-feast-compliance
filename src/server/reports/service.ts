@@ -193,7 +193,7 @@ export async function complianceReport(context: AuthContext, input: { locationId
   }
   for (const response of checklist.filter(row => row.answer === "no")) exceptionRows.push({ type: "checklist", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: checklistLabels.get(response.questionId) ?? "Checklist question", detail: [response.problem, response.action].filter(Boolean).join(" · "), result: "no", teamMemberName: memberName(response.teamMemberId) });
   for (const response of security.filter(row => row.answer === "no" || Boolean(row.issue))) exceptionRows.push({ type: "security", date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: securityLabels.get(response.questionId) ?? "Security question", detail: response.issue ?? "", result: response.answer, teamMemberName: memberName(response.teamMemberId) });
-  for (const response of structuredResponses.filter(row => ["no", "fail", "false"].includes(String(row.responseValue).trim().toLowerCase()))) {
+  for (const response of structuredResponses.filter(row => ["no", "fail", "false", "issue_reported"].includes(String(row.responseValue).trim().toLowerCase()))) {
     const task = structuredLabels.get(response.taskId);
     const step = task?.steps.find(item => item.id === response.stepId);
     exceptionRows.push({ type: task?.area ?? response.taskArea, date: localDateKey(response.createdAt.getTime(), location.timezone), occurredAt: iso(response.createdAt), label: task?.title ?? "Structured task", detail: [step?.label, response.responseValue].filter(Boolean).join(" · "), result: "no", teamMemberName: memberName(response.teamMemberId) });

@@ -84,6 +84,8 @@ try {
   const dashboard = ok(await get('/api/dashboard?locationId=' + locationId, staff));
   assert.equal(dashboard.structuredTaskResponses.find(r => r.id === reported.responseId).responseValue, 'issue_reported');
   assert.notEqual(dashboard.issues.find(i => i.id === reported.issueId).status, 'resolved');
+  const report = ok(await get(`/api/reports/compliance?locationId=${locationId}&start=${dateKey}&end=${dateKey}`, admin));
+  assert.ok(report.exceptions.some(item => item.type === 'cleaning' && item.detail.includes('issue_reported') && item.result === 'no'), 'Reported failures must remain report exceptions');
   assert.equal((await post('/api/compliance/structured-tasks/responses', failure, foreign)).status, 403);
   ok(await request('PATCH', '/api/admin/wastage/' + category.id, { name: 'Preparation' }, admin));
   picker = ok(await get('/api/catalogue/wastage?locationId=' + locationId, staff));

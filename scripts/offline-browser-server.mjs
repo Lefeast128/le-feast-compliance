@@ -91,6 +91,7 @@ const handlers = new Map([
   ["/api/compliance/issues", await load("api/compliance/issues.ts")],
   ["/api/compliance/wastage", await load("api/compliance/wastage.ts")],
   ["/api/catalogue/wastage", await load("api/catalogue/wastage.ts")],
+  ["/api/reports/compliance", await load("api/reports/compliance.ts")],
   ["/api/admin/wastage", await load("api/admin/wastage.ts")],
   ["/api/admin/wastage-items", await load("api/admin/wastage-items.ts")],
   ["/api/markdown-sheet", await load("api/markdown-sheet.ts")],
