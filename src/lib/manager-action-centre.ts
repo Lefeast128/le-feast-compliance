@@ -2,6 +2,7 @@ import { isCleaningTaskComplete } from "@/lib/cleaning-checklist";
 import { isItemComplete } from "@/lib/unified-checklist";
 import { getIssueAttentionTaskIds } from "@/components/dashboard/daily-checks-model";
 import type { DashboardData, StructuredTask } from "@/components/dashboard/dashboard-types";
+import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor, scheduledCleaningTasks } from "@/lib/manager-action-scheduling";
 
 export type ManagerActionStatus = "complete" | "in_progress" | "due_now" | "pending_today" | "not_due" | "overdue";
 
@@ -16,16 +17,18 @@ export type ManagerActionCentre = {
   }>;
   failedTemperatures: number;
   unresolvedIssues: number;
-  cleaning: { due: number; complete: number; incomplete: number; afterUse: number; afterUseComplete: number };
-  additional: { due: number; complete: number; incomplete: number; overdue: number };
+  cleaning: { due: number; complete: number; incomplete: number; incompleteTaskIds: string[]; issueReported: number; afterUse: number; afterUseComplete: number };
+  additional: { due: number; complete: number; incomplete: number; overdue: number; issueReported: number };
   issueLinkedTaskIds: string[];
 };
 
 export function countManagerAttention(currentIssueCount: number, reviewDueCount: number, actionCentre: ManagerActionCentre | null) {
   if (!actionCentre) return currentIssueCount + reviewDueCount;
   const required = actionCentre.required.filter(item => item.requiresAttention && !actionCentre.issueLinkedTaskIds.includes(item.taskId)).length;
-  const cleaning = actionCentre.cleaning.incomplete > 0 && !actionCentre.issueLinkedTaskIds.includes("cleaning") ? actionCentre.cleaning.incomplete : 0;
-  const additional = actionCentre.additional.incomplete > 0 && !actionCentre.issueLinkedTaskIds.includes("additional-checks") ? actionCentre.additional.incomplete : 0;
+  const incompleteCleaning = new Set(actionCentre.cleaning.incompleteTaskIds);
+  const linkedCleaning = new Set(actionCentre.issueLinkedTaskIds.filter(id => id.startsWith("cleaning:") && incompleteCleaning.has(id.slice("cleaning:".length))));
+  const cleaning = Math.max(0, actionCentre.cleaning.incomplete - linkedCleaning.size);
+  const additional = actionCentre.additional.incomplete;
   return currentIssueCount + reviewDueCount + required + cleaning + additional;
 }
 
@@ -48,7 +51,7 @@ type ManagerDashboardData = DashboardData & {
   additionalCompletions?: AdditionalCompletion[];
 };
 
-const itemId = (item: { _id: string; id?: string }) => item._id || item.id || "";
+type CleaningCompletion = DashboardData["cleaningCompletions"][number] & { dateKey?: string };
 
 const hasResponses = (data: ManagerDashboardData, area: StructuredTask["area"]) => {
   const structured = data.structuredTaskResponses.some(response => response.taskArea === area);
@@ -79,30 +82,15 @@ const requiredStatus = (complete: boolean, inProgress: boolean, pendingToday: bo
 
 const requiredAttention = (status: ManagerActionStatus) => status === "in_progress" || status === "due_now" || status === "overdue";
 
-const dueTimestamp = (value: string | number) => {
-  const timestamp = typeof value === "number" ? value : Date.parse(value);
-  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
-};
-
-const localDateKey = (timestamp: number, timeZone: string) => new Intl.DateTimeFormat("en-CA", {
-  timeZone,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-}).format(new Date(timestamp));
-
-const additionalComplete = (requirement: AdditionalRequirement, completions: AdditionalCompletion[]) => {
-  const root = requirement.versionRootId ?? itemId(requirement);
-  const due = dueTimestamp(requirement.nextDueAt);
-  return completions.some(completion => {
-    const completionRoot = completion.requirementRootId ?? completion.requirementId;
-    const completionDue = completion.scheduledDueAt ?? completion.nextDueAt;
-    return completionRoot === root && completionDue != null && dueTimestamp(completionDue) === due;
-  });
-};
-
 export function buildManagerActionCentre(source: ManagerDashboardData, timestamp = Date.now()): ManagerActionCentre {
   const pendingRound = (session: "AM" | "PM") => source.rounds.some(round => round.session === session && !round.completedAt);
+  const unresolvedIssues = source.issues.filter(issue => issue.status !== "resolved");
+  const issueLinkedTaskIds = getIssueAttentionTaskIds({
+    issues: unresolvedIssues,
+    temperatureReadings: source.readings,
+    temperatureRounds: source.rounds,
+    structuredTasks: source.structuredTasks,
+  });
   const required = [
     { id: "am" as const, taskId: "am-temperature", label: "AM temperatures", complete: source.rounds.some(round => round.session === "AM" && Boolean(round.completedAt)), inProgress: pendingRound("AM"), pendingToday: false, detail: "Fridge temperature round" },
     { id: "pm" as const, taskId: "pm-temperature", label: "PM temperatures", complete: source.rounds.some(round => round.session === "PM" && Boolean(round.completedAt)), inProgress: pendingRound("PM"), pendingToday: true, detail: "Fridge temperature round" },
@@ -111,46 +99,55 @@ export function buildManagerActionCentre(source: ManagerDashboardData, timestamp
     { id: "closing" as const, taskId: "closing-checklist", label: "Closing checklist", complete: areaComplete(source, "closing"), inProgress: hasResponses(source, "closing"), pendingToday: true, detail: "Required closing checks" },
     { id: "security_pm" as const, taskId: "pm-security", label: "PM security", complete: areaComplete(source, "security_pm"), inProgress: hasResponses(source, "security_pm"), pendingToday: true, detail: "Evening security checks" },
   ].map(item => {
-    const status = requiredStatus(item.complete, item.inProgress, item.pendingToday);
-    return { ...item, status, requiresAttention: requiredAttention(status) };
+    const issueReported = issueLinkedTaskIds.includes(item.taskId);
+    const status = issueReported ? "in_progress" as const : requiredStatus(item.complete, item.inProgress, item.pendingToday);
+    return { ...item, detail: issueReported ? "Issue reported — follow-up required" : item.detail, status, requiresAttention: requiredAttention(status) };
   });
 
   const cleaningTasks = source.structuredTasks.filter(task => task.area === "cleaning");
-  const legacyCleaningTasks = source.cleaningTasks as Array<{ _id: string; name: string; frequency?: string }>;
-  const configuredCleaningTasks = cleaningTasks.length ? cleaningTasks : legacyCleaningTasks;
-  const scheduledCleaningTasks = configuredCleaningTasks.filter(task => task.frequency !== "after_use");
-  const afterUseCleaningTasks = configuredCleaningTasks.filter(task => task.frequency === "after_use");
+  const legacyCleaningTasks = source.cleaningTasks as Array<{ _id: string; name: string; frequency?: string; weekdays?: number[] }>;
+  const timeZone = source.location.timezone ?? "Europe/London";
+  const today = localOperationalDate(timestamp, timeZone);
+  const dueCleaningTasks: Array<{ _id: string; frequency?: string; weekdays?: number[] }> = cleaningTasks.length
+    ? scheduledCleaningTasks(cleaningTasks, today, timeZone)
+    : scheduledCleaningTasks(legacyCleaningTasks, today, timeZone);
+  const afterUseCleaningTasks = cleaningTasks.length
+    ? cleaningTasks.filter(task => task.frequency === "after_use")
+    : legacyCleaningTasks.filter(task => task.frequency === "after_use");
+  const todayResponses = source.structuredTaskResponses.filter(response => response.taskArea !== "cleaning" || response.dateKey === today);
+  const todayCompletions = (source.cleaningCompletions as CleaningCompletion[]).filter(completion => {
+    if (completion.dateKey) return completion.dateKey === today;
+    const completedAt = typeof completion.completedAt === "number" ? completion.completedAt : Date.parse(String(completion.completedAt ?? ""));
+    return Number.isFinite(completedAt) && localOperationalDate(completedAt, timeZone) === today;
+  });
   const cleaningCompleteFor = (tasks: Array<{ _id: string }>) => cleaningTasks.length
-    ? tasks.filter(task => isCleaningTaskComplete(task as StructuredTask, source.structuredTaskResponses, source.cleaningCompletions)).length
-    : source.cleaningCompletions.filter(completion => tasks.some(task => task._id === completion.taskId)).length;
-  const cleaningDue = scheduledCleaningTasks.length;
-  const cleaningComplete = cleaningCompleteFor(scheduledCleaningTasks);
+    ? tasks.filter(task => isCleaningTaskComplete(task as StructuredTask, todayResponses, todayCompletions)).length
+    : todayCompletions.filter(completion => tasks.some(task => task._id === completion.taskId)).length;
+  const cleaningDue = dueCleaningTasks.length;
+  const cleaningComplete = cleaningCompleteFor(dueCleaningTasks);
   const afterUseComplete = cleaningCompleteFor(afterUseCleaningTasks);
 
   const additionalRequirements = source.additionalRequirements ?? [];
   const additionalCompletions = source.additionalCompletions ?? [];
-  const additionalDue = additionalRequirements.filter(requirement => dueTimestamp(requirement.nextDueAt) <= timestamp);
-  const additionalDone = additionalDue.filter(requirement => additionalComplete(requirement, additionalCompletions)).length;
-  const timeZone = source.location.timezone ?? "Europe/London";
-  const today = localDateKey(timestamp, timeZone);
-  const additionalOverdue = additionalDue.filter(requirement => localDateKey(dueTimestamp(requirement.nextDueAt), timeZone) < today && !additionalComplete(requirement, additionalCompletions)).length;
+  const additionalDue = additionalRequirements.filter(requirement => localOperationalDateFor(requirement.nextDueAt, timeZone) <= today);
+  const additionalDone = additionalDue.filter(requirement => additionalOccurrenceComplete(requirement, additionalCompletions)).length;
+  const additionalOverdue = additionalDue.filter(requirement => localOperationalDateFor(requirement.nextDueAt, timeZone) < today && !additionalOccurrenceComplete(requirement, additionalCompletions)).length;
 
-  const unresolvedIssueIds = new Set(source.issues.filter(issue => issue.status !== "resolved").map(issue => issue._id));
-  const issueByReading = new Set(source.issues.filter(issue => issue.status !== "resolved" && issue.sourceTemperatureReadingId).map(issue => issue.sourceTemperatureReadingId));
+  const unresolvedIssueIds = new Set(unresolvedIssues.map(issue => issue._id));
+  const issueByReading = new Set(unresolvedIssues.filter(issue => issue.sourceTemperatureReadingId).map(issue => issue.sourceTemperatureReadingId));
   const failedTemperatures = source.readings.filter(reading => reading.result === "fail" && issueByReading.has(reading._id)).length;
-  const issueLinkedTaskIds = getIssueAttentionTaskIds({
-    issues: source.issues.filter(issue => issue.status !== "resolved"),
-    temperatureReadings: source.readings,
-    temperatureRounds: source.rounds,
-    structuredTasks: source.structuredTasks,
-  });
+
+  const incompleteCleaningTasks = dueCleaningTasks.filter(task => !cleaningCompleteFor([task]));
+  const allCleaningTaskIds = new Set([...dueCleaningTasks, ...afterUseCleaningTasks].map(task => task._id));
+  const issueReportedCleaning = new Set(issueLinkedTaskIds.filter(id => id.startsWith("cleaning:")).map(id => id.slice("cleaning:".length)).filter(id => allCleaningTaskIds.has(id))).size;
+  const issueReportedAdditional = new Set(unresolvedIssues.filter(issue => issue.sourceAdditionalCompletionId).map(issue => issue.sourceAdditionalCompletionId)).size;
 
   return {
     required,
     failedTemperatures,
     unresolvedIssues: unresolvedIssueIds.size,
-    cleaning: { due: cleaningDue, complete: Math.min(cleaningComplete, cleaningDue), incomplete: Math.max(0, cleaningDue - cleaningComplete), afterUse: afterUseCleaningTasks.length, afterUseComplete: Math.min(afterUseComplete, afterUseCleaningTasks.length) },
-    additional: { due: additionalDue.length, complete: additionalDone, incomplete: Math.max(0, additionalDue.length - additionalDone), overdue: additionalOverdue },
+    cleaning: { due: cleaningDue, complete: Math.min(cleaningComplete, cleaningDue), incomplete: Math.max(0, cleaningDue - cleaningComplete), incompleteTaskIds: incompleteCleaningTasks.map(task => task._id), issueReported: issueReportedCleaning, afterUse: afterUseCleaningTasks.length, afterUseComplete: Math.min(afterUseComplete, afterUseCleaningTasks.length) },
+    additional: { due: additionalDue.length, complete: additionalDone, incomplete: Math.max(0, additionalDue.length - additionalDone), overdue: additionalOverdue, issueReported: issueReportedAdditional },
     issueLinkedTaskIds,
   };
 }

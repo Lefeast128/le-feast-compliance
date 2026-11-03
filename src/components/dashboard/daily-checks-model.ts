@@ -75,7 +75,7 @@ type IssueReference = {
 
 type TemperatureReadingReference = { _id: string; roundId: string };
 type TemperatureRoundReference = { _id: string; session: "AM" | "PM" };
-type StructuredTaskReference = { area: string; title: string };
+type StructuredTaskReference = { _id?: string; area: string; title: string };
 
 const taskIdForArea = (area: string) => {
   if (area === "opening") return "opening-checklist";
@@ -132,7 +132,10 @@ export function getIssueAttentionTaskIds({
         title.startsWith(`${task.title.trim().toLocaleLowerCase()}:`),
       );
       const taskId = matchingTask ? taskIdForArea(matchingTask.area) : null;
-      if (taskId) taskIds.add(taskId);
+      if (taskId && matchingTask) {
+        taskIds.add(taskId);
+        if (matchingTask.area === "cleaning" && matchingTask._id) taskIds.add(`cleaning:${matchingTask._id}`);
+      }
     }
   }
 
