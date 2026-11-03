@@ -24,6 +24,7 @@ import {
   type WastagePickerProduct,
 } from "@/lib/wastage-picker";
 import { cleaningProgress } from "@/lib/cleaning-checklist";
+import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor, scheduledCleaningTasks } from "@/lib/manager-action-scheduling";
 import type { Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 
@@ -154,12 +155,29 @@ export default function DashboardToday({
   structuredTasks,
   onOpenStructuredTask,
 }: DashboardTodayProps) {
-  const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
-  const cleaningCompleted = cleaningProgress(
-    cleaningTasks,
-    active.structuredTaskResponses,
-    active.cleaningCompletions,
-  ).complete;
+  const timeZone = active.location.timezone ?? "Europe/London";
+  const today = localOperationalDate(renderTimestamp, timeZone);
+  const configuredCleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
+  const dueStructuredCleaningTasks = scheduledCleaningTasks(configuredCleaningTasks, today, timeZone);
+  const dueLegacyCleaningTasks = scheduledCleaningTasks(active.cleaningTasks, today, timeZone);
+  const todayCleaningResponses = active.structuredTaskResponses.filter(response => response.taskArea !== "cleaning" || response.dateKey === today);
+  const todayCleaningCompletions = active.cleaningCompletions.filter(completion => {
+    if (completion.dateKey) return completion.dateKey === today;
+    const value = typeof completion.completedAt === "number" ? completion.completedAt : Date.parse(String(completion.completedAt ?? ""));
+    return Number.isFinite(value) && localOperationalDate(value, timeZone) === today;
+  });
+  const cleaningCompleted = configuredCleaningTasks.length
+    ? cleaningProgress(dueStructuredCleaningTasks, todayCleaningResponses, todayCleaningCompletions).complete
+    : todayCleaningCompletions.filter(completion => dueLegacyCleaningTasks.some(task => task._id === completion.taskId)).length;
+  const dailyCleaningDue = configuredCleaningTasks.length ? dueStructuredCleaningTasks.length : dueLegacyCleaningTasks.length;
+  const dueAdditional = (additional?.requirements ?? []).filter(requirement => {
+    const dueAt = (requirement as { nextDueAt?: string | number }).nextDueAt;
+    return dueAt != null && localOperationalDateFor(dueAt, timeZone) <= today;
+  });
+  const completedAdditional = dueAdditional.filter(requirement => additionalOccurrenceComplete(
+    requirement as { _id?: string; id?: string; versionRootId?: string | null; nextDueAt: string | number },
+    (additional?.completions ?? []) as Array<{ requirementId?: string; requirementRootId?: string; nextDueAt?: string | number; scheduledDueAt?: string | number }>,
+  )).length;
   const issueAttentionTaskIds = getIssueAttentionTaskIds({
     issues: openIssues,
     temperatureReadings: active.readings,
@@ -180,9 +198,9 @@ export default function DashboardToday({
     pmSecurityComplete,
     foodProbeCount: active.foodChecks.length,
     cleaningCompleted,
-    cleaningDue: cleaningTasks.length || active.cleaningTasks.length,
-    additionalCompleted: additional?.completions.length ?? 0,
-    additionalDue: additional?.requirements.length ?? 0,
+    cleaningDue: dailyCleaningDue,
+    additionalCompleted: completedAdditional,
+    additionalDue: dueAdditional.length,
     wastageCount: active.wastageRecords.length,
     issueAttentionTaskIds,
   });
@@ -226,7 +244,7 @@ export default function DashboardToday({
         }
         break;
       case "cleaning":
-        if (cleaningCompleted > 0 && cleaningCompleted >= (cleaningTasks.length || active.cleaningTasks.length)) viewCleaningRecords();
+        if (cleaningCompleted > 0 && cleaningCompleted >= dailyCleaningDue) viewCleaningRecords();
         else setCleaningList(true);
         break;
       case "additional-checks":

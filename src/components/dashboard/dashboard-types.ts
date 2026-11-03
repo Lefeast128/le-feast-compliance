@@ -217,8 +217,8 @@ export type DashboardData = {
   probeProducts: ProbeProduct[];
   foodChecks: FoodCheck[];
   wastageRecords: WastageRecord[];
-  cleaningTasks: Array<{ _id: string; name: string }>;
-  cleaningCompletions: Array<{ _id?: string; taskId: string; completedAt?: number | string; teamMemberId?: string | null; teamMemberName?: string }>;
+  cleaningTasks: Array<{ _id: string; name: string; frequency?: string; weekdays?: number[] }>;
+  cleaningCompletions: Array<{ _id?: string; taskId: string; dateKey?: string; completedAt?: number | string; teamMemberId?: string | null; teamMemberName?: string }>;
   trainingRequirements: Array<{ _id: string; title: string }>;
   trainingCompletions: Array<{ _id?: string; requirementId: string; completedAt?: number; teamMemberName?: string }>;
   structuredTasks: StructuredTask[];
@@ -234,6 +234,7 @@ export type DashboardData = {
     requirementRootId?: string | null;
     nextDueAt?: string | number | null;
     scheduledDueAt?: string | number | null;
+    completedAt?: string | number | null;
   }>;
 };
 
@@ -248,5 +249,5 @@ export type AdditionalField = { key: string; label: string; type: string; minimu
 export type AdditionalRequirement = { _id: string; versionRootId?: string; title: string; description?: string; nextDueAt: number; fields: AdditionalField[] };
 export type AdditionalDashboard = {
   requirements: AdditionalRequirement[];
-  completions: { requirementRootId?: string; nextDueAt?: number }[];
+  completions: { requirementId?: string; requirementRootId?: string; nextDueAt?: number; scheduledDueAt?: number }[];
 };
