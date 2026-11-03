@@ -20,6 +20,7 @@ import { operationalDateLabel } from "@/lib/operational-date";
 type Props = {
   locationId: string;
   locationName: string;
+  initialTaskId?: string;
   area: StructuredTask["area"];
   tasks: StructuredTask[];
   responses: StructuredTaskResponse[];
@@ -49,6 +50,7 @@ const responseTime = (value?: string) => value ? new Date(value).toLocaleTimeStr
 export default function StructuredTaskWorkflow({
   locationId,
   locationName,
+  initialTaskId,
   area,
   tasks,
   responses,
@@ -58,7 +60,7 @@ export default function StructuredTaskWorkflow({
   onCompleteCleaning,
   onBack,
 }: Props) {
-  const [requestedTaskIndex, setTaskIndex] = useState(0);
+  const [requestedTaskIndex, setTaskIndex] = useState(() => Math.max(0, tasks.filter(task => task.area === area).findIndex(task => task._id === initialTaskId)));
   const taskIndex = Math.min(requestedTaskIndex, Math.max(0, tasks.filter(task => task.area === area).length - 1));
   const save = useRestMutation(restApi.compliance.saveStructuredTaskResponse);
   const signOff = useRestMutation(restApi.compliance.signOffStructuredTask);

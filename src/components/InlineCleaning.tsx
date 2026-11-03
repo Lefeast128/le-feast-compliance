@@ -15,6 +15,7 @@ type CleaningCompletion = {
 type Props = {
   locationId: string;
   locationName: string;
+  initialTaskId?: string;
   tasks: StructuredTask[];
   responses: StructuredTaskResponse[];
   completions: CleaningCompletion[];
@@ -31,6 +32,7 @@ type Props = {
 export default function InlineCleaning({
   locationId,
   locationName,
+  initialTaskId,
   tasks,
   responses,
   completions,
@@ -43,6 +45,7 @@ export default function InlineCleaning({
     <StructuredTaskWorkflow
       locationId={locationId}
       locationName={locationName}
+      initialTaskId={initialTaskId}
       area="cleaning"
       tasks={tasks}
       responses={responses}

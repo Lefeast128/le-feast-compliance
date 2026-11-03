@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 import type { AdditionalDashboard, AdditionalRequirement, TeamMember } from "@/components/dashboard/dashboard-types";
 import TemperatureGauge from "@/components/TemperatureGauge";
@@ -20,6 +20,7 @@ const dueLabel = (value: number) =>
 type Props = {
   locationId: string;
   locationName: string;
+  initialRequirementId?: string;
   requirements: AdditionalDashboard["requirements"];
   completions: AdditionalDashboard["completions"];
   teamMembers: TeamMember[];
@@ -29,6 +30,7 @@ type Props = {
 export default function AdditionalChecksView({
   locationId,
   locationName,
+  initialRequirementId,
   requirements,
   completions,
   teamMembers,
@@ -36,6 +38,14 @@ export default function AdditionalChecksView({
   onBack,
 }: Props) {
   const [selected, setSelected] = useState<AdditionalRequirement | null>(null);
+  useEffect(() => {
+    if (!initialRequirementId) return;
+    const match = requirements.find(item => item._id === initialRequirementId);
+    if (match) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelected(match);
+    }
+  }, [initialRequirementId, requirements]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [member, setMember] = useState("");
   const [activeMemberId, setActiveMemberId] = useActiveTeamMember(locationId, teamMembers);

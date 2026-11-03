@@ -15,6 +15,8 @@ import { BottomNavigation } from "@/components/dashboard/DashboardPrimitives";
 import { SecurityScreen } from "@/components/dashboard/DashboardWorkflowScreens";
 import OperationalRecordsView from "@/components/dashboard/OperationalRecordsView";
 import { useDashboardWorkflows } from "@/components/dashboard/useDashboardWorkflows";
+import type { ManagerOverviewSection, ManagerOverviewTarget } from "@/lib/manager-overview";
+import { toast } from "sonner";
 import type { CalendarDay, DashboardData, DashboardLocation, DashboardView, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
 import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
@@ -47,6 +49,12 @@ export default function Dashboard() {
   const [navigationRequest, setNavigationRequest] = useState<{ run: (() => void) | null } | null>(null);
   const [pendingMutations, setPendingMutations] = useState(getInFlightMutationCount);
   const [structuredTaskArea, setStructuredTaskArea] = useState<"opening" | "closing" | "cleaning" | "security_am" | "security_pm" | null>(null);
+  const [managerSection, setManagerSection] = useState<ManagerOverviewSection>("overview");
+  const [managerReviewsDirty, setManagerReviewsDirty] = useState(false);
+  const [workflowReturnView, setWorkflowReturnView] = useState<DashboardView>("today");
+  const [managerCleaningTaskId, setManagerCleaningTaskId] = useState<string | undefined>();
+  const [managerAdditionalRequirementId, setManagerAdditionalRequirementId] = useState<string | undefined>();
+  const [pendingManagerTarget, setPendingManagerTarget] = useState<{ locationId: string; target: ManagerOverviewTarget } | null>(null);
   const [recordView, setRecordView] = useState<{ kind: "temperature" | "checklist" | "security" | "cleaning" | "probes" | "wastage"; session?: "AM" | "PM"; checklist?: "opening" | "closing" } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -105,13 +113,14 @@ export default function Dashboard() {
   const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
   const workflows = useDashboardWorkflows({ dashboard, currentLocationId });
 
-  const hasActiveWorkflow = Boolean(workflows.round || structuredTaskArea || workflows.cleaningList || workflows.checklistList || workflows.security || view === "admin");
+  const hasActiveWorkflow = Boolean(workflows.round || structuredTaskArea || workflows.cleaningList || workflows.checklistList || workflows.security || view === "admin" || (view === "managerReviews" && managerReviewsDirty));
 
   function exitActiveWorkflow() {
     if (workflows.roundSubmitting) return;
     if (workflows.round || structuredTaskArea || workflows.cleaningList || workflows.checklistList || workflows.security) workflows.resetForLocation();
     setStructuredTaskArea(null);
     setRecordView(null);
+    if (managerReviewsDirty) setManagerReviewsDirty(false);
   }
 
   function requestNavigation(run: () => void) {
@@ -142,10 +151,73 @@ export default function Dashboard() {
     navigateTo("admin");
   }
 
-  function openManagerReviews() {
-    if (!capabilities.canViewManagerReviews) return;
+  function openManagerReviews(targetLocationId?: string) {
+    const destination = targetLocationId ?? currentLocationId;
+    if (!destination || !getRoleCapabilities(user, memberships, destination).canViewManagerReviews) return;
+    if (destination !== currentLocationId) {
+      requestNavigation(() => { clearOfflineSession(); setLocationId(destination); setManagerSection("overview"); setView("managerReviews"); });
+      return;
+    }
     navigateTo("managerReviews");
   }
+
+  function launchManagerTarget(target: ManagerOverviewTarget) {
+    if (!capabilities.canViewManagerReviews) return;
+    setWorkflowReturnView("managerReviews");
+    setManagerReviewsDirty(false);
+    if (target.kind === "required") {
+      if (target.taskId === "am" || target.taskId === "pm") { void workflows.beginRound(target.taskId === "am" ? "AM" : "PM"); return; }
+      if (target.taskId === "opening" || target.taskId === "closing") { workflows.setChecklistList(target.taskId); return; }
+      const session = target.taskId === "security_am" ? "AM" : "PM";
+      const area = target.taskId;
+      const hasStructured = (workflows.active?.structuredTasks ?? []).some(task => task.area === area && (task.taskType === "with_steps" || task.completionMode === "task"));
+      if (hasStructured) setStructuredTaskArea(area); else workflows.beginSecurity(session);
+      return;
+    }
+    if (target.kind === "cleaning") {
+      if (!(workflows.active?.structuredTasks ?? []).some(task => task._id === target.taskId && task.area === "cleaning")) { toast.error("This cleaning task is no longer available. Refresh the overview."); return; }
+      setManagerCleaningTaskId(target.taskId); workflows.setCleaningList(true); return;
+    }
+    if (target.kind === "additional") {
+      if (!(additional?.requirements ?? []).some((item: { _id: string }) => item._id === target.requirementId)) { toast.error("This additional check is no longer available. Refresh the overview."); return; }
+      setManagerAdditionalRequirementId(target.requirementId); setView("additional"); return;
+    }
+    setManagerSection("reviews");
+    window.setTimeout(() => document.getElementById(target.reviewType === "weekly" ? "weekly-review" : "four-week-review")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function openManagerTarget(targetLocationId: string, target: ManagerOverviewTarget) {
+    if (!locations?.some(location => location._id === targetLocationId && getRoleCapabilities(user, memberships, targetLocationId).canViewManagerReviews)) return;
+    requestNavigation(() => {
+      setManagerReviewsDirty(false);
+      setWorkflowReturnView("managerReviews");
+      if (targetLocationId !== currentLocationId) {
+        clearOfflineSession();
+        setLocationId(targetLocationId);
+        setManagerSection("overview");
+        setPendingManagerTarget({ locationId: targetLocationId, target });
+      } else launchManagerTarget(target);
+    });
+  }
+
+  function changeManagerStore(nextLocationId: string) {
+    if (!locations?.some(location => location._id === nextLocationId && getRoleCapabilities(user, memberships, nextLocationId).canViewManagerReviews)) return;
+    if (nextLocationId === currentLocationId) return;
+    clearOfflineSession();
+    setLocationId(nextLocationId);
+    setView("managerReviews");
+    setManagerSection("overview");
+  }
+
+  useEffect(() => {
+    if (pendingManagerTarget && dashboard?.location._id === pendingManagerTarget.locationId && (pendingManagerTarget.target.kind !== "additional" || additional !== undefined)) {
+      const { target } = pendingManagerTarget;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPendingManagerTarget(null);
+      launchManagerTarget(target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingManagerTarget, dashboard?.location._id, additional]);
 
   const viewTemperatureRecords = (session: "AM" | "PM") => setRecordView({ kind: "temperature", session });
   const viewChecklistRecords = (checklist: "opening" | "closing") => setRecordView({ kind: "checklist", checklist });
@@ -170,16 +242,16 @@ export default function Dashboard() {
   if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
 
   if (recordView) return appShell(<OperationalRecordsView {...recordView} dashboard={dashboard} onBack={() => setRecordView(null)} onAdd={recordView.kind === "probes" ? addProbeFromRecords : recordView.kind === "wastage" ? addWastageFromRecords : undefined} />);
-  if (workflows.round && workflows.roundIssues.length) return appShell(<TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} roundTeamMemberId={workflows.roundCompleterId} setRoundCompleterId={workflows.setRoundCompleterId} submitting={workflows.roundSubmitting} onSaveActions={workflows.saveTemperatureActions} onCompleteRound={workflows.completeRecoveredTemperatureRound} onBack={() => navigateTo("today")} />);
-  if (workflows.round) return appShell(<TemperatureRoundEntry session={workflows.round} equipment={workflows.roundEquipment} savedReadings={workflows.roundReadings} teamMembers={dashboard.teamMembers} memberId={workflows.roundCompleterId} setMemberId={workflows.setRoundCompleterId} temperatures={workflows.temperatures} setTemperatures={workflows.setTemperatures} submitting={workflows.roundSubmitting} onComplete={workflows.completeTemperatureRound} onBack={() => navigateTo("today")} />);
-  if (structuredTaskArea) return appShell(<StructuredTaskWorkflow key={`${dashboard.location._id}:${structuredTaskArea}`} locationId={dashboard.location._id} locationName={dashboard.location.name} area={structuredTaskArea} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === structuredTaskArea)} responses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} signOffRecorded={structuredTaskArea === "opening" || structuredTaskArea === "closing" ? Boolean(dashboard.checklistSignOffs?.some(signOff => signOff.checklist === structuredTaskArea)) : Boolean(dashboard.securitySignOffs?.some(signOff => signOff.session === (structuredTaskArea === "security_am" ? "AM" : "PM")))} onBack={() => navigateTo("today")} />);
-  if (workflows.cleaningList) return appShell(<InlineCleaning key={dashboard.location._id} locationId={dashboard.location._id} locationName={dashboard.location.name} tasks={(workflows.active?.structuredTasks ?? []).filter((task) => task.area === "cleaning")} responses={workflows.active?.structuredTaskResponses ?? []} completions={workflows.active?.cleaningCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeCleaning} onIssue={workflows.reportCleaningIssue} onBack={() => navigateTo("today")} />);
-  if (workflows.checklistList) return appShell(<InlineChecklist key={`${dashboard.location._id}:${workflows.checklistList}`} locationId={dashboard.location._id} checklist={workflows.checklistList} title={workflows.checklistList === "opening" ? "Opening checklist" : "Closing checklist"} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === workflows.checklistList)} legacyResponses={workflows.active?.checklists[workflows.checklistList].responses ?? []} structuredResponses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} onSignOff={workflows.signOffChecklistTask} signOffRecorded={Boolean(dashboard.checklistSignOffs?.some(signOff => signOff.checklist === workflows.checklistList))} onBack={() => navigateTo("today")} />);
-  if (workflows.security && workflows.currentSecurityQuestion) return appShell(<SecurityScreen locationId={dashboard.location._id} session={workflows.security} question={workflows.currentSecurityQuestion.question} index={workflows.securityIndex} total={workflows.active?.security[workflows.security].length ?? 0} teamMembers={dashboard.teamMembers} teamMemberId={workflows.securityTeamMemberId} setTeamMemberId={workflows.setSecurityTeamMemberId} issue={workflows.securityIssue} setIssue={workflows.setSecurityIssue} onSave={workflows.saveSecurity} onBack={() => navigateTo("today")} />);
+  if (workflows.round && workflows.roundIssues.length) return appShell(<TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} roundTeamMemberId={workflows.roundCompleterId} setRoundCompleterId={workflows.setRoundCompleterId} submitting={workflows.roundSubmitting} onSaveActions={workflows.saveTemperatureActions} onCompleteRound={workflows.completeRecoveredTemperatureRound} onBack={() => navigateTo(workflowReturnView)} />);
+  if (workflows.round) return appShell(<TemperatureRoundEntry session={workflows.round} equipment={workflows.roundEquipment} savedReadings={workflows.roundReadings} teamMembers={dashboard.teamMembers} memberId={workflows.roundCompleterId} setMemberId={workflows.setRoundCompleterId} temperatures={workflows.temperatures} setTemperatures={workflows.setTemperatures} submitting={workflows.roundSubmitting} onComplete={workflows.completeTemperatureRound} onBack={() => navigateTo(workflowReturnView)} />);
+  if (structuredTaskArea) return appShell(<StructuredTaskWorkflow key={`${dashboard.location._id}:${structuredTaskArea}`} locationId={dashboard.location._id} locationName={dashboard.location.name} area={structuredTaskArea} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === structuredTaskArea)} responses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} signOffRecorded={structuredTaskArea === "opening" || structuredTaskArea === "closing" ? Boolean(dashboard.checklistSignOffs?.some(signOff => signOff.checklist === structuredTaskArea)) : Boolean(dashboard.securitySignOffs?.some(signOff => signOff.session === (structuredTaskArea === "security_am" ? "AM" : "PM")))} onBack={() => navigateTo(workflowReturnView)} />);
+  if (workflows.cleaningList) return appShell(<InlineCleaning key={dashboard.location._id} initialTaskId={managerCleaningTaskId} locationId={dashboard.location._id} locationName={dashboard.location.name} tasks={(workflows.active?.structuredTasks ?? []).filter((task) => task.area === "cleaning")} responses={workflows.active?.structuredTaskResponses ?? []} completions={workflows.active?.cleaningCompletions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeCleaning} onIssue={workflows.reportCleaningIssue} onBack={() => navigateTo(workflowReturnView)} />);
+  if (workflows.checklistList) return appShell(<InlineChecklist key={`${dashboard.location._id}:${workflows.checklistList}`} locationId={dashboard.location._id} checklist={workflows.checklistList} title={workflows.checklistList === "opening" ? "Opening checklist" : "Closing checklist"} tasks={(workflows.active?.structuredTasks ?? []).filter(task => task.area === workflows.checklistList)} legacyResponses={workflows.active?.checklists[workflows.checklistList].responses ?? []} structuredResponses={workflows.active?.structuredTaskResponses ?? []} teamMembers={dashboard.teamMembers} onSignOff={workflows.signOffChecklistTask} signOffRecorded={Boolean(dashboard.checklistSignOffs?.some(signOff => signOff.checklist === workflows.checklistList))} onBack={() => navigateTo(workflowReturnView)} />);
+  if (workflows.security && workflows.currentSecurityQuestion) return appShell(<SecurityScreen locationId={dashboard.location._id} session={workflows.security} question={workflows.currentSecurityQuestion.question} index={workflows.securityIndex} total={workflows.active?.security[workflows.security].length ?? 0} teamMembers={dashboard.teamMembers} teamMemberId={workflows.securityTeamMemberId} setTeamMemberId={workflows.setSecurityTeamMemberId} issue={workflows.securityIssue} setIssue={workflows.setSecurityIssue} onSave={workflows.saveSecurity} onBack={() => navigateTo(workflowReturnView)} />);
   if (view === "day") return appShell(<MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => navigateTo("calendar")} />);
-  if (view === "additional") return appShell(<AdditionalChecksView locationId={dashboard.location._id} locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => navigateTo("today")} />);
+  if (view === "additional") return appShell(<AdditionalChecksView initialRequirementId={managerAdditionalRequirementId} locationId={dashboard.location._id} locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => navigateTo(workflowReturnView)} />);
   if (view === "managerReviews") return capabilities.canViewManagerReviews
-    ? appShell(<ManagerReviews locationId={dashboard.location._id} locations={locations ?? [dashboard.location]} onBack={() => navigateTo("today")} onOpenDailyChecks={(selectedLocationId) => { if (selectedLocationId !== currentLocationId) switchLocation(selectedLocationId); else navigateTo("today"); }} />)
+    ? appShell(<ManagerReviews key={dashboard.location._id} locationId={dashboard.location._id} locations={(locations ?? [dashboard.location]).filter(location => getRoleCapabilities(user, memberships, location._id).canViewManagerReviews)} onBack={() => navigateTo("today")} onOpenTask={openManagerTarget} onStoreChange={changeManagerStore} onRequestNavigation={requestNavigation} activeSection={managerSection} onActiveSectionChange={setManagerSection} onDirtyChange={setManagerReviewsDirty} />)
     : appShell(<AccessDenied />);
 
   const todayProps: DashboardTodayProps = {
@@ -209,7 +281,7 @@ export default function Dashboard() {
         ? <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => navigateTo("today")} onOpenTraining={() => navigateTo("training")} />
         : view === "admin"
           ? capabilities.canUseManagement
-            ? <AdminSetup onBack={() => navigateTo("today")} onOpenDay={(date, reportLocationId) => requestNavigation(() => { if (reportLocationId !== currentLocationId) { clearOfflineSession(); setLocationId(reportLocationId); workflows.resetForLocation(); } setSelectedDay(date); setView("day"); })} />
+            ? <AdminSetup onBack={() => navigateTo("today")} onManagerReviews={openManagerReviews} onOpenDay={(date, reportLocationId) => requestNavigation(() => { if (reportLocationId !== currentLocationId) { clearOfflineSession(); setLocationId(reportLocationId); workflows.resetForLocation(); } setSelectedDay(date); setView("day"); })} />
             : <AccessDenied />
           : <DashboardToday {...todayProps} />;
   return appShell(mainView);

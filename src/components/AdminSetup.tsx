@@ -1,5 +1,4 @@
 import ComplianceReports from "@/components/ComplianceReports";
-import ManagerReviews from "@/components/ManagerReviews";
 import AdminFeatureCards, {
   type AdminFeatureKey,
 } from "@/components/admin/AdminFeatureCards";
@@ -23,6 +22,7 @@ import { useState } from "react";
 type Props = {
   onBack: () => void;
   onOpenDay?: (date: string, locationId: string) => void;
+  onManagerReviews?: (locationId?: string) => void;
 };
 
 const featureTitles: Record<AdminFeatureKey, string> = {
@@ -66,7 +66,7 @@ function FeatureHeader({
   );
 }
 
-export default function AdminSetup({ onBack, onOpenDay }: Props) {
+export default function AdminSetup({ onBack, onOpenDay, onManagerReviews }: Props) {
   const { user } = useAuth();
   const isOrganisationAdmin = user?.role === "admin";
   const stores = useRestQuery<AdminOperation[]>(
@@ -124,15 +124,6 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
           onOpenDay={(date, reportLocationId) =>
             onOpenDay?.(date, reportLocationId)
           }
-        />
-      );
-    }
-    if (feature === "issues") {
-      return (
-        <ManagerReviews
-          locationId={selectedLocationId}
-          locations={locations}
-          onBack={() => setFeature(null)}
         />
       );
     }
@@ -247,7 +238,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
             </p>
           </div>
           <AdminFeatureCards
-            onSelect={setFeature}
+            onSelect={feature => feature === "issues" ? onManagerReviews?.(selectedLocationId ?? undefined) : setFeature(feature)}
             counts={
               currentStore
                 ? {
