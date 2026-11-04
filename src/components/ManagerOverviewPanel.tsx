@@ -47,4 +47,3 @@ export default function ManagerOverviewPanel(props: Props) {
     {!!props.documents?.length && <section className="mt-4 rounded-2xl border border-black/[0.07] bg-white p-4"><h3 className="font-semibold">Training acknowledgements</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{props.documents.map(doc => <div key={doc.id} className="rounded-xl border border-black/[0.07] p-3"><div className="flex justify-between gap-3"><span className="font-medium">{doc.title} · v{doc.version}</span><b className="text-sm">{doc.acknowledgement.completionPercentage}%</b></div><p className="mt-1 text-xs text-[#606861]">{doc.acknowledgement.overdue ? "Overdue acknowledgements" : "Acknowledgement progress"}{doc.acknowledgement.deadline ? " · deadline " + new Date(doc.acknowledgement.deadline).toLocaleDateString("en-GB") : ""}</p></div>)}</div></section>}
   </section>;
 }
-
