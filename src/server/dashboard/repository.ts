@@ -53,14 +53,14 @@ const dueCleaning = (task: typeof cleaningTasks.$inferSelect, weekday: number) =
   return task.active && cleaningRunsOn(task.frequency, task.weekdays, weekday);
 };
 
-export const getDashboard = async (context: AuthContext, locationId: string): Promise<DashboardResponse> => {
+export const getDashboard = async (context: AuthContext, locationId: string, timestamp = Date.now()): Promise<DashboardResponse> => {
   const db = getDb();
   const locationRows = await db.select().from(locations).where(eq(locations.id, locationId)).limit(1);
   const location = locationRows[0];
   if (!location) throw new Error("Location not found");
   requireLocationAccess(context, location.id, location.organisationId);
 
-  const now = Date.now();
+  const now = timestamp;
   const { start, end } = localDayRange(now, location.timezone);
   const todayKey = localDateKey(now, location.timezone);
   const from = new Date(start);

@@ -149,3 +149,8 @@ export function buildManagerOverviewActions(input: {
     },
   };
 }
+
+export function buildManagerOverviewStoreSummary(input: Parameters<typeof buildManagerOverviewActions>[0]) {
+  const model = buildManagerOverviewActions(input);
+  return { ...model.summary, dueLater: model.dueLater.length };
+}

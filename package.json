@@ -75,6 +75,7 @@
     "offline:test-operational-api": "node scripts/test-offline-operational-api.mjs",
     "test:bottom-navigation": "node scripts/test-bottom-navigation.mjs",
     "test:manager-overview": "node --import=tsx/esm scripts/test-manager-overview.mjs",
+    "test:manager-overview-stores": "node --import=tsx/esm scripts/test-manager-overview-stores.mjs",
     "test:api-tenant-isolation-local": "node --import=tsx/esm scripts/test-api-tenant-isolation-local.mjs",
     "test:workflow-improvements": "node --import=tsx/esm scripts/test-workflow-improvements.mjs"
   },

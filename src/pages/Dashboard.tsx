@@ -50,6 +50,8 @@ export default function Dashboard() {
   const [pendingMutations, setPendingMutations] = useState(getInFlightMutationCount);
   const [structuredTaskArea, setStructuredTaskArea] = useState<"opening" | "closing" | "cleaning" | "security_am" | "security_pm" | null>(null);
   const [managerSection, setManagerSection] = useState<ManagerOverviewSection>("overview");
+  const [managerAllStores, setManagerAllStores] = useState(false);
+  const [managerReturnToAllStores, setManagerReturnToAllStores] = useState(false);
   const [managerReviewsDirty, setManagerReviewsDirty] = useState(false);
   const [workflowReturnView, setWorkflowReturnView] = useState<DashboardView>("today");
   const [managerCleaningTaskId, setManagerCleaningTaskId] = useState<string | undefined>();
@@ -158,9 +160,11 @@ export default function Dashboard() {
     const destination = targetLocationId ?? currentLocationId;
     if (!destination || !getRoleCapabilities(user, memberships, destination).canViewManagerReviews) return;
     if (destination !== currentLocationId) {
-      requestNavigation(() => { clearOfflineSession(); setLocationId(destination); setManagerSection("overview"); setView("managerReviews"); });
+      requestNavigation(() => { setManagerAllStores(false); setManagerReturnToAllStores(false); clearOfflineSession(); setLocationId(destination); setManagerSection("overview"); setView("managerReviews"); });
       return;
     }
+    setManagerAllStores(false);
+    setManagerReturnToAllStores(false);
     navigateTo("managerReviews");
   }
 
@@ -207,9 +211,32 @@ export default function Dashboard() {
     if (!locations?.some(location => location._id === nextLocationId && getRoleCapabilities(user, memberships, nextLocationId).canViewManagerReviews)) return;
     if (nextLocationId === currentLocationId) return;
     clearOfflineSession();
+    setManagerAllStores(false);
+    setManagerReturnToAllStores(false);
     setLocationId(nextLocationId);
     setView("managerReviews");
     setManagerSection("overview");
+  }
+
+  function openManagerStoreFromAllStores(nextLocationId: string) {
+    if (!locations?.some(location => location._id === nextLocationId && getRoleCapabilities(user, memberships, nextLocationId).canViewManagerReviews)) return;
+    requestNavigation(() => {
+      setManagerReturnToAllStores(true);
+      setManagerAllStores(false);
+      setManagerReviewsDirty(false);
+      clearOfflineSession();
+      setLocationId(nextLocationId);
+      setManagerSection("overview");
+      setView("managerReviews");
+    });
+  }
+
+  function returnToAllStores() {
+    requestNavigation(() => {
+      setManagerSection("overview");
+      setManagerReturnToAllStores(false);
+      setManagerAllStores(true);
+    });
   }
 
   useEffect(() => {
@@ -243,6 +270,7 @@ export default function Dashboard() {
 
   if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
   if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
+  if (view === "managerReviews" && dashboard.location._id !== currentLocationId) return appShell(<div role="status" className="mx-auto max-w-3xl p-6 text-sm text-[#606861]">Loading selected store overview…</div>);
 
   if (recordView) return appShell(<OperationalRecordsView {...recordView} dashboard={dashboard} onBack={() => setRecordView(null)} onAdd={recordView.kind === "probes" ? addProbeFromRecords : recordView.kind === "wastage" ? addWastageFromRecords : undefined} />);
   if (workflows.round && workflows.roundIssues.length) return appShell(<TemperatureActionScreen session={workflows.round} issues={workflows.roundIssues} teamMembers={dashboard.teamMembers} issueProgress={workflows.issueProgress} setIssueProgress={workflows.setIssueProgress} roundTeamMemberId={workflows.roundCompleterId} setRoundCompleterId={workflows.setRoundCompleterId} submitting={workflows.roundSubmitting} onSaveActions={workflows.saveTemperatureActions} onCompleteRound={workflows.completeRecoveredTemperatureRound} onBack={() => navigateTo(workflowReturnView)} />);
@@ -254,7 +282,7 @@ export default function Dashboard() {
   if (view === "day") return appShell(<MobileDayView location={dashboard.location} date={selectedDay ?? formatDateKey(new Date())} archive={archive} equipment={workflows.equipment} onBack={() => navigateTo("calendar")} />);
   if (view === "additional") return appShell(<AdditionalChecksView initialRequirementId={managerAdditionalRequirementId} locationId={dashboard.location._id} locationName={dashboard.location.name} requirements={additional?.requirements ?? []} completions={additional?.completions ?? []} teamMembers={dashboard.teamMembers} onComplete={workflows.completeAdditional} onBack={() => navigateTo(workflowReturnView)} />);
   if (view === "managerReviews") return capabilities.canViewManagerReviews
-    ? appShell(<ManagerReviews key={dashboard.location._id} locationId={dashboard.location._id} locations={(locations ?? [dashboard.location]).filter(location => getRoleCapabilities(user, memberships, location._id).canViewManagerReviews)} onBack={() => navigateTo("today")} onOpenTask={openManagerTarget} onStoreChange={changeManagerStore} onRequestNavigation={requestNavigation} activeSection={managerSection} onActiveSectionChange={setManagerSection} onDirtyChange={setManagerReviewsDirty} />)
+    ? appShell(<ManagerReviews key={dashboard.location._id} locationId={dashboard.location._id} locations={(locations ?? [dashboard.location]).filter(location => getRoleCapabilities(user, memberships, location._id).canViewManagerReviews)} onBack={() => navigateTo("today")} onOpenTask={openManagerTarget} onStoreChange={changeManagerStore} onRequestNavigation={requestNavigation} activeSection={managerSection} onActiveSectionChange={setManagerSection} onDirtyChange={setManagerReviewsDirty} allStores={managerAllStores} returnToAllStores={managerReturnToAllStores} onAllStoresChange={setManagerAllStores} onSelectAllStore={openManagerStoreFromAllStores} onReturnToAllStores={returnToAllStores} />)
     : appShell(<AccessDenied />);
 
   const todayProps: DashboardTodayProps = {

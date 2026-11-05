@@ -41,8 +41,8 @@ async function requirementFor(context: AuthContext, requirementId: string, manag
   requireUuid(requirementId, "requirementId"); const [requirement] = await getDb().select().from(additionalRequirements).where(eq(additionalRequirements.id, requirementId)).limit(1); if (!requirement) throw new ApiError(404, "Additional requirement not found"); await locationFor(context, requirement.locationId, manager); if (requirement.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard additional checks are controlled centrally"); return requirement;
 }
 
-export async function additionalDashboard(context: AuthContext, locationId: string) {
-  const location = await locationFor(context, locationId); const db = getDb(); const now = Date.now(); const today = localDateKey(now, location.timezone);
+export async function additionalDashboard(context: AuthContext, locationId: string, timestamp = Date.now()) {
+  const location = await locationFor(context, locationId); const db = getDb(); const now = timestamp; const today = localDateKey(now, location.timezone);
   const [allRequirements, completions, members] = await Promise.all([
     db.select().from(additionalRequirements).where(eq(additionalRequirements.locationId, location.id)).orderBy(asc(additionalRequirements.order)),
     db.select().from(additionalCompletions).where(eq(additionalCompletions.locationId, location.id)),

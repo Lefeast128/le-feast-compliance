@@ -214,7 +214,7 @@ const reviewDto = (row: typeof managerReviews.$inferSelect, completedByName: str
   answers: row.answers,
 });
 
-export async function getManagerReviews(context: AuthContext, locationId: string) {
+export async function getManagerReviews(context: AuthContext, locationId: string, timestamp = Date.now()) {
   const location = await managedLocation(context, locationId);
   const [historyRows, historyUsers, currentIssues, locationMembers] = await Promise.all([
     db().select().from(managerReviews).where(eq(managerReviews.locationId, location.id)).orderBy(asc(managerReviews.periodStart)),
@@ -222,8 +222,8 @@ export async function getManagerReviews(context: AuthContext, locationId: string
     db().select().from(issues).where(eq(issues.locationId, location.id)),
     db().select({ id: teamMembers.id, name: teamMembers.name }).from(teamMembers).where(eq(teamMembers.locationId, location.id)),
   ]);
-  const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly");
-  const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly");
+  const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly", timestamp);
+  const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly", timestamp);
   const [weeklyRows, fourRows, weeklyScope, fourScope] = await Promise.all([
     existingReview(location.id, weekly),
     existingReview(location.id, fourWeekly),
@@ -237,11 +237,11 @@ export async function getManagerReviews(context: AuthContext, locationId: string
     db().select().from(temperatureReadings).where(eq(temperatureReadings.locationId, location.id)),
     db().select().from(foodChecks).where(eq(foodChecks.locationId, location.id)),
   ]);
-  const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
-  const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
+  const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date(timestamp));
+  const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date(timestamp));
   const historyNames = new Map(historyUsers.map(user => [user.id, user.name ?? user.email]));
-  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows), Date.now(), "weekly");
-  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), Date.now(), "four_weekly");
+  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows), timestamp, "weekly");
+  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), timestamp, "four_weekly");
   return {
     location: { id: location.id, name: location.name, timezone: location.timezone },
     teamMembers: locationMembers.map(member => ({ _id: member.id, name: member.name })),

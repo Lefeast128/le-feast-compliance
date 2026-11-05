@@ -145,6 +145,9 @@ export const restApi = {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/manager-reviews?locationId=${encodeURIComponent(locationId)}`)),
     complete: (body: AnyRecord) => post("/api/manager-reviews", body),
   },
+  managerOverview: {
+    allStores: async () => compat(await query("/api/manager-overview/stores")),
+  },
   additional: {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/additional?locationId=${encodeURIComponent(locationId)}`)),
     history: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/additional/history?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
