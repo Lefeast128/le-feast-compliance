@@ -73,6 +73,7 @@ assert.match(source, /Summary unavailable for this store/);
 assert.match(source, /Open Manager Overview/);
 assert.match(dashboard, /getRoleCapabilities\(user, memberships, nextLocationId\)\.canViewManagerReviews/);
 assert.match(dashboard, /managerReturnToAllStores/);
+assert.match(dashboard, /onManagerReviews: \(\) => openManagerReviews\(\)/, "the dashboard click handler discards the React event instead of treating it as a location ID");
 assert.match(service, /eq\(locations\.organisationId, context\.user\.organisationId!/);
 assert.match(service, /requireLocationManager\(context, location\.id, location\.organisationId\)/);
 console.log("All-store policy, calculation parity, timezone, partial-failure and navigation checks passed (policy/unit and source assertions; no authenticated DB integration).");

@@ -289,7 +289,7 @@ export default function Dashboard() {
     ...workflows,
     dashboard,
     active: workflows.active!,
-    onManagerReviews: openManagerReviews,
+    onManagerReviews: () => openManagerReviews(),
     canUseManagement: capabilities.canUseManagement,
     managerReviewStatus,
     renderTimestamp,

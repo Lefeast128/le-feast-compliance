@@ -2,20 +2,37 @@
  * It owns a temporary PostgreSQL cluster and never accepts a non-loopback DB URL. */
 import http from "node:http";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { URL } from "node:url";
 import { createPasswordCredential } from "../src/server/auth/core.ts";
 
 const run = (command, args, options = {}) => execFileSync(command, args, { stdio: "pipe", ...options });
-const bin = (name) => execFileSync("which", [name], { encoding: "utf8" }).trim();
+const bin = (name) => {
+  try { return execFileSync("which", [name], { encoding: "utf8" }).trim(); }
+  catch {
+    const directory = execFileSync("pg_config", ["--bindir"], { encoding: "utf8" }).trim();
+    const candidate = join(directory, name);
+    if (!existsSync(candidate)) throw new Error(`PostgreSQL executable not found: ${name}`);
+    return candidate;
+  }
+};
 const port = Number(process.env.EHO_OFFLINE_TEST_API_PORT ?? 4174);
 const pgPort = port + 1;
 const externalDbUrl = process.env.EHO_OFFLINE_TEST_DATABASE_URL?.trim() || undefined;
+if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE === "1" && externalDbUrl) {
+  throw new Error("Manager Overview integration fixtures require the harness-owned disposable PostgreSQL cluster");
+}
+if (externalDbUrl) {
+  const hostname = new URL(externalDbUrl).hostname;
+  if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) throw new Error("Offline browser harness accepts loopback PostgreSQL only");
+}
 const dataDir = externalDbUrl ? null : mkdtempSync(join(process.cwd(), ".eho-offline-browser-"));
 const dbUrl = externalDbUrl ?? `postgresql://postgres@127.0.0.1:${pgPort}/postgres`;
 let started = false;
 let networkOffline = false;
+let managerOverviewMode = "normal";
+const testLog = (...parts) => { if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE === "1") console.log("[manager-overview-test]", ...parts); };
 const ids = {
   org: "00000000-0000-4000-8000-000000001001", location: "00000000-0000-4000-8000-000000001002",
   user: "00000000-0000-4000-8000-000000001003", membership: "00000000-0000-4000-8000-000000001004",
@@ -26,13 +43,16 @@ const ids = {
   membership2: "00000000-0000-4000-8000-000000001013", member2: "00000000-0000-4000-8000-000000001014",
   location3: "00000000-0000-4000-8000-000000001015", user3: "00000000-0000-4000-8000-000000001016",
   membership3: "00000000-0000-4000-8000-000000001017", member3: "00000000-0000-4000-8000-000000001018",
+  location4: "00000000-0000-4000-8000-000000001026", membership4: "00000000-0000-4000-8000-000000001027",
+  location5: "00000000-0000-4000-8000-000000001028",
+  location6: "00000000-0000-4000-8000-000000001029",
   equipment: "00000000-0000-4000-8000-000000001022", probeProduct: "00000000-0000-4000-8000-000000001023", wastageItem: "00000000-0000-4000-8000-000000001024",
 };
 const credential = createPasswordCredential("offline-test-password");
 const sql = (text) => run(bin("psql"), ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--dbname", dbUrl], { input: text, encoding: "utf8" });
 
 function fixture() {
-  return `
+  const base = `
 INSERT INTO organisations (id, name, timezone) VALUES ('${ids.org}', 'Offline Test Organisation', 'Europe/London');
 INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES ('${ids.location}', '${ids.org}', 'Offline Test Store', 'offline', 'Europe/London');
 INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at, password_hash, password_salt) VALUES ('${ids.user}', '${ids.org}', 'offline.staff@example.test', 'offline.staff@example.test', 'Offline Test Staff', 'user', now(), '${credential.hash}', '${credential.salt}');
@@ -59,6 +79,16 @@ INSERT INTO users (id, organisation_id, email, normalized_email, name, role, ema
 INSERT INTO memberships (id, user_id, location_id, role) VALUES ('${ids.membership3}', '${ids.user3}', '${ids.location3}', 'staff');
 INSERT INTO team_members (id, location_id, name, role) VALUES ('${ids.member3}', '${ids.location3}', 'Other Organisation Team Member', 'team');
 `;
+  if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE !== "1") return base;
+  return `${base}
+INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES
+  ('${ids.location4}', '${ids.org}', 'Task Four Manager Store', 'task4-manager', 'Europe/London'),
+  ('${ids.location5}', '${ids.org}', 'Task Four Partial Failure Store', 'task4-error', 'Invalid/Test_Zone');
+INSERT INTO locations (id, organisation_id, name, short_name, timezone, active) VALUES
+  ('${ids.location6}', '${ids.org}', 'Task Four Inactive Store', 'task4-inactive', 'Europe/London', false);
+INSERT INTO memberships (id, user_id, location_id, role) VALUES
+  ('${ids.membership4}', '${ids.user2}', '${ids.location4}', 'manager');
+`;
 }
 
 async function bodyOf(request) {
@@ -75,6 +105,9 @@ const handlers = new Map([
   ["/api/auth/login", await load("api/auth/login.ts")],
   ["/api/auth/logout", await load("api/auth/logout.ts")],
   ["/api/locations", await load("api/locations.ts")],
+  ["/api/manager-overview/stores", await load("api/manager-overview/stores.ts")],
+  ["/api/manager-reviews", await load("api/manager-reviews.ts")],
+  ["/api/controlled-documents", await load("api/controlled-documents.ts")],
   ["/api/dashboard", await load("api/dashboard.ts")],
   ["/api/structured-tasks", await load("api/structured-tasks.ts")],
   ["/api/team-members", await load("api/team-members.ts")],
@@ -129,12 +162,32 @@ async function stopServer() {
 }
 
 if (dataDir) {
-  run(bin("initdb"), ["--no-locale", "--auth=trust", "--username=postgres", "--set", "shared_memory_type=mmap", "--set", "dynamic_shared_memory_type=mmap", "--pgdata", dataDir], { stdio: "ignore" });
-  run(bin("pg_ctl"), ["--pgdata", dataDir, "--options", `-p ${pgPort} -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c shared_buffers=12MB`, "--wait", "start"], { stdio: "ignore" });
+  testLog("initializing isolated PostgreSQL cluster");
+  try {
+    run(bin("initdb"), ["--no-locale", "--auth=trust", "--username=postgres", "--set", "shared_memory_type=mmap", "--set", "dynamic_shared_memory_type=mmap", "--pgdata", dataDir]);
+  } catch (error) {
+    rmSync(dataDir, { recursive: true, force: true });
+    throw new Error(`Local PostgreSQL initdb failed: ${error.stderr?.toString() ?? error.message}`);
+  }
+  try {
+    const postgresLog = join(dataDir, "postgres-startup.log");
+    run(bin("pg_ctl"), ["--pgdata", dataDir, "--log", postgresLog, "--options", `-p ${pgPort} -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c shared_buffers=12MB`, "--wait", "start"]);
+  } catch (error) {
+    const postgresLog = join(dataDir, "postgres-startup.log");
+    const detail = existsSync(postgresLog) ? readFileSync(postgresLog, "utf8") : error.stderr?.toString() ?? error.message;
+    rmSync(dataDir, { recursive: true, force: true });
+    throw new Error(`Local PostgreSQL startup failed: ${detail}`);
+  }
   started = true;
+  testLog("isolated PostgreSQL is ready");
 }
-const migrations = await (await import("node:fs/promises")).readdir(new URL("../drizzle/", import.meta.url));
-for (const name of migrations.filter((value) => value.endsWith(".sql")).sort()) sql(readFileSync(new URL(`../drizzle/${name}`, import.meta.url), "utf8").replaceAll("--> statement-breakpoint", ""));
+const migrations = (await (await import("node:fs/promises")).readdir(new URL("../drizzle/", import.meta.url))).filter(value => value.endsWith(".sql")).sort();
+testLog("applying", migrations.length, "schema migrations");
+for (const name of migrations) {
+  testLog("migration", name);
+  sql(readFileSync(new URL(`../drizzle/${name}`, import.meta.url), "utf8").replaceAll("--> statement-breakpoint", ""));
+}
+testLog("applying fictional fixtures");
 sql(fixture());
 process.env.NODE_ENV = "test";
 process.env.EHO_TEST_DATABASE_DRIVER = "pg";
@@ -144,6 +197,13 @@ process.env.AUTH_ALLOWED_ORIGINS = "http://127.0.0.1:5173,http://localhost:5173"
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE === "1" && url.pathname === "/__test__/manager-overview-mode") {
+    const requested = url.searchParams.get("mode");
+    managerOverviewMode = ["normal", "slow", "error"].includes(requested ?? "") ? requested : "normal";
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ mode: managerOverviewMode }));
+    return;
+  }
   if (url.pathname === "/__test__/network") { networkOffline = url.searchParams.get("state") === "offline"; response.writeHead(200, { "Content-Type": "application/json" }); response.end(JSON.stringify({ networkOffline })); return; }
   if (url.pathname === "/__test__/state") {
     const client = await (await import("../src/server/db/client.ts")).getPool().connect();
@@ -154,6 +214,14 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   if (networkOffline) { response.writeHead(503, { "Content-Type": "application/json" }); response.end(JSON.stringify({ ok: false, error: "Simulated temporary network failure" })); return; }
+  if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE === "1" && url.pathname === "/api/manager-overview/stores") {
+    if (managerOverviewMode === "slow") await new Promise(resolve => setTimeout(resolve, 1800));
+    if (managerOverviewMode === "error") {
+      response.writeHead(503, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ ok: false, error: "Fictional test failure" }));
+      return;
+    }
+  }
   let handler = handlers.get(url.pathname);
   let routeParamId;
   if (!handler) {
@@ -173,12 +241,17 @@ const server = http.createServer(async (request, response) => {
     send(value) { response.statusCode = status; response.end(value); },
     end(value) { response.statusCode = status; response.end(value); },
   };
-  try { await handler({ method: request.method, body, query, headers }, apiResponse); }
+  try {
+    await handler({ method: request.method, body, query, headers }, apiResponse);
+    if (process.env.EHO_MANAGER_OVERVIEW_FIXTURE === "1" && ["/api/auth/session", "/api/locations", "/api/dashboard", "/api/manager-reviews", "/api/controlled-documents", "/api/additional"].includes(url.pathname)) {
+      console.log(`[browser-test] ${request.method} ${url.pathname} ${response.statusCode ?? status}${url.pathname === "/api/dashboard" ? ` query=${url.search || "<empty>"}` : ""}`);
+    }
+  }
   catch (error) { console.error("offline harness handler error", error); response.statusCode = 500; response.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "Test server error" })); }
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(JSON.stringify({ ready: true, api: `http://127.0.0.1:${port}`, browserPassword: "offline-test-password", testUser: "offline.staff@example.test", testLocationId: ids.location }));
+  console.log(JSON.stringify({ ready: true, api: `http://127.0.0.1:${port}`, testUser: "offline.staff@example.test", testLocationId: ids.location }));
 });
 process.on("SIGINT", () => { void stopServer(); });
 process.on("SIGTERM", () => { void stopServer(); });
