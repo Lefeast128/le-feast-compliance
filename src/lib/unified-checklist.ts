@@ -1,5 +1,5 @@
-import type { StructuredStep } from "@/components/dashboard/dashboard-types";
-import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
+import type { StructuredStep } from "../components/dashboard/dashboard-types.js";
+import { versionedChecklistResponseMatches } from "../shared/unified-checklist.js";
 
 export type UnifiedMode = "question" | "task";
 

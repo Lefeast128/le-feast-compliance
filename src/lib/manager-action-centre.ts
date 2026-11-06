@@ -1,8 +1,8 @@
-import { isCleaningTaskComplete } from "@/lib/cleaning-checklist";
-import { isItemComplete } from "@/lib/unified-checklist";
-import { getIssueAttentionTaskIds } from "@/components/dashboard/daily-checks-model";
-import type { DashboardData, StructuredTask } from "@/components/dashboard/dashboard-types";
-import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor, scheduledCleaningTasks } from "@/lib/manager-action-scheduling";
+import { isCleaningTaskComplete } from "./cleaning-checklist.js";
+import { isItemComplete } from "./unified-checklist.js";
+import { getIssueAttentionTaskIds } from "../components/dashboard/daily-checks-model.js";
+import type { DashboardData, StructuredTask } from "../components/dashboard/dashboard-types.js";
+import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor, scheduledCleaningTasks } from "./manager-action-scheduling.js";
 
 export type ManagerActionStatus = "complete" | "in_progress" | "due_now" | "pending_today" | "not_due" | "overdue";
 

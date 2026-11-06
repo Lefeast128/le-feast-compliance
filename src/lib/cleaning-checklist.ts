@@ -1,4 +1,4 @@
-import type { StructuredTask, StructuredTaskResponse } from "@/components/dashboard/dashboard-types";
+import type { StructuredTask, StructuredTaskResponse } from "../components/dashboard/dashboard-types.js";
 
 export type CleaningCompletionEvidence = {
   taskId: string;

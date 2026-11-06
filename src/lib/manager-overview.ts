@@ -1,5 +1,5 @@
-import type { ManagerActionCentre, ManagerActionStatus } from "@/lib/manager-action-centre";
-import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor } from "@/lib/manager-action-scheduling";
+import type { ManagerActionCentre, ManagerActionStatus } from "./manager-action-centre.js";
+import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor } from "./manager-action-scheduling.js";
 
 export type ManagerOverviewSection = "overview" | "issues" | "reviews" | "history";
 export type ManagerOverviewTarget =
