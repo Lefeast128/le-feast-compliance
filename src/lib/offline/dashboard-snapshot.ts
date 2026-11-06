@@ -1,9 +1,27 @@
 import type { DashboardData } from "@/components/dashboard/dashboard-types";
 import { readOfflineSession } from "./device-session";
+import { storeLocalDateKey } from "@/lib/store-operational-day";
 
 const keyFor = (organisationId: string, userId: string, locationId: string) => `le-feast-offline-dashboard:${organisationId}:${userId}:${locationId}`;
 
 type OpeningSnapshot = Pick<DashboardData, "location" | "access" | "teamMembers" | "checklists" | "checklistSignOffs" | "structuredTasks" | "structuredTaskResponses">;
+
+export function openingSnapshotForDate(snapshot: DashboardData, dateKey: string): DashboardData {
+  const isOnDate = (value: string | number | undefined) => {
+    if (value == null) return false;
+    const timestamp = typeof value === "number" ? value : Date.parse(value);
+    return Number.isFinite(timestamp) && storeLocalDateKey(timestamp, snapshot.location.timezone ?? "Europe/London") === dateKey;
+  };
+  return {
+    ...snapshot,
+    checklists: {
+      ...snapshot.checklists,
+      opening: { ...snapshot.checklists.opening, responses: snapshot.checklists.opening.responses.filter(response => isOnDate(response.createdAt)) },
+    },
+    checklistSignOffs: snapshot.checklistSignOffs?.filter(signOff => signOff.dateKey === dateKey),
+    structuredTaskResponses: snapshot.structuredTaskResponses.filter(response => response.dateKey === dateKey),
+  };
+}
 
 export function buildOpeningSnapshot(value: DashboardData): DashboardData {
   return {
@@ -34,6 +52,9 @@ export function readOpeningSnapshot(locationId: string): DashboardData | null {
   if (!session || session.locationId !== locationId || Date.parse(session.expiresAt) <= Date.now()) return null;
   try {
     const raw = window.localStorage.getItem(keyFor(session.organisationId, session.userId, locationId));
-    return raw ? JSON.parse(raw) as DashboardData : null;
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw) as DashboardData;
+    const dateKey = storeLocalDateKey(Date.now(), snapshot.location.timezone ?? "Europe/London");
+    return openingSnapshotForDate(snapshot, dateKey);
   } catch { return null; }
 }

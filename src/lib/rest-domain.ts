@@ -275,7 +275,7 @@ export const documentsApi = {
 };
 
 export function useRestQuery<T>(key: string | null, loader: () => Promise<T>, enabled = true): T | undefined {
-  const [value, setValue] = useState<T>();
+  const [snapshot, setSnapshot] = useState<{ key: string; value: T }>();
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const refresh = () => setRevision((current) => current + 1);
@@ -284,14 +284,14 @@ export function useRestQuery<T>(key: string | null, loader: () => Promise<T>, en
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!enabled || !key) { setValue(undefined); return; }
+    if (!enabled || !key) { setSnapshot(undefined); return; }
     let cancelled = false;
-    loader().then((result) => { if (!cancelled) setValue(result); }).catch(() => { if (!cancelled) setValue(undefined); });
+    loader().then((result) => { if (!cancelled) setSnapshot({ key, value: result }); }).catch(() => { if (!cancelled) setSnapshot(undefined); });
     return () => { cancelled = true; };
     // The key controls the request inputs; callers may create a closure for those inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, revision]);
-  return value;
+  return snapshot?.key === key ? snapshot.value : undefined;
 }
 
 export type RestQueryState<T> = {

@@ -52,6 +52,7 @@ export type ProbeProduct = {
 export type CalendarDay = {
   date: string;
   status: string;
+  complete?: boolean;
 };
 
 export type DashboardView = "today" | "calendar" | "day" | "admin" | "training" | "library" | "additional" | "managerReviews";
@@ -180,6 +181,7 @@ export type SecurityResponse = {
 export type SignOff = {
   checklist?: "opening" | "closing";
   session?: "AM" | "PM";
+  dateKey?: string;
   teamMemberId?: string;
   teamMemberName?: string;
   completedAt?: number;
