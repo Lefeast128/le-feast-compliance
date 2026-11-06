@@ -1,4 +1,4 @@
-import { cleaningIsScheduledForDate } from "@/shared/cleaning-scheduling";
+import { cleaningIsScheduledForDate } from "../shared/cleaning-scheduling.js";
 
 export function localOperationalDate(timestamp: number, timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", {
