@@ -76,6 +76,7 @@
     "test:bottom-navigation": "node scripts/test-bottom-navigation.mjs",
     "test:manager-overview": "node --import=tsx/esm scripts/test-manager-overview.mjs",
     "test:manager-overview-stores": "node --import=tsx/esm scripts/test-manager-overview-stores.mjs",
+    "test:manager-overview-api-runtime": "node scripts/test-manager-overview-api-runtime.mjs",
     "test:manager-overview-api-local": "node scripts/test-manager-overview-api-local.mjs",
     "test:api-tenant-isolation-local": "node --import=tsx/esm scripts/test-api-tenant-isolation-local.mjs",
     "test:workflow-improvements": "node --import=tsx/esm scripts/test-workflow-improvements.mjs"
