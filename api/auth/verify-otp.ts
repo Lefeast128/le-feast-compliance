@@ -38,6 +38,10 @@ export default async function handler(req: Request, res: Response) {
       res.status(400).json({ ok: false, error: "Invalid JSON" });
       return;
     }
+    if (error instanceof Error && error.message === "Invalid request origin") {
+      res.status(403).json({ ok: false, error: error.message });
+      return;
+    }
     console.error("OTP verification failed", error instanceof Error ? error.message : "unknown error");
     res.status(500).json({ ok: false, error: "Unable to verify code" });
   }

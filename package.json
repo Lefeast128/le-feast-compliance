@@ -24,6 +24,7 @@
     "test:android-test-config": "node scripts/test-android-test-config.mjs",
     "test:staff-attribution": "node scripts/test-staff-attribution.mjs",
     "test:auth": "node scripts/test-auth.mjs",
+    "test:auth-origin": "node --import=tsx/esm scripts/test-auth-origin-policy.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate-db.mjs",
     "db:seed": "node scripts/seed-foundation.mjs",
