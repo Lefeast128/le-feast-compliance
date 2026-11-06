@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import type { TeamMember, TrainingCompletion, TrainingRequirement } from "@/components/dashboard/dashboard-types";
 
-const dateLabel = (value: number) =>
+const dateLabel = (value: string | number) =>
   new Date(value).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -23,10 +24,10 @@ const trainingFormatLabel = (requirement: { trainingFormat?: string | null }) =>
 
 type Props = {
   locationName: string;
-  requirements: any[];
-  completions: any[];
-  teamMembers: any[];
-  onComplete: (requirementId: any, teamMemberId: any) => Promise<void>;
+  requirements: TrainingRequirement[];
+  completions: TrainingCompletion[];
+  teamMembers: TeamMember[];
+  onComplete: (requirementId: string, teamMemberId: string) => Promise<void>;
   onBack: () => void;
 };
 
@@ -42,11 +43,11 @@ export default function TrainingView({
   const [filter, setFilter] = useState<"outstanding" | "all" | "employee">(
     "outstanding",
   );
-  const [selectedRequirement, setSelectedRequirement] = useState<any>(null);
+  const [selectedRequirement, setSelectedRequirement] = useState<TrainingRequirement | null>(null);
   const [selectedMember, setSelectedMember] = useState("");
   const [acknowledgementTarget, setAcknowledgementTarget] = useState<{
-    requirement: any;
-    member: any;
+    requirement: TrainingRequirement;
+    member: TeamMember;
   } | null>(null);
   const [acknowledgementSaving, setAcknowledgementSaving] = useState(false);
   const [acknowledgementError, setAcknowledgementError] = useState<string | null>(null);
@@ -54,16 +55,17 @@ export default function TrainingView({
     (member) => member.active !== false,
   );
 
-  const applicableMembers = (requirement: any) => {
-    if (Array.isArray(requirement.applicableTeamMemberIds)) {
+  const applicableMembers = (requirement: TrainingRequirement) => {
+    const applicableTeamMemberIds = requirement.applicableTeamMemberIds;
+    if (Array.isArray(applicableTeamMemberIds)) {
       return activeTeamMembers.filter((member) =>
-        requirement.applicableTeamMemberIds.includes(member._id),
+        applicableTeamMemberIds.includes(member._id),
       );
     }
     return activeTeamMembers;
   };
 
-  const completionFor = (requirement: any, memberId: any) => {
+  const completionFor = (requirement: TrainingRequirement, memberId: string) => {
     const requiredVersion = requirement.requiredDocumentVersionNumber;
     const requiredContentVersion = requirement.requiredContentVersionNumber;
     return completions
@@ -84,10 +86,10 @@ export default function TrainingView({
           (item.contentVersionNumber != null &&
             item.contentVersionNumber >= requiredContentVersion),
       )
-      .sort((a, b) => b.completedAt - a.completedAt)[0];
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
   };
 
-  const completedCount = (requirement: any) =>
+  const completedCount = (requirement: TrainingRequirement) =>
     applicableMembers(requirement).filter((member) =>
       completionFor(requirement, member._id),
     ).length;

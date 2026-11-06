@@ -8,6 +8,29 @@ export type DashboardLocation = {
 export type TeamMember = {
   _id: string;
   name: string;
+  active?: boolean | null;
+};
+
+export type TrainingRequirement = {
+  _id: string;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  trainingFormat?: string | null;
+  applicableTeamMemberIds?: string[] | null;
+  currentDocumentVersionNumber?: number | null;
+  requiredDocumentVersionNumber?: number | null;
+  requiredContentVersionNumber?: number | null;
+  trainingInstructions?: string | null;
+  documentUrl?: string | null;
+};
+
+export type TrainingCompletion = {
+  requirementId: string;
+  teamMemberId: string;
+  documentVersionNumber?: number | null;
+  contentVersionNumber?: number | null;
+  completedAt: string | number;
 };
 
 export type Equipment = {
@@ -219,8 +242,8 @@ export type DashboardData = {
   wastageRecords: WastageRecord[];
   cleaningTasks: Array<{ _id: string; name: string; frequency?: string; weekdays?: number[] }>;
   cleaningCompletions: Array<{ _id?: string; taskId: string; dateKey?: string; completedAt?: number | string; teamMemberId?: string | null; teamMemberName?: string }>;
-  trainingRequirements: Array<{ _id: string; title: string }>;
-  trainingCompletions: Array<{ _id?: string; requirementId: string; completedAt?: number; teamMemberName?: string }>;
+  trainingRequirements: TrainingRequirement[];
+  trainingCompletions: TrainingCompletion[];
   structuredTasks: StructuredTask[];
   structuredTaskResponses: StructuredTaskResponse[];
   additionalRequirements?: Array<{
