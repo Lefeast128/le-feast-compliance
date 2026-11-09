@@ -382,7 +382,7 @@ export default function TrainingView({
         )}
         {acknowledgementTarget && (
           <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-            <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8">
+            <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 sm:p-8">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
                 Training acknowledgement
               </p>
@@ -408,14 +408,21 @@ export default function TrainingView({
                 </span>
               </p>
               {acknowledgementTarget.requirement.documentUrl && (
-                <a
-                  href={acknowledgementTarget.requirement.documentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
-                >
-                  Open PDF
-                </a>
+                <div className="mt-4 space-y-2">
+                  <iframe
+                    title={`${acknowledgementTarget.requirement.title} PDF preview`}
+                    src={acknowledgementTarget.requirement.documentUrl}
+                    className="h-[42vh] min-h-56 w-full rounded-xl border border-black/[0.1]"
+                  />
+                  <a
+                    href={acknowledgementTarget.requirement.documentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
+                  >
+                    Open PDF in a new tab
+                  </a>
+                </div>
               )}
               {acknowledgementTarget.requirement.currentDocumentVersionNumber !=
                 null && (

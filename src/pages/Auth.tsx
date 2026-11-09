@@ -50,7 +50,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const submitLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!email.trim() || !password) return;
-    void run(async () => { await login(email.trim(), password); navigate(redirect); }, "Invalid email or password");
+    void run(async () => { await login(email.trim(), password); }, "Invalid email or password");
   };
 
   const requestCode = (purpose: OtpPurpose) => {

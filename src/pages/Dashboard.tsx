@@ -33,6 +33,7 @@ import logo from "@/assets/logo.svg";
 import MarkdownSheetPanel from "@/components/MarkdownSheetPanel";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { createStoreDayTracker, storeLocalDateKey } from "@/lib/store-operational-day";
+import { shouldConfirmAppNavigation } from "@/lib/navigation-guard";
 
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
 const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [managerAllStores, setManagerAllStores] = useState(false);
   const [managerReturnToAllStores, setManagerReturnToAllStores] = useState(false);
   const [managerReviewsDirty, setManagerReviewsDirty] = useState(false);
+  const [adminHasUnsavedChanges, setAdminHasUnsavedChanges] = useState(false);
   const [workflowReturnView, setWorkflowReturnView] = useState<DashboardView>("today");
   const [managerCleaningTaskId, setManagerCleaningTaskId] = useState<string | undefined>();
   const [managerAdditionalRequirementId, setManagerAdditionalRequirementId] = useState<string | undefined>();
@@ -139,7 +141,7 @@ export default function Dashboard() {
   const archive = useRestQuery(view === "day" && dashboard && selectedDay ? `archive:${dashboard.location._id}:${selectedDay}` : null, () => restApi.compliance.archive({ locationId: dashboard!.location._id, start: selectedDay!, end: selectedDay! }), Boolean(view === "day" && dashboard && selectedDay));
   const workflows = useDashboardWorkflows({ dashboard, currentLocationId });
 
-  const hasActiveWorkflow = Boolean(workflows.round || structuredTaskArea || workflows.cleaningList || workflows.checklistList || workflows.security || view === "admin" || (view === "managerReviews" && managerReviewsDirty));
+  const hasActiveWorkflow = Boolean(workflows.round || structuredTaskArea || workflows.cleaningList || workflows.checklistList || workflows.security || (view === "managerReviews" && managerReviewsDirty));
 
   function exitActiveWorkflow() {
     if (workflows.roundSubmitting) return;
@@ -150,11 +152,11 @@ export default function Dashboard() {
     setManagerAdditionalRequirementId(undefined);
     setWorkflowReturnView("today");
     if (managerReviewsDirty) setManagerReviewsDirty(false);
+    if (adminHasUnsavedChanges) setAdminHasUnsavedChanges(false);
   }
 
   function requestNavigation(run: () => void) {
-    if (workflows.roundSubmitting || pendingMutations > 0) { setNavigationRequest({ run }); return; }
-    if (hasActiveWorkflow) { setNavigationRequest({ run }); return; }
+    if (shouldConfirmAppNavigation({ activeWorkflow: hasActiveWorkflow, adminHasUnsavedChanges: view === "admin" && adminHasUnsavedChanges, submissionInFlight: workflows.roundSubmitting, pendingMutations })) { setNavigationRequest({ run }); return; }
     run();
   }
 
@@ -336,7 +338,7 @@ export default function Dashboard() {
         ? <LibraryView locationName={dashboard.location.name} documents={library?.documents ?? []} onBack={() => navigateTo("today")} onOpenTraining={() => navigateTo("training")} />
         : view === "admin"
           ? capabilities.canUseManagement
-            ? <AdminSetup onBack={() => navigateTo("today")} onManagerReviews={openManagerReviews} onOpenDay={(date, reportLocationId) => requestNavigation(() => { if (reportLocationId !== currentLocationId) { clearOfflineSession(); setLocationId(reportLocationId); workflows.resetForLocation(); } setSelectedDay(date); setView("day"); })} />
+            ? <AdminSetup onBack={() => navigateTo("today")} onManagerReviews={openManagerReviews} onDirtyChange={setAdminHasUnsavedChanges} onOpenDay={(date, reportLocationId) => requestNavigation(() => { if (reportLocationId !== currentLocationId) { clearOfflineSession(); setLocationId(reportLocationId); workflows.resetForLocation(); } setSelectedDay(date); setView("day"); })} />
             : <AccessDenied />
           : <DashboardToday {...todayProps} />;
   return appShell(mainView);

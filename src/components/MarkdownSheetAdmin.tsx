@@ -1,15 +1,19 @@
 import { ArrowDown, ArrowUp, Check, Plus, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { restApi, useRestMutation, useRestQuery } from "@/lib/rest-domain";
 
 type Product = { id: string; name: string; source: string; active: boolean; quickSelect: boolean; order: number; plu?: number | null; catalogueProductId?: string | null };
 type CatalogueProduct = { wastageItemId?: string; id: string; name: string; plu?: number | null; department?: string | null };
 
-export default function MarkdownSheetAdmin({ locationId, locationName, onBack }: { locationId: string; locationName: string; onBack: () => void }) {
+export default function MarkdownSheetAdmin({ locationId, locationName, onBack, onDirtyChange }: { locationId: string; locationName: string; onBack: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [search, setSearch] = useState("");
   const [customName, setCustomName] = useState("");
   const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    onDirtyChange?.(Boolean(customName.trim()));
+    return () => onDirtyChange?.(false);
+  }, [customName, onDirtyChange]);
   const data = useRestQuery<{ configured: Product[]; catalogue: CatalogueProduct[] }>(`markdown-admin:${locationId}:${revision}`, () => restApi.admin.markdownSheet.list({ locationId }), true);
   const update = useRestMutation(restApi.admin.markdownSheet.update);
   const configured = data?.configured ?? [];

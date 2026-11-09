@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { normalizeEmail, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
+import { createPasswordCredential, normalizeEmail, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
 import { sendInvitationEmail, toResendDeliveryError } from "../auth/resend.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireEnum, requireString, requireUuid } from "../compliance/validation.js";
@@ -60,6 +60,7 @@ type MembershipChange = {
 
 const ACCESS_AUDIT_TYPES = [
   "user_access_invited",
+  "user_access_created_with_password",
   "user_access_added",
   "user_access_removed",
   "user_access_role_changed",
@@ -316,6 +317,8 @@ export async function listUserAccess(context: AuthContext): Promise<UserAccessRe
     const roleChange = detail.oldRole && detail.newRole ? `${detail.oldRole === "manager" ? "Manager" : "Staff"} → ${detail.newRole === "manager" ? "Manager" : "Staff"}` : null;
     const change = row.event.type === "user_access_invited"
       ? `User invited${detail.storeName ? ` with ${detail.storeName} access` : ""}`
+      : row.event.type === "user_access_created_with_password"
+        ? `Account created with password${detail.storeName ? ` and ${detail.storeName} access` : ""}`
       : row.event.type === "user_access_added"
         ? `${detail.storeName ?? row.location?.name ?? "Store"} access added${detail.newRole ? ` (${detail.newRole === "manager" ? "Manager" : "Staff"})` : ""}`
         : row.event.type === "user_access_removed"
@@ -385,6 +388,57 @@ export async function inviteUser(context: AuthContext, input: Record<string, unk
 
   await sendInvite({ email: user.email, name: user.name ?? name, inviterName: context.user.name, locations: availableLocations, accessCreated: true });
   return { user: { id: user.id, email: user.email, name: user.name, role: user.role }, memberships: desired };
+}
+
+/** Creates a new account through the existing password-auth system without emailing an invitation. */
+export async function createUserWithPassword(context: AuthContext, input: Record<string, unknown>) {
+  const organisationId = organisationIdFor(context);
+  const name = userName(input.name);
+  const normalizedEmail = email(input.email);
+  const role = requireEnum(input.role, "role", ["staff", "manager"] as const);
+  const locationIds = membershipSelections(input.locations, true) ?? [];
+  if (!locationIds.length) throw new ApiError(400, "At least one store is required");
+  const availableLocations = await locationsForOrganisation(organisationId, locationIds);
+  const [existing] = await db().select({ id: users.id }).from(users).where(eq(users.normalizedEmail, normalizedEmail)).limit(1);
+  if (existing) throw new ApiError(409, "An account already exists for this email. Manage its store access instead.");
+
+  let credential: ReturnType<typeof createPasswordCredential>;
+  try {
+    if (typeof input.password !== "string") throw new Error("Password must be at least 10 characters");
+    credential = createPasswordCredential(input.password);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Password is invalid");
+  }
+
+  const desired = locationIds.map(selection => ({ locationId: selection.locationId, role }));
+  try {
+    const user = await db().transaction(async tx => {
+      const [created] = await tx.insert(users).values({
+        organisationId,
+        email: normalizedEmail,
+        normalizedEmail,
+        name,
+        role: "user",
+        emailVerifiedAt: null,
+        passwordHash: credential.hash,
+        passwordSalt: credential.salt,
+        passwordSetAt: new Date(),
+        active: true,
+        isAnonymous: false,
+      }).returning();
+      await syncMemberships(tx, created.id, organisationId, desired);
+      for (const location of availableLocations) {
+        await recordAccessAudit(tx, context, "user_access_created_with_password", location.id, accessAuditDetail({ userName: name, userEmail: normalizedEmail, storeName: location.name, newRole: role }));
+      }
+      return created;
+    });
+    return { user: { id: user.id, email: user.email, name: user.name, role: user.role, hasPassword: true }, memberships: desired, invitationSent: false };
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "23505") {
+      throw new ApiError(409, "An account already exists for this email. Manage its store access instead.");
+    }
+    throw error;
+  }
 }
 
 export async function updateUserAccess(context: AuthContext, userId: string, input: Record<string, unknown>) {

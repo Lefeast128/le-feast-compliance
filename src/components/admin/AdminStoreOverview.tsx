@@ -26,7 +26,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
 
@@ -35,6 +35,7 @@ type Props = {
   team: AdminTeamResponse | undefined;
   onOpenCatalogue: () => void;
   scope?: AdminFeatureKey;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type IssueUpdatePayload = Record<string, unknown>;
@@ -61,6 +62,7 @@ export default function AdminStoreOverview({
   team,
   onOpenCatalogue,
   scope,
+  onDirtyChange,
 }: Props) {
   const [teamEditor, setTeamEditor] = useState<AdminTeamEditorMember | false>(
     false,
@@ -74,6 +76,11 @@ export default function AdminStoreOverview({
   const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null);
   const [draggedWastageId, setDraggedWastageId] = useState<string | null>(null);
   const [draggedTrainingId, setDraggedTrainingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(teamEditor || editor || fridgeEditor));
+    return () => onDirtyChange?.(false);
+  }, [editor, fridgeEditor, onDirtyChange, teamEditor]);
 
   const addQuestion = useRestMutation(restApi.admin.addChecklistQuestion);
   const updateQuestion = useRestMutation(restApi.admin.updateChecklistQuestion);

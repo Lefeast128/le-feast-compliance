@@ -17,8 +17,8 @@ import {
   useRestMutation,
   useRestQuery,
 } from "@/lib/rest-domain";
-import { ArrowLeft, Pencil, Trash2, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ArrowLeft, Pencil, Search, Trash2, X } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Store = { id: string; name: string; shortName: string };
@@ -96,7 +96,7 @@ type OrganisationControls = {
   operationalTasks: OperationalTask[];
   recentChanges: Array<{ at: string | Date; actor: string; change: string }>;
 };
-type Props = { onBack: () => void };
+type Props = { onBack: () => void; onDirtyChange?: (dirty: boolean) => void };
 
 const selectedIds = (allStores: boolean, stores: Record<string, boolean>) =>
   allStores ? [] : Object.keys(stores).filter((id) => stores[id]);
@@ -150,7 +150,7 @@ function StorePicker({
   );
 }
 
-export default function OrganisationAdmin({ onBack }: Props) {
+export default function OrganisationAdmin({ onBack, onDirtyChange }: Props) {
   const data = useRestQuery<OrganisationControls>(
     "organisation-admin",
     restApi.admin.organisation.list,
@@ -201,6 +201,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
   );
   const [trainingFile, setTrainingFile] = useState<File | null>(null);
   const [trainingReacknowledge, setTrainingReacknowledge] = useState(false);
+  const [trainingSearch, setTrainingSearch] = useState("");
   const [taskEdit, setTaskEdit] = useState<string | null>(null);
   const [taskType, setTaskType] = useState("opening");
   const [taskQuestion, setTaskQuestion] = useState("");
@@ -211,8 +212,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [taskDescription, setTaskDescription] = useState("");
   const [taskInterval, setTaskInterval] = useState("");
   const [taskDayOfMonth, setTaskDayOfMonth] = useState("1");
+  const [defaultTaskNextDue] = useState(() => new Date().toISOString().slice(0, 10));
   const [taskNextDue, setTaskNextDue] = useState(
-    new Date().toISOString().slice(0, 10),
+    defaultTaskNextDue,
   );
   const [taskFields, setTaskFields] = useState<FieldDefinition[]>(emptyFields);
   const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">(
@@ -226,6 +228,21 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [section, setSection] = useState<"home" | OrganisationFeatureKey>(
     "home",
   );
+
+  const hasUnsavedDraft = Boolean(
+    trainingEdit || trainingTitle.trim() || trainingDescription.trim() || trainingCategory !== "other" ||
+    trainingAudience !== "all_team" || trainingFormat !== "briefing" || !trainingAllStores ||
+    Object.values(trainingStores).some(Boolean) || trainingFile || trainingReacknowledge ||
+    taskEdit || taskType !== "opening" || taskQuestion.trim() || taskName.trim() ||
+    taskFrequency !== "daily" || taskWeekdays.length || taskTitle.trim() || taskDescription.trim() ||
+    taskInterval.trim() || taskDayOfMonth !== "1" || taskNextDue !== defaultTaskNextDue ||
+    JSON.stringify(taskFields) !== JSON.stringify(emptyFields()) || taskTaskType !== "simple" ||
+    taskCompletionMode !== "question" || taskSteps.length || !taskAllStores || Object.values(taskStores).some(Boolean),
+  );
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedDraft);
+    return () => onDirtyChange?.(false);
+  }, [hasUnsavedDraft, onDirtyChange]);
 
   function resetTraining() {
     setTrainingEdit(null);
@@ -250,7 +267,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskDescription("");
     setTaskInterval("");
     setTaskDayOfMonth("1");
-    setTaskNextDue(new Date().toISOString().slice(0, 10));
+    setTaskNextDue(defaultTaskNextDue);
     setTaskFields(emptyFields());
     setTaskTaskType("simple");
     setTaskCompletionMode("question");
@@ -593,6 +610,10 @@ export default function OrganisationAdmin({ onBack }: Props) {
   }
 
   const stores = data?.locations ?? [];
+  const filteredTraining = (data?.training ?? []).filter(item => {
+    const query = trainingSearch.trim().toLocaleLowerCase();
+    return !query || [item.title, item.description ?? "", item.category ?? "", item.stores.join(" ")].some(value => value.toLocaleLowerCase().includes(query));
+  });
   const trainingItemBeingEdited = trainingEdit
     ? data?.training.find((item) => item.id === trainingEdit)
     : undefined;
@@ -897,11 +918,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                 </Button>
               )}
             </div>
-            <div className="mt-6 space-y-2">
-              {data.training.map((item) => (
+            <div className="relative mt-6">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#89918b]" />
+              <Input aria-label="Search briefings and training documents" value={trainingSearch} onChange={event => setTrainingSearch(event.target.value)} placeholder="Find a briefing or document" className="h-12 rounded-xl pl-10" />
+            </div>
+            <div className="mt-3 space-y-2">
+              {filteredTraining.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                  className="flex flex-col gap-3 rounded-xl bg-[#fafbf9] p-3 text-sm sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div>
                     <p className="font-semibold">
@@ -915,6 +940,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     <p className="text-xs text-[#727a74]">
                       {item.stores.join(", ")} · Version {item.version}
                     </p>
+                    {item.trainingFormat === "briefing" && item.description && <p className="mt-2 max-w-3xl whitespace-pre-line text-sm text-[#727a74]">{item.description}</p>}
                     {item.trainingFormat === "document" && (
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         {(item.attachmentStatus ?? []).map((attachment) => (
@@ -935,14 +961,14 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant="outline"
+                      size="sm"
                       aria-label={"Edit " + item.title}
                       onClick={() => startTrainingEdit(item)}
                     >
-                      <Pencil className="size-4" />
+                      <Pencil className="mr-1 size-4" /> Edit
                     </Button>
                     {item.trainingFormat === "document" && (
                       <label className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium hover:bg-black/[0.04]">
@@ -979,16 +1005,17 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       )}
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="sm"
                       className="text-[#b64738]"
-                      aria-label={"Retire " + item.title}
+                      aria-label={`${item.trainingFormat === "briefing" ? "Withdraw" : "Retire"} ${item.title}`}
                       onClick={() => void retire("training", item.id)}
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="mr-1 size-4" /> {item.trainingFormat === "briefing" ? "Withdraw" : "Retire"}
                     </Button>
                   </div>
                 </div>
               ))}
+              {!filteredTraining.length && <div className="rounded-xl border border-dashed border-black/[0.1] p-4 text-sm text-[#727a74]">{trainingSearch ? "No matching briefing or document." : "No organisation-wide training has been published yet."}</div>}
             </div>
           </section>
         )}

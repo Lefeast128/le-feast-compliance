@@ -205,6 +205,7 @@ export const restApi = {
     userAccess: {
       list: async (): Promise<UserAccessResponse> => compat(await query("/api/admin/user-access")),
       invite: (body: AnyRecord) => post("/api/admin/user-access", body),
+      createWithPassword: (body: AnyRecord) => post("/api/admin/user-access/create", body),
       update: ({ userId, ...body }: AnyRecord) => patch(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`, body),
       remove: ({ userId }: AnyRecord) => remove(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`),
       resend: ({ userId }: AnyRecord) => post(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}/resend`, {}),

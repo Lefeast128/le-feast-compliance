@@ -23,6 +23,7 @@ type Props = {
   onBack: () => void;
   onOpenDay?: (date: string, locationId: string) => void;
   onManagerReviews?: (locationId?: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 const featureTitles: Record<AdminFeatureKey, string> = {
@@ -66,7 +67,7 @@ function FeatureHeader({
   );
 }
 
-export default function AdminSetup({ onBack, onOpenDay, onManagerReviews }: Props) {
+export default function AdminSetup({ onBack, onOpenDay, onManagerReviews, onDirtyChange }: Props) {
   const { user } = useAuth();
   const isOrganisationAdmin = user?.role === "admin";
   const stores = useRestQuery<AdminOperation[]>(
@@ -103,7 +104,7 @@ export default function AdminSetup({ onBack, onOpenDay, onManagerReviews }: Prop
   }
 
   if (organisationAdminOpen && isOrganisationAdmin) {
-    return <OrganisationAdmin onBack={() => setOrganisationAdminOpen(false)} />;
+    return <OrganisationAdmin onBack={() => setOrganisationAdminOpen(false)} onDirtyChange={onDirtyChange} />;
   }
 
   if (!stores || (selectedLocationId && !currentStore)) {
@@ -133,11 +134,12 @@ export default function AdminSetup({ onBack, onOpenDay, onManagerReviews }: Prop
           locationId={selectedLocationId}
           locations={locations}
           onClose={() => setFeature(null)}
+          onDirtyChange={onDirtyChange}
         />
       );
     }
     if (feature === "markdown") {
-      return <MarkdownSheetAdmin locationId={selectedLocationId} locationName={currentStore.location.name} onBack={() => setFeature(null)} />;
+      return <MarkdownSheetAdmin locationId={selectedLocationId} locationName={currentStore.location.name} onBack={() => setFeature(null)} onDirtyChange={onDirtyChange} />;
     }
     return (
       <div className="min-h-screen bg-white text-[#171918]">
@@ -153,6 +155,7 @@ export default function AdminSetup({ onBack, onOpenDay, onManagerReviews }: Prop
             team={team ?? undefined}
             onOpenCatalogue={() => setFeature("wastage")}
             scope={feature}
+            onDirtyChange={onDirtyChange}
           />
         </main>
       </div>

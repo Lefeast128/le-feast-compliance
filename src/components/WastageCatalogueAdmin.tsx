@@ -8,7 +8,7 @@ import { restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildCatalogueUpdatePayload, clearEditorForStoreChange, createCatalogueEditor, filterCatalogueProducts, getCategorySuggestions, resetCatalogueEditor, type CatalogueAdminProduct, type CatalogueAvailabilityFilter, type CatalogueEditorState, type CatalogueReviewFilter } from "@/lib/catalogue-admin";
 
 type LocationOption = { id?: string; _id?: string; name: string };
-type Props = { locationId: string; locations: LocationOption[]; onClose: () => void };
+type Props = { locationId: string; locations: LocationOption[]; onClose: () => void; onDirtyChange?: (dirty: boolean) => void };
 type SyncStatus = { lastSuccessfulSyncAt?: string | null; lastError?: string | null };
 type CatalogueResponse = { products?: CatalogueAdminProduct[]; syncStatus?: SyncStatus | null };
 type CatalogueData = { locationId: string; products: CatalogueAdminProduct[]; syncStatus: SyncStatus | null };
@@ -20,7 +20,7 @@ const safeError = (error: unknown, fallback: string) => error instanceof Error &
 const categoryOf = (product: CatalogueAdminProduct) => product.wastageCategory ?? product.category ?? "";
 const formatSyncTime = (value: unknown) => value ? new Date(String(value)).toLocaleString("en-GB") : "Not yet synced";
 
-export default function WastageCatalogueAdmin({ locationId, locations, onClose }: Props) {
+export default function WastageCatalogueAdmin({ locationId, locations, onClose, onDirtyChange }: Props) {
   const [activeLocationId, setActiveLocationId] = useState(locationId);
   const [catalogue, setCatalogue] = useState<CatalogueData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +38,10 @@ export default function WastageCatalogueAdmin({ locationId, locations, onClose }
   const [management, setManagement] = useState<WastageManagement | null>(null);
   const [managementRevision, setManagementRevision] = useState(0);
   const [manualEditor, setManualEditor] = useState<ManualProductEditor | null>(null);
+  useEffect(() => {
+    onDirtyChange?.(Boolean(editor || manualEditor));
+    return () => onDirtyChange?.(false);
+  }, [editor, manualEditor, onDirtyChange]);
   const updateWastage = useRestMutation(restApi.catalogue.updateWastage);
   const refreshCatalogue = useRestMutation(restApi.catalogue.refresh);
   const addManual = useRestMutation(restApi.admin.addWastageItem);
