@@ -403,6 +403,11 @@ export const offlineSubmissions = pgTable("offline_submissions", {
   completedAt: timestampColumn("completed_at"),
 }, table => ({ submission: uniqueIndex("offline_submissions_submission_id_idx").on(table.submissionId), scope: index("offline_submissions_scope_idx").on(table.organisationId, table.locationId, table.userId) }));
 
+export const authLoginAttempts = pgTable("auth_login_attempts", {
+  key: text("key").primaryKey(), failures: integer("failures").notNull().default(0),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(), blockedUntil: timestampColumn("blocked_until"),
+});
+
 export const foundationTables = {
   organisations, users, locations, memberships, teamMembers, scheduledTasks, equipment,
   temperatureRounds, temperatureReadings, probeProducts, checklistQuestions, checklistResponses,
@@ -411,5 +416,5 @@ export const foundationTables = {
   cleaningCompletions, documents, libraryDocuments, libraryDocumentVersions, trainingRequirements, trainingDocumentVersions, trainingCompletions,
   centralTrainingPublications, centralChecklistItems, centralOperationalItems,
   additionalRequirements, additionalCompletions, structuredTaskResponses, trainingContentVersions, rechecks, issues, issueUpdates, shiftHandoverNotes, shiftHandoverAcknowledgements, shiftHandoverResolutions, auditEvents, managerReviews,
-  authOtpChallenges, authSessions, offlineSubmissions,
+  authOtpChallenges, authSessions, offlineSubmissions, authLoginAttempts,
 } as const;

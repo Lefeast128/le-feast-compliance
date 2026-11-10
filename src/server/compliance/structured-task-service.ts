@@ -18,6 +18,17 @@ import {
   type StructuredStepResponseType,
 } from "../db/schema.js";
 import { ApiError } from "./errors.js";
+
+// Staff may only record against today or yesterday (late-shift close-down) in the
+// location's timezone; anything else would allow backdating compliance records.
+export function writableDateKey(value: unknown, timeZone: string, now = Date.now()) {
+  const today = localDateKey(now, timeZone);
+  if (value === undefined || value === null || value === "") return today;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, "dateKey must be YYYY-MM-DD");
+  const yesterday = localDateKey(now - 24 * 60 * 60 * 1000, timeZone);
+  if (value !== today && value !== yesterday) throw new ApiError(422, "Responses can only be recorded for today or yesterday");
+  return value;
+}
 import { cleaningRunsOn, localWeekdayForDate } from "../../shared/cleaning-scheduling.js";
 import { localDateKey, localDayRange } from "../dashboard/time.js";
 import { activeMember } from "./shared.js";
@@ -288,7 +299,7 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
   const value = reportingIssue ? "issue_reported" : validateStructuredTaskResponse(step, input.value);
   const memberId = id(input.teamMemberId, "teamMemberId");
   await activeMember(locationId, memberId);
-  const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
+  const dateKey = writableDateKey(input.dateKey, location[0].timezone);
   const problem = typeof input.problem === "string" ? input.problem.trim() : "";
   const action = typeof input.action === "string" ? input.action.trim() : "";
   return db().transaction(async tx => idempotentOfflineMutation(tx, context, { key: typeof input.idempotencyKey === "string" ? input.idempotencyKey : undefined, organisationId: location[0].organisationId, locationId, operation: area === "cleaning" ? "cleaning-response" : "security-response", payload: input }, async () => {
@@ -315,7 +326,7 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
   const location = await db().select().from(locations).where(eq(locations.id, locationId)).limit(1);
   if (!location[0]) throw new ApiError(404, "Location not found");
   requireLocationAccess(context, locationId, location[0].organisationId);
-  const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
+  const dateKey = writableDateKey(input.dateKey, location[0].timezone);
   const memberId = id(input.teamMemberId, "teamMemberId");
   await activeMember(locationId, memberId);
   const { start, end } = localDayRange(Date.parse(`${dateKey}T12:00:00Z`), location[0].timezone);
