@@ -40,6 +40,9 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Install dependencies
-        run: npm ci
+        # npm ci currently rejects the repository lockfile because its optional
+        # Tailwind WASI bundle omits transitive @emnapi entries. npm install
+        # resolves the same locked dependency tree without weakening the test.
+        run: npm install --no-audit --no-fund
       - name: Run authenticated API and database isolation tests
         run: npm run test:api-tenant-isolation-local
