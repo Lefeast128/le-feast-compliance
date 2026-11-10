@@ -7,7 +7,7 @@ import { createHmac } from "node:crypto";
 
 const postgresBin = name => execFileSync("which", [name], { encoding: "utf8" }).trim();
 const run = (command, args, options = {}) => execFileSync(command, args, { stdio: "pipe", ...options });
-const sql = (url, text) => run(postgresBin("psql"), ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--dbname", url], { input: text, encoding: "utf8" });
+const sql = (url, text) => run(postgresBin("psql"), ["--no-psqlrc", "--quiet", "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1", "--dbname", url], { input: text, encoding: "utf8" });
 
 const ids = {
   orgA: "00000000-0000-4000-8000-000000000001",
@@ -40,6 +40,16 @@ const secret = "local-api-isolation-secret";
 const token = name => `local-${name}-session-token`;
 const tokenHash = value => createHmac("sha256", secret).update(value).digest("hex");
 const cookie = value => `lf_session=${encodeURIComponent(value)}`;
+const ciDatabaseUrl = process.env.EHO_API_TEST_DATABASE_URL?.trim();
+if (process.env.CI === "true" && !ciDatabaseUrl) {
+  throw new Error("CI requires the disposable EHO_API_TEST_DATABASE_URL service connection");
+}
+if (ciDatabaseUrl) {
+  const url = new URL(ciDatabaseUrl);
+  if (process.env.CI !== "true" || !["127.0.0.1", "localhost", "::1"].includes(url.hostname) || url.pathname !== "/eho_test") {
+    throw new Error("API isolation tests accept only the CI-owned loopback eho_test database");
+  }
+}
 
 const fixture = `
 INSERT INTO organisations (id, name, timezone) VALUES
@@ -107,20 +117,28 @@ const invoke = async (handler, request) => {
 };
 
 const test = async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "eho-api-tenant-isolation-"));
+  const dataDir = ciDatabaseUrl ? null : mkdtempSync(join(tmpdir(), "eho-api-tenant-isolation-"));
   const port = 55432 + Math.floor(Math.random() * 200);
-  const dbUrl = `postgresql://postgres@127.0.0.1:${port}/postgres`;
+  const dbUrl = ciDatabaseUrl ?? `postgresql://postgres@127.0.0.1:${port}/postgres`;
   let started = false;
   try {
-    run(postgresBin("initdb"), ["--no-locale", "--auth=trust", "--username=postgres", "--pgdata", dataDir], { stdio: "ignore" });
-    run(postgresBin("pg_ctl"), ["--pgdata", dataDir, "--options", `-p ${port} -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c shared_buffers=12MB`, "--wait", "start"], { stdio: "ignore" });
-    started = true;
+    if (ciDatabaseUrl) {
+      const publicTableCount = sql(dbUrl, "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';").trim();
+      if (publicTableCount !== "0") throw new Error("CI eho_test database is not empty; refusing to apply fixtures");
+      console.log("Using verified empty GitHub Actions PostgreSQL service database");
+    } else {
+      run(postgresBin("initdb"), ["--no-locale", "--auth=trust", "--username=postgres", "--pgdata", dataDir], { stdio: "ignore" });
+      run(postgresBin("pg_ctl"), ["--pgdata", dataDir, "--options", `-p ${port} -c shared_memory_type=mmap -c dynamic_shared_memory_type=mmap -c shared_buffers=12MB`, "--wait", "start"], { stdio: "ignore" });
+      started = true;
+    }
     const fs = await import("node:fs/promises");
     const migrations = (await fs.readdir(new URL("../drizzle/", import.meta.url))).filter(name => name.endsWith(".sql")).sort();
     for (const name of migrations) {
       const source = await fs.readFile(new URL(`../drizzle/${name}`, import.meta.url), "utf8");
+      console.log(`Applying disposable test migration ${name}`);
       sql(dbUrl, source.replaceAll("--> statement-breakpoint", ""));
     }
+    console.log(`Applied ${migrations.length} migrations; seeding fictional tenant fixtures`);
     sql(dbUrl, fixture);
 
     process.env.NODE_ENV = "production";
@@ -132,7 +150,7 @@ const test = async () => {
     process.env.AUTH_SESSION_SECRET = secret;
     process.env.AUTH_ALLOWED_ORIGINS = "http://localhost:5173";
 
-    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, document, checklistResponse] = await Promise.all([
+    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, createUserAccess, passwordLogin, document, checklistResponse] = await Promise.all([
       import("../api/locations.ts"),
       import("../api/dashboard.ts"),
       import("../api/controlled-documents.ts"),
@@ -142,6 +160,8 @@ const test = async () => {
       import("../api/reports/compliance/export.ts"),
       import("../api/admin/organisation.ts"),
       import("../api/admin/user-access.ts"),
+      import("../api/admin/user-access/create.ts"),
+      import("../api/auth/login.ts"),
       import("../api/documents/[id].ts"),
       import("../api/compliance/checklists/responses.ts"),
     ]).then(modules => modules.map(module => module.default));
@@ -203,6 +223,45 @@ const test = async () => {
     assert.equal((await invoke(userAccess, adminA())).status, 200);
     assert.equal((await invoke(userAccess, managerA())).status, 403);
 
+    const accountPassword = "fictional-account-password-9381";
+    const createBody = {
+      name: "Fictional New Staff",
+      email: "new.staff@example.test",
+      role: "staff",
+      password: accountPassword,
+      locations: [{ locationId: ids.storeA1, role: "staff" }],
+    };
+    const createRequest = (sessionName, body, authenticated = true) => ({
+      method: "POST",
+      headers: { ...(authenticated ? { cookie: cookie(token(sessionName)) } : {}), origin: "http://localhost:5173" },
+      body,
+    });
+    assert.equal((await invoke(createUserAccess, createRequest("", createBody, false))).status, 401, "unauthenticated account creation is rejected");
+    assert.equal((await invoke(createUserAccess, createRequest("manager-a", createBody))).status, 403, "store manager cannot create organisation user accounts");
+    assert.equal((await invoke(createUserAccess, createRequest("admin-a", { ...createBody, locations: [{ locationId: ids.storeB1, role: "staff" }] }))).status, 400, "admin cannot assign a user to another organisation's store");
+    assert.equal((await invoke(createUserAccess, createRequest("admin-a", { ...createBody, role: "admin" }))).status, 400, "this flow cannot create another organisation administrator");
+    const createdAccount = await invoke(createUserAccess, createRequest("admin-a", createBody));
+    assert.equal(createdAccount.status, 200);
+    assert.equal(createdAccount.body.data.invitationSent, false);
+    assert.equal(createdAccount.body.data.memberships[0].locationId, ids.storeA1);
+    assert.doesNotMatch(JSON.stringify(createdAccount.body), new RegExp(accountPassword), "plaintext password is not returned by the API");
+    const [storedHash, storedSalt, verifiedAt] = sql(dbUrl, "SELECT password_hash, password_salt, email_verified_at FROM users WHERE normalized_email = 'new.staff@example.test';").trim().split("|").map(value => value.trim());
+    assert.notEqual(storedHash, accountPassword, "database stores only the derived password hash");
+    assert.notEqual(storedSalt, accountPassword, "database does not store the plaintext password as salt");
+    assert.equal(verifiedAt, "", "no email verification claim is fabricated");
+    const authenticatedLogin = await invoke(passwordLogin, {
+      method: "POST",
+      headers: { origin: "http://localhost:5173" },
+      body: { email: "new.staff@example.test", password: accountPassword },
+    });
+    assert.equal(authenticatedLogin.status, 200, "the newly created fictional account can authenticate through the real password-login API");
+    assert.equal(authenticatedLogin.body.user.email, "new.staff@example.test");
+    assert.equal(authenticatedLogin.body.memberships[0].locationId, ids.storeA1);
+    assert.equal((await invoke(createUserAccess, createRequest("admin-a", createBody))).status, 409, "duplicate email is rejected without a second identity");
+    assert.equal(sql(dbUrl, "SELECT count(*) FROM users WHERE normalized_email = 'new.staff@example.test';").trim(), "1");
+    assert.equal(sql(dbUrl, `SELECT count(*) FROM memberships WHERE user_id = '${createdAccount.body.data.user.id}' AND location_id = '${ids.storeA1}' AND role = 'staff';`).trim(), "1");
+    assert.equal(sql(dbUrl, `SELECT count(*) FROM audit_events WHERE user_id = '${ids.adminA}' AND type = 'user_access_created_with_password' AND detail LIKE '%new.staff@example.test%';`).trim(), "1", "account creation is auditable");
+
     const missingLocation = await invoke(document, { method: "GET", query: { id: ids.docA }, headers: { cookie: cookie(token("manager-a")) } });
     assert.equal(missingLocation.status, 403);
     const wrongStore = await invoke(document, { method: "GET", query: { id: ids.docA, locationId: ids.storeA2 }, headers: { cookie: cookie(token("manager-a")) } });
@@ -221,15 +280,15 @@ const test = async () => {
     const count = sql(dbUrl, `SELECT count(*) FROM checklist_responses WHERE id = '${firstChecklistResponse.body.data.responseId}';`).trim();
     assert.match(count, /1/);
 
-    console.log("API tenant isolation passed: real auth sessions, API handlers, service queries, same-org store boundaries, cross-org boundaries, controlled-document allocation and idempotent offline replay");
+    console.log("API tenant isolation passed: real auth sessions, direct user creation and login with transactional DB assertions, same-org store boundaries, cross-org boundaries, controlled-document allocation and idempotent offline replay");
   } finally {
-    if (started && process.env.EHO_TEST_DATABASE_DRIVER === "pg") {
+    if (process.env.EHO_TEST_DATABASE_DRIVER === "pg") {
       try { await (await import("../src/server/db/client.ts")).getPool().end(); } catch {}
     }
     if (started) {
       try { run(postgresBin("pg_ctl"), ["--pgdata", dataDir, "--mode", "immediate", "--wait", "stop"], { stdio: "ignore" }); } catch {}
     }
-    rmSync(dataDir, { recursive: true, force: true });
+    if (dataDir) rmSync(dataDir, { recursive: true, force: true });
   }
 };
 
