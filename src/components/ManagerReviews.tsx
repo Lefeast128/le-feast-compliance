@@ -158,7 +158,7 @@ export default function ManagerReviews({ locationId, locations, onBack, onOpenTa
 
   return <div className="min-h-screen bg-white text-[#171918]">
     <header className="border-b border-black/[0.07] bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8"><div><p className="text-lg font-semibold">Manager Overview</p><p className="text-xs text-[#737a74]">Store management</p></div><Button variant="outline" onClick={returnToAllStores ? onReturnToAllStores : onBack}><ArrowLeft className="mr-2 size-4" />{returnToAllStores ? "All stores" : "Daily Checks"}</Button></div></header>
-    <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-8">
+    <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 pb-32 sm:px-8 sm:pb-36">
       <section className="flex flex-col gap-3 rounded-2xl border border-black/[0.07] bg-white p-4 sm:flex-row sm:items-end sm:justify-between">
         {allStores
           ? <div><p className="text-sm font-semibold">All stores</p><p className="mt-1 text-xs text-[#737a74]">Separate summaries for stores you are authorised to manage.</p></div>

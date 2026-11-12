@@ -303,9 +303,10 @@ export type RestQueryState<T> = {
 };
 
 export function useRestQueryState<T>(key: string | null, loader: () => Promise<T>, enabled = true): RestQueryState<T> {
-  const [state, setState] = useState<{ data: T | undefined; loading: boolean; error: Error | null }>({
+  const [state, setState] = useState<{ key: string | null; data: T | undefined; loading: boolean; error: Error | null }>({
+    key: null,
     data: undefined,
-    loading: enabled && Boolean(key),
+    loading: false,
     error: null,
   });
   const [revision, setRevision] = useState(0);
@@ -317,21 +318,26 @@ export function useRestQueryState<T>(key: string | null, loader: () => Promise<T
   useEffect(() => {
     if (!enabled || !key) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ data: undefined, loading: false, error: null });
+      setState({ key: null, data: undefined, loading: false, error: null });
       return;
     }
     let cancelled = false;
-    setState({ data: undefined, loading: true, error: null });
+    setState({ key, data: undefined, loading: true, error: null });
     loader().then((data) => {
-      if (!cancelled) setState({ data, loading: false, error: null });
+      if (!cancelled) setState({ key, data, loading: false, error: null });
     }).catch((error: unknown) => {
-      if (!cancelled) setState({ data: undefined, loading: false, error: error instanceof Error ? error : new Error("Request failed") });
+      if (!cancelled) setState({ key, data: undefined, loading: false, error: error instanceof Error ? error : new Error("Request failed") });
     });
     return () => { cancelled = true; };
     // The key controls the request inputs; callers may create a closure for those inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, revision]);
-  return { ...state, retry: () => setRevision((current) => current + 1) };
+  return {
+    data: state.key === key ? state.data : undefined,
+    loading: Boolean(enabled && key) && (state.key !== key || state.loading),
+    error: state.key === key ? state.error : null,
+    retry: () => setRevision((current) => current + 1),
+  };
 }
 
 export function useRestMutation<TArgs extends AnyRecord, TResult = any>(operation: (args: TArgs) => Promise<TResult>) {

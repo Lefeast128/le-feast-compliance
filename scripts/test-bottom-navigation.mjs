@@ -39,6 +39,7 @@ assert.match(taskIssueModal, /fixed inset-0 z-30/, "issue reporting overlay also
 assert.match(today, /onClose=\{\(\) => \{[\s\S]*setProbeOpen\(false\)/, "probe dismissal restores the main navigation state");
 assert.equal((dashboard.match(/<BottomNavigation /g) ?? []).length, 1, "Dashboard owns one persistent navigation bar");
 assert.match(dashboard, /const mainView = view === "calendar"/, "main destinations share a parent shell");
+assert.match(dashboard, /pb-\[calc\(8rem\+env\(safe-area-inset-bottom\)\)\]/, "content reserves clear space above the persistent navigation at narrow viewports");
 assert.match(dashboard, /activeNavigation = view === "training" \|\| view === "library" \? "library" : view === "calendar" \|\| view === "day" \? "calendar"/, "Training and archived days highlight their parent tab");
 assert.match(dashboard, /view === "managerReviews" && capabilities\.canUseManagement/, "Manager Reviews highlights Admin only for authorised management users");
 assert.match(dashboard, /onOpenTraining=\{\(\) => navigateTo\("training"\)\}/, "Library opens the preserved Training experience");

@@ -11,6 +11,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const result = await readPrivateDocument(document);
     const response = res as ApiResponse & { setHeader?: (name: string, value: string) => void; send?: (body: unknown) => void };
     response.setHeader?.("Content-Type", document.contentType);
+    response.setHeader?.("X-Document-Id", document.id);
+    response.setHeader?.("Cache-Control", "private, no-store");
     response.setHeader?.("Content-Disposition", `inline; filename="${document.originalFilename.replace(/"/g, "")}"`);
     response.send?.(Buffer.from(await new Response(result.stream).arrayBuffer()));
   } catch (error) {

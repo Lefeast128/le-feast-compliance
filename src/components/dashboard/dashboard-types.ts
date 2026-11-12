@@ -22,6 +22,7 @@ export type TrainingRequirement = {
   requiredDocumentVersionNumber?: number | null;
   requiredContentVersionNumber?: number | null;
   trainingInstructions?: string | null;
+  currentDocumentId?: string | null;
   documentUrl?: string | null;
 };
 

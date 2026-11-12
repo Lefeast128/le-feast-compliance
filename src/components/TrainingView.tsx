@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Check, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import VerifiedPdfPreview from "@/components/VerifiedPdfPreview";
 import type { TeamMember, TrainingCompletion, TrainingRequirement } from "@/components/dashboard/dashboard-types";
 
 const dateLabel = (value: string | number) =>
@@ -51,6 +52,8 @@ export default function TrainingView({
   } | null>(null);
   const [acknowledgementSaving, setAcknowledgementSaving] = useState(false);
   const [acknowledgementError, setAcknowledgementError] = useState<string | null>(null);
+  const [acknowledgementPdfVerified, setAcknowledgementPdfVerified] = useState(false);
+  const updateAcknowledgementPdfVerified = useCallback((verified: boolean) => setAcknowledgementPdfVerified(verified), []);
   const activeTeamMembers = teamMembers.filter(
     (member) => member.active !== false,
   );
@@ -317,19 +320,7 @@ export default function TrainingView({
                   )}
                   {selectedRequirement.documentUrl && (
                     <div className="mt-4 space-y-2">
-                      <iframe
-                        title={`${selectedRequirement.title} PDF`}
-                        src={selectedRequirement.documentUrl}
-                        className="h-72 w-full rounded-xl border border-black/[0.1]"
-                      />
-                      <a
-                        href={selectedRequirement.documentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
-                      >
-                        Open PDF
-                      </a>
+                      <VerifiedPdfPreview documentId={selectedRequirement.currentDocumentId} documentUrl={selectedRequirement.documentUrl} title={selectedRequirement.title} />
                     </div>
                   )}
                 </div>
@@ -367,6 +358,7 @@ export default function TrainingView({
                           className="bg-brand-yellow text-[#171717]"
                           onClick={() => {
                             setAcknowledgementError(null);
+                            setAcknowledgementPdfVerified(false);
                             setAcknowledgementTarget({ requirement: selectedRequirement, member });
                           }}
                         >
@@ -409,21 +401,10 @@ export default function TrainingView({
               </p>
               {acknowledgementTarget.requirement.documentUrl && (
                 <div className="mt-4 space-y-2">
-                  <iframe
-                    title={`${acknowledgementTarget.requirement.title} PDF preview`}
-                    src={acknowledgementTarget.requirement.documentUrl}
-                    className="h-[42vh] min-h-56 w-full rounded-xl border border-black/[0.1]"
-                  />
-                  <a
-                    href={acknowledgementTarget.requirement.documentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
-                  >
-                    Open PDF in a new tab
-                  </a>
+                  <VerifiedPdfPreview documentId={acknowledgementTarget.requirement.currentDocumentId} documentUrl={acknowledgementTarget.requirement.documentUrl} title={acknowledgementTarget.requirement.title} className="h-[42vh] min-h-56" onVerifiedChange={updateAcknowledgementPdfVerified} />
                 </div>
               )}
+              {acknowledgementTarget.requirement.trainingFormat === "document" && !acknowledgementTarget.requirement.documentUrl && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] p-3 text-sm text-[#a13d32]">The current PDF is unavailable, so this acknowledgement cannot be recorded.</p>}
               {acknowledgementTarget.requirement.currentDocumentVersionNumber !=
                 null && (
                 <p className="mt-3 text-sm text-[#727a74]">
@@ -455,7 +436,7 @@ export default function TrainingView({
                   Cancel
                 </Button>
                 <Button
-                  disabled={acknowledgementSaving}
+                  disabled={acknowledgementSaving || (acknowledgementTarget.requirement.trainingFormat === "document" && !acknowledgementPdfVerified)}
                   className="bg-brand-yellow text-[#171717]"
                   onClick={confirmAcknowledgement}
                 >

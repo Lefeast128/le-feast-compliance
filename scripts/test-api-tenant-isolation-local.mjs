@@ -17,6 +17,7 @@ const ids = {
   storeB1: "00000000-0000-4000-8000-000000000021",
   adminA: "00000000-0000-4000-8000-000000000101",
   managerA: "00000000-0000-4000-8000-000000000102",
+  staffA: "00000000-0000-4000-8000-000000000103",
   adminB: "00000000-0000-4000-8000-000000000201",
   memberA1: "00000000-0000-4000-8000-000000000301",
   memberA2: "00000000-0000-4000-8000-000000000302",
@@ -62,9 +63,11 @@ INSERT INTO locations (id, organisation_id, name, short_name, timezone) VALUES
 INSERT INTO users (id, organisation_id, email, normalized_email, name, role, email_verified_at) VALUES
   ('${ids.adminA}', '${ids.orgA}', 'admin-a@example.test', 'admin-a@example.test', 'Admin A', 'admin', now()),
   ('${ids.managerA}', '${ids.orgA}', 'manager-a@example.test', 'manager-a@example.test', 'Manager A', 'user', now()),
+  ('${ids.staffA}', '${ids.orgA}', 'staff-a@example.test', 'staff-a@example.test', 'Staff A', 'user', now()),
   ('${ids.adminB}', '${ids.orgB}', 'admin-b@example.test', 'admin-b@example.test', 'Admin B', 'admin', now());
 INSERT INTO memberships (user_id, location_id, role) VALUES
-  ('${ids.managerA}', '${ids.storeA1}', 'manager');
+  ('${ids.managerA}', '${ids.storeA1}', 'manager'),
+  ('${ids.staffA}', '${ids.storeA1}', 'staff');
 INSERT INTO team_members (id, location_id, name, role) VALUES
   ('${ids.memberA1}', '${ids.storeA1}', 'Team A1', 'team'),
   ('${ids.memberA2}', '${ids.storeA2}', 'Team A2', 'team'),
@@ -80,6 +83,7 @@ VALUES ('${ids.readingA}', '${ids.roundA}', '${ids.equipmentA}', '${ids.storeA1}
 INSERT INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES
   ('00000000-0000-4000-8000-000000000901', '${ids.adminA}', '${tokenHash(token("admin-a"))}', now() + interval '1 hour'),
   ('00000000-0000-4000-8000-000000000902', '${ids.managerA}', '${tokenHash(token("manager-a"))}', now() + interval '1 hour'),
+  ('00000000-0000-4000-8000-000000000904', '${ids.staffA}', '${tokenHash(token("staff-a"))}', now() + interval '1 hour'),
   ('00000000-0000-4000-8000-000000000903', '${ids.adminB}', '${tokenHash(token("admin-b"))}', now() + interval '1 hour');
 INSERT INTO documents (id, organisation_id, location_id, pathname, original_filename, content_type, size, purpose, created_by)
 VALUES
@@ -150,9 +154,10 @@ const test = async () => {
     process.env.AUTH_SESSION_SECRET = secret;
     process.env.AUTH_ALLOWED_ORIGINS = "http://localhost:5173";
 
-    const [locations, dashboard, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, createUserAccess, passwordLogin, document, checklistResponse] = await Promise.all([
+    const [locations, dashboard, managerOverview, controlledDocuments, library, training, reports, exportReport, organisation, userAccess, createUserAccess, passwordLogin, document, checklistResponse] = await Promise.all([
       import("../api/locations.ts"),
       import("../api/dashboard.ts"),
+      import("../api/manager-overview/stores.ts"),
       import("../api/controlled-documents.ts"),
       import("../api/library.ts"),
       import("../api/training.ts"),
@@ -168,6 +173,7 @@ const test = async () => {
 
     const request = (sessionName, query = {}) => ({ method: "GET", query, headers: { cookie: cookie(token(sessionName)) } });
     const managerA = session => request("manager-a", session);
+    const staffA = session => request("staff-a", session);
     const adminA = session => request("admin-a", session);
     const adminB = session => request("admin-b", session);
     const reportStart = new Date().toISOString().slice(0, 10);
@@ -183,6 +189,15 @@ const test = async () => {
     assert.equal(locationsB.status, 200);
     assert.deepEqual(locationsB.body.locations.map(item => item.id), [ids.storeB1]);
     assert(!locationsAdminA.body.locations.some(item => item.id === ids.storeB1));
+
+    const allStoresAdminA = await invoke(managerOverview, adminA());
+    assert.equal(allStoresAdminA.status, 200);
+    assert.deepEqual(allStoresAdminA.body.data.stores.map(item => item.location.id).sort(), [ids.storeA1, ids.storeA2].sort(), "organisation administrators receive only active stores in their organisation");
+    const allStoresManagerA = await invoke(managerOverview, managerA());
+    assert.equal(allStoresManagerA.status, 200);
+    assert.deepEqual(allStoresManagerA.body.data.stores.map(item => item.location.id), [ids.storeA1], "managers receive only stores they are assigned to manage");
+    assert.equal((await invoke(managerOverview, staffA())).status, 403, "staff cannot access the All stores manager API");
+    assert.equal((await invoke(managerOverview, adminB())).body.data.stores.some(item => item.location.id === ids.storeA1), false, "another organisation's stores are never returned");
 
     const dashboardA = await invoke(dashboard, managerA({ locationId: ids.storeA1 }));
     assert.equal(dashboardA.status, 200);

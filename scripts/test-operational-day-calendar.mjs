@@ -11,6 +11,9 @@ const london = createStoreDayTracker("Europe/London", beforeLondonMidnight);
 assert.equal(london.refresh(beforeLondonMidnight + 20_000), false, "same operational day does not roll over");
 assert.equal(london.refresh(afterLondonMidnight), true, "midnight rollover is detected when the timer runs");
 assert.equal(london.currentDate, "2026-11-06");
+const resumedLondon = createStoreDayTracker("Europe/London", beforeLondonMidnight);
+assert.equal(resumedLondon.refresh(afterLondonMidnight), true, "a deterministic resume after store-local midnight triggers the same rollover without waiting for a timer");
+assert.equal(resumedLondon.currentDate, "2026-11-06");
 
 const losAngeles = createStoreDayTracker("America/Los_Angeles", afterLondonMidnight);
 assert.equal(losAngeles.currentDate, "2026-11-05", "the date is computed in the selected store timezone, not browser timezone");
@@ -50,8 +53,12 @@ assert.match(dashboard, /setSelectedDay\(date\); setView\("day"\)/, "calendar se
 assert.match(dashboard, /archive:\$\{dashboard\.location\._id\}:\$\{selectedDay\}/, "archive data remains keyed to the deliberate calendar selection");
 assert.match(archiveService, /status: calendarDay\?\.status === "green" \? "complete"/, "archive summary uses the same historical calendar status");
 assert.match(calendar, /Incomplete scheduled work — open date to review its original records/, "incomplete dates are clearly explained");
+assert.match(calendar, /incomplete \? "border-2 border-\[#c85a4b\] bg-\[#fff1ee\]"/, "incomplete dates have a strong visible cell marker");
+assert.match(calendar, /incomplete \? "Incomplete"/, "incomplete label remains visible at phone widths");
+assert.match(calendar, /Calendar status could not be loaded/, "API errors are not presented as dates with no recorded status");
+assert.match(calendar, /Loading calendar status/, "calendar loading is not represented as zero or empty status");
 assert.match(calendar, /aria-label=\{`\$\{key\}: \$\{status\}/, "date status is accessible on touch and keyboard devices");
-assert.match(calendar, /min-h-16[\s\S]*sm:min-h-20/, "calendar cells retain touch targets on phones and desktop");
+assert.match(calendar, /min-h-20[\s\S]*sm:min-h-20/, "calendar cells retain touch targets on phones and desktop");
 assert.match(restDomain, /snapshot\?\.key === key \? snapshot\.value : undefined/, "data from the previous date or store is not rendered as current while refreshing");
 
 console.log("Operational day rollover and Calendar tests passed");
