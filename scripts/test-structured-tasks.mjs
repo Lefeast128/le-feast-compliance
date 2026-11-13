@@ -24,15 +24,18 @@ assert.equal(chronology[0].eventType, "structured_task_response");
 assert.match(chronology[0].detail, /Check seal/);
 assert.equal(chronology[0].teamMemberName, "Alex");
 
-const [schema, migration, editor, navigation] = await Promise.all([
+const [schema, migration, unifiedMigration, editor, navigation] = await Promise.all([
   readFile("src/server/db/schema.ts", "utf8"),
   readFile("drizzle/0013_structured_tasks.sql", "utf8"),
+  readFile("drizzle/0017_unified_checklist_modes.sql", "utf8"),
   readFile("src/components/ConfigEditor.tsx", "utf8"),
   readFile("src/components/dashboard/DashboardPrimitives.tsx", "utf8"),
 ]);
 for (const table of ["checklistQuestions", "cleaningTasks", "securityQuestions"]) assert.match(schema, new RegExp(`${table}[\\s\\S]*taskType`));
 assert.match(schema, /structuredTaskResponses/);
+assert.match(schema, /completionMode: text\("completion_mode"\)/);
 assert.match(migration, /CREATE TABLE IF NOT EXISTS "structured_task_responses"/);
+assert.match(unifiedMigration, /completion_mode/);
 assert.match(editor, /Task with steps/);
 assert.match(editor, /responseType/);
 assert.match(navigation, /BottomNavigation/);

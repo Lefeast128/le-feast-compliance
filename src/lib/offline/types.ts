@@ -1,0 +1,58 @@
+export const OFFLINE_SCHEMA_VERSION = 1;
+
+export type OfflineSubmissionState =
+  | "draft"
+  | "pending"
+  | "syncing"
+  | "synced"
+  | "failed"
+  | "conflict";
+
+export type OfflineScope = {
+  organisationId: string;
+  locationId: string;
+  userId: string;
+  deviceSessionId: string;
+};
+
+export type OfflineSubmission = OfflineScope & {
+  submissionId: string;
+  schemaVersion: number;
+  operation:
+    | "opening-checklist-response"
+    | "closing-checklist-response"
+    | "cleaning-response"
+    | "security-response"
+    | "additional-check-response"
+    | "temperature-reading"
+    | "probe-reading"
+    | "issue-update"
+    | "wastage-record"
+    | "handover-note"
+    | "markdown-sheet";
+  endpoint: string;
+  method: "POST";
+  capturedAt: string;
+  state: OfflineSubmissionState;
+  payload: Record<string, unknown>;
+  attempts: number;
+  nextAttemptAt: string | null;
+  lastError: string | null;
+  serverResponse: unknown;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OfflineSession = OfflineScope & {
+  authenticatedAt: string;
+  expiresAt: string;
+  user: {
+    id: string;
+    organisationId: string | null;
+    email: string;
+    name: string | null;
+    role: "user" | "admin";
+    hasPassword: boolean;
+  };
+  memberships: Array<{ userId: string; locationId: string; role: "staff" | "manager" }>;
+};

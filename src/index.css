@@ -40,10 +40,12 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-brand-yellow: var(--brand-yellow);
 }
 
 /* CHANGE VALUES FOR THEME */
 :root {
+  --brand-yellow: #FFDE56;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -113,6 +115,22 @@
 }
 
 @layer utilities {
+  /* Ordinary app surfaces stay bright white; status surfaces retain their semantic tones. */
+  .bg-\[\#f6f7f5\] { background-color: #ffffff; }
+  .bg-\[\#f6f7f5\]\/95 { background-color: rgb(255 255 255 / 0.95); }
+  .min-h-screen.bg-\[\#fffdf4\] { background-color: #ffffff; }
+  .bg-\[\#fff7dc\],
+  .bg-\[\#fff7c9\],
+  .bg-\[\#fff9df\] { background-color: rgb(255 222 86 / 0.18); }
+  .bg-\[\#fffdf4\],
+  .bg-\[\#fffdf1\] { background-color: rgb(255 222 86 / 0.10); }
+  .bg-\[\#fafbf9\],
+  .bg-\[\#fbfcfa\],
+  .bg-\[\#f8f9f7\] { background-color: #ffffff; }
+  /* Keep the compact signer line after the answer controls in expanded checklist items. */
+  div:has(> .checklist-attribution) { display: flex; flex-direction: column; }
+  div:has(> .checklist-attribution) > .checklist-attribution { order: 2; }
+  div:has(> .checklist-attribution) > div[class*="bg-[#fff8f6]"] { order: 3; }
   /* Keep the store controls in separate rows on the operational header at narrow widths. */
   @media (max-width: 1023px) {
     header.sticky > div { display: block !important; }
@@ -122,9 +140,6 @@
   /* Keep the empty temperature state concise without the old instructional label. */
   span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"] { font-size: 0; }
   span[class*="bg-[#f1f2ef]"][class*="text-[#727a74]"]::after { content: "READY"; font-size: 0.75rem; }
-  [class~="bg-[#f4c542]"], [class*="bg-[#f4c542]"] { background-color: #ffde56 !important; }
-  [class~="hover:bg-[#f7d363]"]:hover, [class*="hover:bg-[#f7d363]"]:hover { background-color: #ffde56 !important; }
-  [class~="ring-[#f4c542]"], [class*="ring-[#f4c542]"] { --tw-ring-color: #ffde56 !important; }
 }
 
 @layer base {
@@ -153,5 +168,51 @@
 @supports (min-height: 100dvh) {
   .min-h-screen {
     min-height: 100dvh;
+  }
+}
+
+@media print {
+  @page {
+    margin: 14mm 12mm;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .inspection-print-root > header,
+  .inspection-print-root > main > *:not(#inspection-pack),
+  .inspection-print-root > .print-hidden {
+    display: none !important;
+  }
+
+  .inspection-print-root > main {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #inspection-pack {
+    display: block !important;
+    width: 100% !important;
+    color: #171918 !important;
+  }
+
+  #inspection-pack > .inspection-pack-section,
+  #inspection-pack .inspection-pack-entry {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #inspection-pack h1,
+  #inspection-pack h2,
+  #inspection-pack h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  #inspection-pack .print\:hidden {
+    display: none !important;
   }
 }

@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-client";
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { clearOfflineSession, readOfflineAuthSession } from "@/lib/offline/device-session";
+import { createAuthRequestSequence } from "@/lib/auth-request-sequence";
 
 type AuthContextValue = {
   isLoading: boolean;
@@ -33,9 +35,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [memberships, setMemberships] = useState<AuthMembership[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [requestSequence] = useState(createAuthRequestSequence);
 
   const applySession = useCallback((session: Awaited<ReturnType<typeof authApi.getSession>>) => {
     if (!session.authenticated) {
+      clearOfflineSession();
       setIsAuthenticated(false);
       setUser(null);
       setMemberships([]);
@@ -48,19 +52,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async () => {
+    const requestRevision = requestSequence.capture();
     setIsLoading(true);
     setAuthError(null);
     try {
-      applySession(await authApi.getSession());
+      const session = await authApi.getSession();
+      if (requestSequence.isCurrent(requestRevision)) applySession(session);
     } catch (error) {
-      setIsAuthenticated(false);
-      setUser(null);
-      setMemberships([]);
-      setAuthError(errorMessage(error, "Unable to check your session"));
+      if (!requestSequence.isCurrent(requestRevision)) return;
+      const cachedSession = readOfflineAuthSession();
+      const status = error instanceof ApiError ? error.status : 0;
+      if (cachedSession && [0, 502, 503].includes(status)) {
+        applySession(cachedSession);
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
+        setMemberships([]);
+        setAuthError(errorMessage(error, "Unable to check your session"));
+      }
     } finally {
-      setIsLoading(false);
+      if (requestSequence.isCurrent(requestRevision)) setIsLoading(false);
     }
-  }, [applySession]);
+  }, [applySession, requestSequence]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -80,9 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const verifyOtp = useCallback(async (email: string, code: string, purpose: "setup" | "reset" = "setup") => {
+    requestSequence.beginMutation();
     setAuthError(null);
     try {
       const result = purpose === "setup" ? await authApi.verifyOtp(email, code) : await authApi.verifyOtpFor(email, code, purpose);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
@@ -90,45 +105,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setAuthError(errorMessage(error, "Unable to verify code"));
       throw error;
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [requestSequence]);
 
   const login = useCallback(async (email: string, password: string) => {
+    requestSequence.beginMutation();
     setAuthError(null);
     try {
       const result = await authApi.login(email, password);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
     } catch (error) {
       setAuthError(errorMessage(error, "Invalid email or password"));
       throw error;
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [requestSequence]);
 
   const setPassword = useCallback(async (password: string) => {
+    requestSequence.beginMutation();
     setAuthError(null);
     try {
       const result = await authApi.setPassword(password);
+      clearOfflineSession();
       setIsAuthenticated(true);
       setUser(result.user);
       setMemberships(result.memberships);
     } catch (error) {
       setAuthError(errorMessage(error, "Unable to set password"));
       throw error;
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [requestSequence]);
 
   const logout = useCallback(async () => {
+    requestSequence.beginMutation();
     setAuthError(null);
     try {
       await authApi.logout();
     } finally {
+      clearOfflineSession();
       setIsAuthenticated(false);
       setUser(null);
       setMemberships([]);
+      setIsLoading(false);
     }
-  }, []);
+  }, [requestSequence]);
 
   const value = useMemo<AuthContextValue>(() => ({
     isLoading,

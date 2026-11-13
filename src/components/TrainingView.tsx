@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Check, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import VerifiedPdfPreview from "@/components/VerifiedPdfPreview";
+import type { TeamMember, TrainingCompletion, TrainingRequirement } from "@/components/dashboard/dashboard-types";
 
-const dateLabel = (value: number) =>
+const dateLabel = (value: string | number) =>
   new Date(value).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -18,12 +20,15 @@ const categoryLabels: Record<string, string> = {
   other: "Other",
 };
 
+const trainingFormatLabel = (requirement: { trainingFormat?: string | null }) =>
+  requirement.trainingFormat === "document" ? "Document / PDF" : "Briefing";
+
 type Props = {
   locationName: string;
-  requirements: any[];
-  completions: any[];
-  teamMembers: any[];
-  onComplete: (requirementId: any, teamMemberId: any) => Promise<void>;
+  requirements: TrainingRequirement[];
+  completions: TrainingCompletion[];
+  teamMembers: TeamMember[];
+  onComplete: (requirementId: string, teamMemberId: string) => Promise<void>;
   onBack: () => void;
 };
 
@@ -39,26 +44,31 @@ export default function TrainingView({
   const [filter, setFilter] = useState<"outstanding" | "all" | "employee">(
     "outstanding",
   );
-  const [selectedRequirement, setSelectedRequirement] = useState<any>(null);
+  const [selectedRequirement, setSelectedRequirement] = useState<TrainingRequirement | null>(null);
   const [selectedMember, setSelectedMember] = useState("");
   const [acknowledgementTarget, setAcknowledgementTarget] = useState<{
-    requirement: any;
-    member: any;
+    requirement: TrainingRequirement;
+    member: TeamMember;
   } | null>(null);
+  const [acknowledgementSaving, setAcknowledgementSaving] = useState(false);
+  const [acknowledgementError, setAcknowledgementError] = useState<string | null>(null);
+  const [acknowledgementPdfVerified, setAcknowledgementPdfVerified] = useState(false);
+  const updateAcknowledgementPdfVerified = useCallback((verified: boolean) => setAcknowledgementPdfVerified(verified), []);
   const activeTeamMembers = teamMembers.filter(
     (member) => member.active !== false,
   );
 
-  const applicableMembers = (requirement: any) => {
-    if (Array.isArray(requirement.applicableTeamMemberIds)) {
+  const applicableMembers = (requirement: TrainingRequirement) => {
+    const applicableTeamMemberIds = requirement.applicableTeamMemberIds;
+    if (Array.isArray(applicableTeamMemberIds)) {
       return activeTeamMembers.filter((member) =>
-        requirement.applicableTeamMemberIds.includes(member._id),
+        applicableTeamMemberIds.includes(member._id),
       );
     }
     return activeTeamMembers;
   };
 
-  const completionFor = (requirement: any, memberId: any) => {
+  const completionFor = (requirement: TrainingRequirement, memberId: string) => {
     const requiredVersion = requirement.requiredDocumentVersionNumber;
     const requiredContentVersion = requirement.requiredContentVersionNumber;
     return completions
@@ -79,10 +89,10 @@ export default function TrainingView({
           (item.contentVersionNumber != null &&
             item.contentVersionNumber >= requiredContentVersion),
       )
-      .sort((a, b) => b.completedAt - a.completedAt)[0];
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
   };
 
-  const completedCount = (requirement: any) =>
+  const completedCount = (requirement: TrainingRequirement) =>
     applicableMembers(requirement).filter((member) =>
       completionFor(requirement, member._id),
     ).length;
@@ -112,16 +122,24 @@ export default function TrainingView({
     : [];
 
   async function confirmAcknowledgement() {
-    if (!acknowledgementTarget) return;
-    await onComplete(
-      acknowledgementTarget.requirement._id,
-      acknowledgementTarget.member._id,
-    );
-    setAcknowledgementTarget(null);
+    if (!acknowledgementTarget || acknowledgementSaving) return;
+    setAcknowledgementSaving(true);
+    setAcknowledgementError(null);
+    try {
+      await onComplete(
+        acknowledgementTarget.requirement._id,
+        acknowledgementTarget.member._id,
+      );
+      setAcknowledgementTarget(null);
+    } catch (completeError) {
+      setAcknowledgementError(completeError instanceof Error ? completeError.message : "The acknowledgement could not be saved. Please try again.");
+    } finally {
+      setAcknowledgementSaving(false);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
           <Button variant="ghost" size="icon" onClick={onBack}>
@@ -213,13 +231,11 @@ export default function TrainingView({
                       ) : (
                         <Button
                           size="sm"
-                          className="bg-[#ffde56] text-[#171717]"
-                          onClick={() =>
-                            setAcknowledgementTarget({
-                              requirement,
-                              member: selectedMemberRecord,
-                            })
-                          }
+                          className="bg-brand-yellow text-[#171717]"
+                          onClick={() => {
+                            setAcknowledgementError(null);
+                            setAcknowledgementTarget({ requirement, member: selectedMemberRecord });
+                          }}
                         >
                           Acknowledge
                         </Button>
@@ -249,6 +265,9 @@ export default function TrainingView({
                 >
                   <div>
                     <p className="font-semibold">{requirement.title}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-[#89918b]">
+                      {trainingFormatLabel(requirement)}
+                    </p>
                     <p className="mt-1 text-sm text-[#727a74]">
                       {members.length
                         ? `${count} of ${members.length} complete · ${members.length - count} outstanding`
@@ -277,6 +296,18 @@ export default function TrainingView({
                   <h2 className="mt-2 text-2xl font-semibold">
                     {selectedRequirement.title}
                   </h2>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    <span className="rounded-full bg-[#fff7dc] px-3 py-1 text-[#80610e]">
+                      {trainingFormatLabel(selectedRequirement)}
+                    </span>
+                    <span className="rounded-full bg-[#f2f5ef] px-3 py-1 text-[#4e5851]">
+                      {applicableMembers(selectedRequirement).length > 0 &&
+                      completedCount(selectedRequirement) ===
+                        applicableMembers(selectedRequirement).length
+                        ? "Acknowledged"
+                        : "Not acknowledged"}
+                    </span>
+                  </div>
                   <p className="mt-1 text-sm text-[#727a74]">
                     {applicableMembers(selectedRequirement).length
                       ? `${completedCount(selectedRequirement)} of ${applicableMembers(selectedRequirement).length} complete`
@@ -289,19 +320,7 @@ export default function TrainingView({
                   )}
                   {selectedRequirement.documentUrl && (
                     <div className="mt-4 space-y-2">
-                      <iframe
-                        title={`${selectedRequirement.title} PDF`}
-                        src={selectedRequirement.documentUrl}
-                        className="h-72 w-full rounded-xl border border-black/[0.1]"
-                      />
-                      <a
-                        href={selectedRequirement.documentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
-                      >
-                        Open PDF
-                      </a>
+                      <VerifiedPdfPreview documentId={selectedRequirement.currentDocumentId} documentUrl={selectedRequirement.documentUrl} title={selectedRequirement.title} />
                     </div>
                   )}
                 </div>
@@ -327,8 +346,8 @@ export default function TrainingView({
                         <p className="font-semibold">{member.name}</p>
                         <p className="mt-1 text-xs text-[#89918b]">
                           {completion
-                            ? `Completed ${dateLabel(completion.completedAt)}`
-                            : "Outstanding"}
+                            ? `Acknowledged · ${dateLabel(completion.completedAt)}`
+                            : "Not acknowledged"}
                         </p>
                       </div>
                       {completion ? (
@@ -336,13 +355,12 @@ export default function TrainingView({
                       ) : (
                         <Button
                           size="sm"
-                          className="bg-[#ffde56] text-[#171717]"
-                          onClick={() =>
-                            setAcknowledgementTarget({
-                              requirement: selectedRequirement,
-                              member,
-                            })
-                          }
+                          className="bg-brand-yellow text-[#171717]"
+                          onClick={() => {
+                            setAcknowledgementError(null);
+                            setAcknowledgementPdfVerified(false);
+                            setAcknowledgementTarget({ requirement: selectedRequirement, member });
+                          }}
                         >
                           Acknowledge
                         </Button>
@@ -356,13 +374,16 @@ export default function TrainingView({
         )}
         {acknowledgementTarget && (
           <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-            <div className="w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8">
+            <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 sm:p-8">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
                 Training acknowledgement
               </p>
               <h2 className="mt-2 text-2xl font-semibold">
                 {acknowledgementTarget.requirement.title}
               </h2>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#89918b]">
+                {trainingFormatLabel(acknowledgementTarget.requirement)}
+              </p>
               {(acknowledgementTarget.requirement.trainingInstructions ??
                 acknowledgementTarget.requirement.description) && (
                 <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#727a74]">
@@ -379,15 +400,11 @@ export default function TrainingView({
                 </span>
               </p>
               {acknowledgementTarget.requirement.documentUrl && (
-                <a
-                  href={acknowledgementTarget.requirement.documentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex min-h-11 items-center rounded-xl border border-black/[0.1] px-3 text-sm font-semibold text-[#202522]"
-                >
-                  Open PDF
-                </a>
+                <div className="mt-4 space-y-2">
+                  <VerifiedPdfPreview documentId={acknowledgementTarget.requirement.currentDocumentId} documentUrl={acknowledgementTarget.requirement.documentUrl} title={acknowledgementTarget.requirement.title} className="h-[42vh] min-h-56" onVerifiedChange={updateAcknowledgementPdfVerified} />
+                </div>
               )}
+              {acknowledgementTarget.requirement.trainingFormat === "document" && !acknowledgementTarget.requirement.documentUrl && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] p-3 text-sm text-[#a13d32]">The current PDF is unavailable, so this acknowledgement cannot be recorded.</p>}
               {acknowledgementTarget.requirement.currentDocumentVersionNumber !=
                 null && (
                 <p className="mt-3 text-sm text-[#727a74]">
@@ -419,12 +436,14 @@ export default function TrainingView({
                   Cancel
                 </Button>
                 <Button
-                  className="bg-[#ffde56] text-[#171717]"
+                  disabled={acknowledgementSaving || (acknowledgementTarget.requirement.trainingFormat === "document" && !acknowledgementPdfVerified)}
+                  className="bg-brand-yellow text-[#171717]"
                   onClick={confirmAcknowledgement}
                 >
-                  Complete Acknowledgement
+                  {acknowledgementSaving ? "Saving…" : "Complete Acknowledgement"}
                 </Button>
               </div>
+              {acknowledgementError && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{acknowledgementError}</p>}
             </div>
           </div>
         )}

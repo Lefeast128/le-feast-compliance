@@ -1,0 +1,71 @@
+export const CLEANING_WEEKDAYS = [
+  { value: 0, short: "Sun", label: "Sunday" },
+  { value: 1, short: "Mon", label: "Monday" },
+  { value: 2, short: "Tue", label: "Tuesday" },
+  { value: 3, short: "Wed", label: "Wednesday" },
+  { value: 4, short: "Thu", label: "Thursday" },
+  { value: 5, short: "Fri", label: "Friday" },
+  { value: 6, short: "Sat", label: "Saturday" },
+] as const;
+
+export type CleaningFrequency = "after_use" | "daily" | "weekly" | "specific_days";
+
+export function normalizeCleaningWeekdays(frequency: string, value: unknown) {
+  const days = Array.isArray(value)
+    ? value.filter((day): day is number => Number.isInteger(day) && day >= 0 && day <= 6)
+    : [];
+  // Older weekly records were implicitly Monday schedules. Keep those records
+  // valid while every newly configured schedule uses explicit day selection.
+  return frequency === "weekly" && days.length === 0 ? [1] : [...new Set(days)].sort((a, b) => a - b);
+}
+
+export function cleaningRunsOn(frequency: string, weekdays: unknown, weekday: number) {
+  if (frequency === "after_use" || frequency === "daily") return true;
+  return normalizeCleaningWeekdays(frequency, weekdays).includes(weekday);
+}
+
+export type CleaningEvidenceStatus = "scheduled" | "not_required" | "not_verifiable";
+
+export type CleaningReportStatus = "complete" | "incomplete" | "recorded" | "not_required" | "not_verifiable";
+
+/**
+ * After-use completion is evidence that a cleaning action was recorded, but
+ * it is not evidence that the equipment was used (or that every use was
+ * followed by cleaning). Keep that distinction explicit in reports.
+ */
+export function afterUseCleaningStatus(hasAfterUseTasks: boolean, recordedCount: number): "recorded" | "not_required" | "not_verifiable" {
+  if (!hasAfterUseTasks) return "not_required";
+  return recordedCount > 0 ? "recorded" : "not_verifiable";
+}
+
+export function localWeekdayForDate(dateKey: string, timeZone: string) {
+  // dateKey already represents the store-local calendar date. Converting UTC noon
+  // back into a timezone would shift it a day in UTC+13/+14 stores.
+  new Intl.DateTimeFormat("en-GB", { timeZone }); // Validate the configured timezone.
+  return new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+}
+
+/**
+ * After-use cleaning is operationally triggered by an observed use event.
+ * There is no usage record in the current model, so historical reports must
+ * keep it visible as not verifiable rather than treating it as missed.
+ */
+export function cleaningEvidenceStatus(frequency: string, weekdays: unknown, dateKey: string, timeZone: string): CleaningEvidenceStatus {
+  if (frequency === "after_use") return "not_verifiable";
+  return cleaningRunsOn(frequency, weekdays, localWeekdayForDate(dateKey, timeZone)) ? "scheduled" : "not_required";
+}
+
+export function cleaningIsScheduledForDate(frequency: string, weekdays: unknown, dateKey: string, timeZone: string) {
+  return cleaningEvidenceStatus(frequency, weekdays, dateKey, timeZone) === "scheduled";
+}
+
+export function cleaningWeekdayLabel(value: number) {
+  return CLEANING_WEEKDAYS.find(day => day.value === value)?.label ?? `Day ${value}`;
+}
+
+export function cleaningWeekdaySummary(frequency: string, weekdays: unknown) {
+  if (frequency === "after_use") return "After use";
+  if (frequency === "daily") return "Daily";
+  const days = normalizeCleaningWeekdays(frequency, weekdays);
+  return days.length ? days.map(cleaningWeekdayLabel).join(", ") : "No weekdays selected";
+}

@@ -1,13 +1,13 @@
 {
-  "name": "Le Feast Compliance",
-  "short_name": "Le Feast",
-  "description": "Le Feast Compliance",
+  "name": "mise. by Le Feast",
+  "short_name": "mise.",
+  "description": "Store operations and compliance, handled simply.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f6f7f5",
-  "theme_color": "#ffde59",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFDE56",
   "icons": [
     {
       "src": "/icons/icon-192.png",

@@ -24,6 +24,7 @@ export type ReviewType = "weekly" | "four_weekly";
 export type ReviewPeriod = { reviewType: ReviewType; start: string; end: string };
 export type ReviewStatus = "complete" | "due" | "overdue" | "up_to_date";
 export type ReviewPeriodState = { reviewType: ReviewType; start: string | null; end: string | null; status: ReviewStatus; daysUntilDue: number; available: boolean; nextAvailableAfter: string | null };
+// Non-resolving review updates retain the canonical event: updateType: "manager_review".
 
 type IssueRow = typeof issues.$inferSelect;
 type IssueUpdateRow = typeof issueUpdates.$inferSelect;
@@ -213,7 +214,7 @@ const reviewDto = (row: typeof managerReviews.$inferSelect, completedByName: str
   answers: row.answers,
 });
 
-export async function getManagerReviews(context: AuthContext, locationId: string) {
+export async function getManagerReviews(context: AuthContext, locationId: string, timestamp = Date.now()) {
   const location = await managedLocation(context, locationId);
   const [historyRows, historyUsers, currentIssues, locationMembers] = await Promise.all([
     db().select().from(managerReviews).where(eq(managerReviews.locationId, location.id)).orderBy(asc(managerReviews.periodStart)),
@@ -221,8 +222,8 @@ export async function getManagerReviews(context: AuthContext, locationId: string
     db().select().from(issues).where(eq(issues.locationId, location.id)),
     db().select({ id: teamMembers.id, name: teamMembers.name }).from(teamMembers).where(eq(teamMembers.locationId, location.id)),
   ]);
-  const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly");
-  const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly");
+  const weekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "weekly"), location.timezone, "weekly", timestamp);
+  const fourWeekly = nextOutstandingReviewPeriod(historyRows.filter(row => row.reviewType === "four_weekly"), location.timezone, "four_weekly", timestamp);
   const [weeklyRows, fourRows, weeklyScope, fourScope] = await Promise.all([
     existingReview(location.id, weekly),
     existingReview(location.id, fourWeekly),
@@ -236,11 +237,11 @@ export async function getManagerReviews(context: AuthContext, locationId: string
     db().select().from(temperatureReadings).where(eq(temperatureReadings.locationId, location.id)),
     db().select().from(foodChecks).where(eq(foodChecks.locationId, location.id)),
   ]);
-  const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
-  const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date());
+  const currentIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status !== "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date(timestamp));
+  const resolvedIssueRows = await issuePresentation(location.id, currentIssues.filter(issue => issue.status === "resolved"), currentUpdates, currentRechecks, allReadings, allProbes, new Date(timestamp));
   const historyNames = new Map(historyUsers.map(user => [user.id, user.name ?? user.email]));
-  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows), Date.now(), "weekly");
-  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), Date.now(), "four_weekly");
+  const weeklyState = reviewPeriodState(weekly, location.timezone, Boolean(weeklyRows), timestamp, "weekly");
+  const fourWeeklyState = reviewPeriodState(fourWeekly, location.timezone, Boolean(fourRows), timestamp, "four_weekly");
   return {
     location: { id: location.id, name: location.name, timezone: location.timezone },
     teamMembers: locationMembers.map(member => ({ _id: member.id, name: member.name })),
@@ -282,7 +283,9 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   const updates = updatesInput.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError(400, `Issue update ${index + 1} is invalid`);
     const record = value as Record<string, unknown>;
-    return { issueId: requireUuid(record.issueId, "issueId"), note: requireString(record.note, "Current position / next action") };
+    const status = record.status === undefined ? undefined : record.status;
+    if (status !== undefined && status !== "open" && status !== "monitoring" && status !== "resolved") throw new ApiError(400, `Issue update ${index + 1} status is invalid`);
+    return { issueId: requireUuid(record.issueId, "issueId"), note: requireString(record.note, "Current position / next action"), status: status as "open" | "monitoring" | "resolved" | undefined };
   });
   const currentIssueRows = reviewType === "weekly" ? await db().select().from(issues).where(and(eq(issues.locationId, location.id), inArray(issues.status, ["open", "monitoring"]))) : [];
   const issueMap = new Map((reviewType === "weekly" ? currentIssueRows : scope.issueRows).map(issue => [issue.id, issue]));
@@ -300,6 +303,14 @@ export async function completeManagerReview(context: AuthContext, input: Record<
   for (const update of updates) {
     const issue = issueMap.get(update.issueId);
     if (!issue || (reviewType !== "weekly" && statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end) === "resolved")) throw new ApiError(422, "Issue update must reference an outstanding issue in the review period");
+    if (update.status === "resolved" && issue.category === "Temperature") {
+      const immediate = await db().select({ id: issueUpdates.id }).from(issueUpdates).where(and(eq(issueUpdates.issueId, issue.id), eq(issueUpdates.updateType, "immediate_action"))).limit(1);
+      if (!immediate.length) throw new ApiError(422, "Corrective action is required before resolution");
+    }
+    if (update.status === "resolved" && issue.category === "Probe") {
+      const passingRecheck = await db().select({ result: rechecks.result }).from(rechecks).where(eq(rechecks.issueId, issue.id));
+      if (!passingRecheck.some((row) => row.result === "pass")) throw new ApiError(422, "A passing probe recheck is required before resolution");
+    }
   }
   let seriousProblems: boolean | null = null;
   let details: string | null = null;
@@ -318,7 +329,9 @@ export async function completeManagerReview(context: AuthContext, input: Record<
     for (const update of updates) {
       const issue = issueMap.get(update.issueId)!;
       const currentStatus = statusAt(issue, scope.updateRows.filter(item => item.issueId === issue.id), scope.end);
-      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "manager_review", note: update.note, status: currentStatus as "open" | "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: null });
+      const nextStatus = update.status ?? currentStatus as "open" | "monitoring";
+      await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: nextStatus === "resolved" ? "resolution" : "manager_review", note: update.note, status: nextStatus, createdAt: timestamp, createdBy: context.user.id, teamMemberId: null });
+      await tx.update(issues).set({ status: nextStatus, ...(nextStatus === "resolved" ? { resolvedAt: timestamp, resolvedBy: context.user.id, resolutionNote: update.note } : {}) }).where(eq(issues.id, issue.id));
     }
     const [review] = await tx.insert(managerReviews).values({ locationId: location.id, reviewType, periodStart, periodEnd, completedAt: timestamp, completedBy: context.user.id, summary, seriousProblems, details, actionTaken, answers }).returning();
     await tx.insert(auditEvents).values({ locationId: location.id, userId: context.user.id, type: `${reviewType}_manager_review_completed`, detail: `${reviewType === "weekly" ? "Weekly" : "4-week"} manager review completed for ${periodStart} to ${periodEnd}`, createdAt: timestamp });

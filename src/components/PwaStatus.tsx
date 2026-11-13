@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { APP_VERSION } from "@/lib/app-version";
+import { OFFLINE_SESSION_EVENT, readOfflineAuthSession, readOfflineSession } from "@/lib/offline/device-session";
+import { syncPending } from "@/lib/offline/outbox";
 import {
   applyPwaUpdate,
   isStandaloneDisplayMode,
@@ -30,6 +32,7 @@ export function PwaStatus() {
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
+  const [offlineLease, setOfflineLease] = useState(() => Boolean(readOfflineAuthSession()));
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [updateRegistration, setUpdateRegistration] =
@@ -44,6 +47,8 @@ export function PwaStatus() {
     const handleOnline = () => {
       setIsOnline(true);
       window.dispatchEvent(new Event("rest:data-changed"));
+      const session = readOfflineSession();
+      if (session) void syncPending(session).catch(() => undefined);
     };
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -52,12 +57,17 @@ export function PwaStatus() {
 
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
+    const handleSessionChange = () => setOfflineLease(Boolean(readOfflineAuthSession()));
+    window.addEventListener(OFFLINE_SESSION_EVENT, handleSessionChange);
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     registerPwa(setUpdateRegistration);
+    const session = readOfflineSession();
+    if (session) void syncPending(session).catch(() => undefined);
 
     return () => {
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener(OFFLINE_SESSION_EVENT, handleSessionChange);
       window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
     };
   }, []);
@@ -84,14 +94,15 @@ export function PwaStatus() {
 
   const notice = !isOnline ? (
     <div role="status">
-      <p className="font-semibold">You&apos;re offline</p>
+      <p className="font-semibold">Temporary offline access</p>
       <p className="text-sm text-muted-foreground">
-        Reconnect to continue recording compliance checks.
+        Reconnect to continue syncing your saved checks.
       </p>
+      {!offlineLease && <p className="text-sm text-destructive">Your offline access has expired. Sign in online to continue.</p>}
     </div>
   ) : updateRegistration ? (
     <div role="status">
-      <p className="font-semibold">A new version of Le Feast Compliance is available.</p>
+      <p className="font-semibold">A new version of mise. is available.</p>
       <button
         type="button"
         className="mt-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
@@ -102,7 +113,7 @@ export function PwaStatus() {
     </div>
   ) : showInstall ? (
     <div role="status" className="flex items-center gap-3">
-      <p className="text-sm font-semibold">Install Le Feast Compliance</p>
+      <p className="text-sm font-semibold">Install mise.</p>
       <button
         type="button"
         className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
@@ -113,7 +124,7 @@ export function PwaStatus() {
     </div>
   ) : showIosGuidance ? (
     <div role="status">
-      <p className="font-semibold">Install Le Feast Compliance</p>
+      <p className="font-semibold">Install mise.</p>
       <p className="text-sm text-muted-foreground">Share → Add to Home Screen</p>
       <button
         type="button"

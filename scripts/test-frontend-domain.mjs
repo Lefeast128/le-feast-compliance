@@ -10,6 +10,7 @@ const read = path => readFile(new URL(path, root), "utf8");
 
 const dashboard = await read("pages/Dashboard.tsx");
 const dashboardToday = await read("components/dashboard/DashboardToday.tsx");
+const profileMenu = await read("components/dashboard/ProfileMenu.tsx");
 const dashboardWorkflows = await read("components/dashboard/DashboardWorkflowScreens.tsx");
 const dashboardCalendar = await read("components/dashboard/CalendarView.tsx");
 const dashboardWorkflowHook = await read("components/dashboard/useDashboardWorkflows.ts");
@@ -55,7 +56,8 @@ assert.match(dashboard, /DashboardToday/);
 assert.doesNotMatch(dashboard, /@ts-nocheck/);
 assert.doesNotMatch(dashboard, /if\s*\(false\)/);
 assert.match(dashboardToday, /StaffWastageModal/);
-assert.match(dashboardToday, /onLocationChange/);
+assert.match(profileMenu, /onLocationChange/);
+assert.match(dashboard, /<ProfileMenu/);
 assert.match(dashboardWorkflows, /ProbeModal/);
 assert.match(dashboardWorkflows, /ChecklistScreen/);
 assert.match(dashboardWorkflows, /SecurityScreen/);

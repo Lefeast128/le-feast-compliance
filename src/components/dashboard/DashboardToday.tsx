@@ -4,16 +4,15 @@ import StaffWastageModal from "@/components/WastageModal";
 import { DailyChecksJourney } from "@/components/dashboard/DailyChecksJourney";
 import {
   buildDailyTaskModels,
+  getIssueAttentionTaskIds,
   getProgressMessage,
   getProgressPercent,
   type DailyTaskModel,
 } from "@/components/dashboard/daily-checks-model";
-import { BottomNavigation, Header } from "@/components/dashboard/DashboardPrimitives";
 import { ProbeModal } from "@/components/dashboard/DashboardWorkflowScreens";
 import type {
   DashboardData,
   DashboardIssue,
-  DashboardLocation,
   DashboardView,
   Equipment,
   ManagerReviewStatus,
@@ -24,31 +23,25 @@ import {
   buildWastagePayload,
   type WastagePickerProduct,
 } from "@/lib/wastage-picker";
+import { cleaningProgress } from "@/lib/cleaning-checklist";
+import { additionalOccurrenceComplete, localOperationalDate, localOperationalDateFor, scheduledCleaningTasks } from "@/lib/manager-action-scheduling";
 import type { Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 
 export type DashboardTodayProps = {
   dashboard: DashboardData;
   active: DashboardData;
-  locations?: DashboardLocation[];
-  locationId: string | null;
-  onLocationChange: (locationId: string) => void;
-  onAdmin: () => void;
   onManagerReviews: () => void;
   canUseManagement: boolean;
   managerReviewStatus?: ManagerReviewStatus | null;
-  onCalendar: () => void;
-  onTraining: () => void;
-  onLibrary: () => void;
-  onLogout: () => void | Promise<void>;
-  todayLabel: string;
-  currentUserName: string;
   renderTimestamp: number;
   requiredComplete: number;
   equipment: Equipment[];
   memberName: (id?: string) => string;
   amRound?: TemperatureRound;
   pmRound?: TemperatureRound;
+  pendingAmRound?: TemperatureRound;
+  pendingPmRound?: TemperatureRound;
   amComplete: boolean;
   pmComplete: boolean;
   openingComplete: boolean;
@@ -57,7 +50,12 @@ export type DashboardTodayProps = {
   pmSecurityComplete: boolean;
   openIssues: DashboardIssue[];
   beginRound: (session: "AM" | "PM") => void | Promise<void>;
-  viewTodayRecords: () => void;
+  viewTemperatureRecords: (session: "AM" | "PM") => void;
+  viewChecklistRecords: (checklist: "opening" | "closing") => void;
+  viewSecurityRecords: (session: "AM" | "PM") => void;
+  viewCleaningRecords: () => void;
+  viewProbeRecords: () => void;
+  viewWastageRecords: () => void;
   setView: Dispatch<SetStateAction<DashboardView>>;
   additional?: { requirements: unknown[]; completions: unknown[] };
   setCleaningList: Dispatch<SetStateAction<boolean>>;
@@ -82,6 +80,7 @@ export type DashboardTodayProps = {
   openWastage: () => void;
   setWastageOpen: Dispatch<SetStateAction<boolean>>;
   wastageCatalogue: WastagePickerProduct[];
+  wastageCategories: string[];
   wastageCatalogueLoading: boolean;
   wastageCatalogueError: string | null;
   saveWastage: (
@@ -97,25 +96,17 @@ export type DashboardTodayProps = {
 export default function DashboardToday({
   dashboard,
   active,
-  locations,
-  locationId,
-  onLocationChange,
-  onAdmin,
   onManagerReviews,
   canUseManagement,
   managerReviewStatus,
-  onCalendar,
-  onTraining,
-  onLibrary,
-  onLogout,
-  todayLabel,
-  currentUserName,
   renderTimestamp,
   requiredComplete,
   equipment,
   memberName,
   amRound,
   pmRound,
+  pendingAmRound,
+  pendingPmRound,
   amComplete,
   pmComplete,
   openingComplete,
@@ -124,7 +115,12 @@ export default function DashboardToday({
   pmSecurityComplete,
   openIssues,
   beginRound,
-  viewTodayRecords,
+  viewTemperatureRecords,
+  viewChecklistRecords,
+  viewSecurityRecords,
+  viewCleaningRecords,
+  viewProbeRecords,
+  viewWastageRecords,
   setView,
   additional,
   setCleaningList,
@@ -149,6 +145,7 @@ export default function DashboardToday({
   openWastage,
   setWastageOpen,
   wastageCatalogue,
+  wastageCategories,
   wastageCatalogueLoading,
   wastageCatalogueError,
   saveWastage,
@@ -158,77 +155,111 @@ export default function DashboardToday({
   structuredTasks,
   onOpenStructuredTask,
 }: DashboardTodayProps) {
-  const cleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
-  const cleaningCompleted = cleaningTasks.length
-    ? cleaningTasks.filter(task => task.taskType === "with_steps"
-      ? (task.steps ?? []).filter(step => step.required !== false).every(step => active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === step.id))
-      : active.structuredTaskResponses.some(response => response.taskId === task._id && response.taskArea === "cleaning" && response.stepId === "simple") || active.cleaningCompletions.some(completion => completion.taskId === task._id)).length
-    : active.cleaningCompletions.length;
+  const timeZone = active.location.timezone ?? "Europe/London";
+  const today = localOperationalDate(renderTimestamp, timeZone);
+  const configuredCleaningTasks = structuredTasks.filter(task => task.area === "cleaning");
+  const dueStructuredCleaningTasks = scheduledCleaningTasks(configuredCleaningTasks, today, timeZone);
+  const dueLegacyCleaningTasks = scheduledCleaningTasks(active.cleaningTasks, today, timeZone);
+  const todayCleaningResponses = active.structuredTaskResponses.filter(response => response.taskArea !== "cleaning" || response.dateKey === today);
+  const todayCleaningCompletions = active.cleaningCompletions.filter(completion => {
+    if (completion.dateKey) return completion.dateKey === today;
+    const value = typeof completion.completedAt === "number" ? completion.completedAt : Date.parse(String(completion.completedAt ?? ""));
+    return Number.isFinite(value) && localOperationalDate(value, timeZone) === today;
+  });
+  const cleaningCompleted = configuredCleaningTasks.length
+    ? cleaningProgress(dueStructuredCleaningTasks, todayCleaningResponses, todayCleaningCompletions).complete
+    : todayCleaningCompletions.filter(completion => dueLegacyCleaningTasks.some(task => task._id === completion.taskId)).length;
+  const dailyCleaningDue = configuredCleaningTasks.length ? dueStructuredCleaningTasks.length : dueLegacyCleaningTasks.length;
+  const dueAdditional = (additional?.requirements ?? []).filter(requirement => {
+    const dueAt = (requirement as { nextDueAt?: string | number }).nextDueAt;
+    return dueAt != null && localOperationalDateFor(dueAt, timeZone) <= today;
+  });
+  const completedAdditional = dueAdditional.filter(requirement => additionalOccurrenceComplete(
+    requirement as { _id?: string; id?: string; versionRootId?: string | null; nextDueAt: string | number },
+    (additional?.completions ?? []) as Array<{ requirementId?: string; requirementRootId?: string; nextDueAt?: string | number; scheduledDueAt?: string | number }>,
+  )).length;
+  // Only issues raised on today's operational date flag today's task cards. Older
+  // unresolved issues stay in the issues panel but must not make a fresh checklist
+  // look like it already needs attention.
+  const todaysOpenIssues = openIssues.filter(issue => {
+    const raisedAt = issue.capturedAt ?? issue.createdAt;
+    return raisedAt != null && localOperationalDateFor(raisedAt, timeZone) === today;
+  });
+  const issueAttentionTaskIds = getIssueAttentionTaskIds({
+    issues: todaysOpenIssues,
+    temperatureReadings: active.readings,
+    temperatureRounds: active.rounds,
+    structuredTasks,
+  });
   const tasks = buildDailyTaskModels({
     equipmentCount: equipment.length,
     amComplete,
     pmComplete,
-    amInProgress: Boolean(amRound && !amComplete),
-    pmInProgress: Boolean(pmRound && !pmComplete),
+    amInProgress: Boolean(pendingAmRound),
+    pmInProgress: Boolean(pendingPmRound),
+    amPendingStartedAt: pendingAmRound?.startedAt,
+    pmPendingStartedAt: pendingPmRound?.startedAt,
     openingComplete,
     closingComplete,
     amSecurityComplete,
     pmSecurityComplete,
     foodProbeCount: active.foodChecks.length,
     cleaningCompleted,
-    cleaningDue: cleaningTasks.length || active.cleaningTasks.length,
-    additionalCompleted: additional?.completions.length ?? 0,
-    additionalDue: additional?.requirements.length ?? 0,
+    cleaningDue: dailyCleaningDue,
+    additionalCompleted: completedAdditional,
+    additionalDue: dueAdditional.length,
     wastageCount: active.wastageRecords.length,
-    hasOpenIssues: openIssues.length > 0,
+    issueAttentionTaskIds,
   });
 
   const taskAction = (task: DailyTaskModel) => {
     switch (task.id) {
       case "am-temperature":
-        if (amComplete) viewTodayRecords();
+        if (amComplete) viewTemperatureRecords("AM");
         else void beginRound("AM");
         break;
       case "pm-temperature":
-        if (pmComplete) viewTodayRecords();
+        if (pmComplete) viewTemperatureRecords("PM");
         else void beginRound("PM");
         break;
       case "opening-checklist":
-        if (structuredTasks.some(task => task.area === "opening" && task.taskType === "with_steps")) onOpenStructuredTask("opening");
-        else if (openingComplete) viewTodayRecords();
+        if (openingComplete) viewChecklistRecords("opening");
         else setChecklistList("opening");
         break;
       case "closing-checklist":
-        if (structuredTasks.some(task => task.area === "closing" && task.taskType === "with_steps")) onOpenStructuredTask("closing");
-        else if (closingComplete) viewTodayRecords();
+        if (closingComplete) viewChecklistRecords("closing");
         else setChecklistList("closing");
         break;
       case "am-security":
-        if (structuredTasks.some(task => task.area === "security_am" && task.taskType === "with_steps")) onOpenStructuredTask("security_am");
-        else if (amSecurityComplete) viewTodayRecords();
+        if (!amSecurityComplete && structuredTasks.some(task => task.area === "security_am" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_am");
+        else if (amSecurityComplete) viewSecurityRecords("AM");
         else beginSecurity("AM");
         break;
       case "pm-security":
-        if (structuredTasks.some(task => task.area === "security_pm" && task.taskType === "with_steps")) onOpenStructuredTask("security_pm");
-        else if (pmSecurityComplete) viewTodayRecords();
+        if (!pmSecurityComplete && structuredTasks.some(task => task.area === "security_pm" && (task.taskType === "with_steps" || task.completionMode === "task"))) onOpenStructuredTask("security_pm");
+        else if (pmSecurityComplete) viewSecurityRecords("PM");
         else beginSecurity("PM");
         break;
       case "food-probes":
-        setProbeProduct(active.probeProducts[0]?.name ?? "");
-        setProbeFailed(false);
-        setProbeIssueId(null);
-        setProbeQuantity("");
-        setProbeOpen(true);
+        if (active.foodChecks.length) viewProbeRecords();
+        else {
+          setProbeProduct(active.probeProducts[0]?.name ?? "");
+          setProbeFailed(false);
+          setProbeIssueId(null);
+          setProbeQuantity("");
+          setProbeOpen(true);
+        }
         break;
       case "cleaning":
-        if (structuredTasks.some(task => task.area === "cleaning" && task.taskType === "with_steps")) onOpenStructuredTask("cleaning");
+        if (cleaningCompleted > 0 && cleaningCompleted >= dailyCleaningDue) viewCleaningRecords();
         else setCleaningList(true);
         break;
       case "additional-checks":
         setView("additional");
         break;
       case "wastage":
-        openWastage();
+        if (active.wastageRecords.length) viewWastageRecords();
+        else openWastage();
         break;
       default:
         break;
@@ -236,25 +267,12 @@ export default function DashboardToday({
   };
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f6f7f5] pb-24 text-[#171918]">
-      <Header
-        locations={locations?.length ? locations : [dashboard.location]}
-        locationId={dashboard.location._id ?? locationId}
-        onLocationChange={onLocationChange}
-        onAdmin={onAdmin}
-        onCalendar={onCalendar}
-        onTraining={onTraining}
-        onLogout={onLogout}
-        canUseManagement={canUseManagement}
-      />
+    <div className="min-h-screen overflow-x-hidden bg-white pb-24 text-[#171918]">
       <DailyChecksJourney
-        locationName={dashboard.location.name}
-        todayLabel={todayLabel}
-        currentUserName={currentUserName}
         completed={requiredComplete}
-        total={6}
-        progressPercent={getProgressPercent(requiredComplete, 6)}
-        progressMessage={getProgressMessage(requiredComplete, 6)}
+        total={8}
+        progressPercent={getProgressPercent(requiredComplete, 8)}
+        progressMessage={getProgressMessage(requiredComplete, 8)}
         tasks={tasks}
         onTaskAction={taskAction}
         canUseManagement={canUseManagement}
@@ -267,9 +285,9 @@ export default function DashboardToday({
       {canUseManagement && (
         <span className="sr-only">Weekly review and 4-week review status remain manager-only.</span>
       )}
-      <BottomNavigation onToday={() => setView("today")} onCalendar={onCalendar} onTraining={onTraining} onLibrary={onLibrary} onAdmin={onAdmin} canUseManagement={canUseManagement} active="today" />
       {probeOpen && (
         <ProbeModal
+          locationId={dashboard.location._id}
           products={active.probeProducts}
           teamMembers={dashboard.teamMembers}
           product={probeProduct}
@@ -296,7 +314,9 @@ export default function DashboardToday({
       )}
       {wastageOpen && (
         <StaffWastageModal
+          locationId={dashboard.location._id}
           products={wastageCatalogue}
+          configuredCategories={wastageCategories}
           teamMembers={dashboard.teamMembers}
           loading={wastageCatalogueLoading}
           error={wastageCatalogueError}
@@ -310,6 +330,11 @@ export default function DashboardToday({
           teamMembers={dashboard.teamMembers}
           onUpdate={async (args: Record<string, unknown>) => {
             await addIssueUpdate(args);
+            if (args.updateType === "resolution" || args.status === "resolved") {
+              setIssueSelected(null);
+              toast.success("Issue resolved");
+              return;
+            }
             const refreshed = dashboard.issues.find(
               (item) => item._id === issueSelected._id,
             );

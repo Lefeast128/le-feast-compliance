@@ -1,22 +1,33 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { checklistQuestions, checklistResponses, checklistSignOffs, issueUpdates, issues } from "../db/schema.js";
+import { checklistQuestions, checklistResponses, checklistSignOffs, issueUpdates, issues, offlineSubmissions } from "../db/schema.js";
 import type { AuthContext } from "../auth/core.js";
 import { ApiError } from "./http.js";
 import { activeMember, locationFor, now } from "./shared.js";
 import { localDateKey, localDayRange, requireEnum, requireUuid } from "./validation.js";
+import { maybeAutoSignOffStructuredChecklist } from "./structured-task-service.js";
 
-export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string }) {
+export async function saveChecklistResponse(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; questionId: string; answer: "yes" | "no" | "na"; problem?: string; action?: string; teamMemberId: string; idempotencyKey?: string }) {
   requireEnum(input.checklist, "checklist", ["opening", "closing"] as const); requireEnum(input.answer, "answer", ["yes", "no", "na"] as const);
   const location = await locationFor(context, input.locationId); requireUuid(input.questionId, "questionId");
   await activeMember(location.id, input.teamMemberId);
   if (input.answer === "no" && !input.action?.trim()) throw new ApiError(422, "A corrective action is required");
   const db = getDb();
   return db.transaction(async (tx) => {
+    if (input.idempotencyKey) {
+      if (!/^[A-Za-z0-9_-]{16,120}$/.test(input.idempotencyKey)) throw new ApiError(400, "Invalid idempotency key");
+      const [created] = await tx.insert(offlineSubmissions).values({ submissionId: input.idempotencyKey, organisationId: location.organisationId, locationId: location.id, userId: context.user.id, operation: `${input.checklist}-checklist-response`, status: "processing" }).onConflictDoNothing({ target: offlineSubmissions.submissionId }).returning({ id: offlineSubmissions.id });
+      if (!created) {
+        const [previous] = await tx.select({ status: offlineSubmissions.status, response: offlineSubmissions.response }).from(offlineSubmissions).where(and(eq(offlineSubmissions.submissionId, input.idempotencyKey), eq(offlineSubmissions.organisationId, location.organisationId), eq(offlineSubmissions.locationId, location.id), eq(offlineSubmissions.userId, context.user.id))).limit(1);
+        if (previous?.status === "synced" && previous.response && typeof previous.response === "object" && "responseId" in previous.response) return previous.response as { responseId: string; existing: true };
+        throw new ApiError(409, "This submission is already being processed");
+      }
+    }
     const [question] = await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.id, input.questionId), eq(checklistQuestions.locationId, location.id))).limit(1);
     if (!question) throw new ApiError(422, "Checklist question does not belong to this location");
     if (question.checklist !== input.checklist) throw new ApiError(422, "Checklist question does not match this checklist");
     if (!question.active) throw new ApiError(422, "This configuration version is no longer active");
+    if (question.completionMode === "task") throw new ApiError(422, "Simple completion tasks must use the structured task workflow");
     const range = localDayRange(Date.now(), location.timezone);
     const existing = await tx.select({ id: checklistResponses.id }).from(checklistResponses).where(and(eq(checklistResponses.locationId, location.id), eq(checklistResponses.questionId, question.id), eq(checklistResponses.checklist, input.checklist), gte(checklistResponses.createdAt, new Date(range.start)), lt(checklistResponses.createdAt, new Date(range.end))));
     if (existing.length) throw new ApiError(409, "Checklist question already answered today");
@@ -26,7 +37,10 @@ export async function saveChecklistResponse(context: AuthContext, input: { locat
       const [issue] = await tx.insert(issues).values({ locationId: location.id, category: "Food safety", title: `${input.checklist} checklist: ${question.question}`, description: input.problem?.trim() || question.question, status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId!, action: input.action!.trim() }).returning({ id: issues.id });
       await tx.insert(issueUpdates).values({ issueId: issue.id, locationId: location.id, updateType: "immediate_action", note: input.action!.trim(), status: "monitoring", createdAt: timestamp, createdBy: context.user.id, teamMemberId: input.teamMemberId! });
     }
-    return { responseId: response.id };
+    await maybeAutoSignOffStructuredChecklist(tx, { locationId: location.id, area: input.checklist, dateKey: localDateKey(timestamp.getTime(), location.timezone), timezone: location.timezone, completedBy: context.user.id, teamMemberId: input.teamMemberId });
+    const result = { responseId: response.id };
+    if (input.idempotencyKey) await tx.update(offlineSubmissions).set({ status: "synced", response: result, completedAt: timestamp }).where(eq(offlineSubmissions.submissionId, input.idempotencyKey));
+    return result;
   });
 }
 export async function signOffChecklist(context: AuthContext, input: { locationId: string; checklist: "opening" | "closing"; teamMemberId: string }) {
@@ -38,6 +52,7 @@ export async function signOffChecklist(context: AuthContext, input: { locationId
     if (existing[0]) return { signoffId: existing[0].id, existing: true };
     const questions = await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, location.id), eq(checklistQuestions.checklist, input.checklist), eq(checklistQuestions.active, true)));
     if (!questions.length) throw new ApiError(422, "No active checklist questions exist for this location");
+    if (questions.some((question) => question.taskType === "with_steps" || question.completionMode === "task")) throw new ApiError(422, "This checklist must use the structured task workflow");
     const range = localDayRange(Date.now(), location.timezone);
     const responses = await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, location.id), eq(checklistResponses.checklist, input.checklist), gte(checklistResponses.createdAt, new Date(range.start)), lt(checklistResponses.createdAt, new Date(range.end))));
     const responseIds = new Set(responses.map((item) => item.questionId)); if (questions.some((question) => !responseIds.has(question.id))) throw new ApiError(422, "Every active checklist question must have a response today");

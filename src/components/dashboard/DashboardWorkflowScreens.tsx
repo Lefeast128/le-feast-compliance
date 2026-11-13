@@ -4,18 +4,23 @@ import {
   Choice,
   Modal,
   TemperatureInput,
-  Top,
+  NumericWheel,
 } from "@/components/dashboard/DashboardPrimitives";
 import type {
   ProbeProduct,
   TeamMember,
 } from "@/components/dashboard/dashboard-types";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronRight } from "lucide-react";
+import { ActiveStaffControl } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
 
 type Answer = "yes" | "no" | "na" | null;
 
 type ProbeModalProps = {
+  locationId: string;
   products: ProbeProduct[];
   teamMembers: TeamMember[];
   product: string;
@@ -30,6 +35,7 @@ type ProbeModalProps = {
 };
 
 export function ProbeModal({
+  locationId,
   products,
   teamMembers,
   product,
@@ -46,13 +52,28 @@ export function ProbeModal({
   const minimum = selected?.minimumTemperature ?? 76;
   const holdMinutes = selected?.holdMinutes ?? 2;
   const currentlyFailed = Boolean(temperature) && Number(temperature) < minimum;
-  const [teamMemberId, setTeamMemberId] = useState("");
+  const [teamMemberId, setTeamMemberId] = useActiveTeamMember(locationId, teamMembers);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(teamMemberId);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Please check the details and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <Modal
       title={failed ? "Record probe recheck" : "Record food probe"}
       eyebrow="Food probes"
       onClose={onClose}
     >
+      <div className="mb-5"><ActiveStaffControl teamMembers={teamMembers} value={teamMemberId} onChange={setTeamMemberId} label="Completing probe as" /></div>
       <label className="block text-sm font-semibold">
         Product
         <select
@@ -71,13 +92,7 @@ export function ProbeModal({
       </label>
       <label className="mt-4 block text-sm font-semibold">
         Quantity / batch
-        <Input
-          disabled={failed}
-          value={quantity}
-          onChange={(event) => setQuantity(event.target.value)}
-          className="mt-2 h-12"
-          placeholder="e.g. 20 sausages"
-        />
+        <NumericWheel value={quantity} setValue={setQuantity} min={1} max={100} label="Quantity or batch number" />
       </label>
       <label className="mt-4 block text-sm font-semibold">
         Core temperature
@@ -102,29 +117,16 @@ export function ProbeModal({
           </p>
         </div>
       )}
-      <label className="mt-5 block text-sm font-semibold">
-        Completed by
-        <select
-          value={teamMemberId}
-          onChange={(event) => setTeamMemberId(event.target.value)}
-          className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-        >
-          <option value="">Select team member</option>
-          {teamMembers.map((member) => (
-            <option key={member._id} value={member._id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
-      </label>
+
+      {error && <p role="alert" className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
       <Button
         aria-label="Mark complete"
-        disabled={!product || !quantity.trim() || !temperature || !teamMemberId}
+        disabled={saving || !product || !quantity.trim() || !temperature || !teamMemberId}
         className="mt-7 h-14 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
-        onClick={() => onSave(teamMemberId)}
+        onClick={() => void handleSave()}
       >
-        <span className="sr-only">Mark complete</span>
-        <Check className="size-6" />
+        {saving ? "Saving…" : failed ? "Record recheck" : "Record probe"}
+        <Check className="ml-2 size-5" />
       </Button>
     </Modal>
   );
@@ -166,8 +168,14 @@ export function ChecklistScreen({
   onBack,
 }: ChecklistScreenProps) {
   return (
-    <div className="min-h-screen bg-[#f6f7f5]">
-      <Top title={title} onBack={onBack} />
+    <div className="min-h-screen bg-white">
+      <OperationalHeader
+        title={title}
+        eyebrow="Daily checks"
+        date={operationalDateLabel()}
+        progress={{ complete: index, total }}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-xl px-5 py-10">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
           Question {index + 1} of {total}
@@ -236,7 +244,7 @@ export function ChecklistScreen({
           disabled={
             !teamMemberId || !answer || (answer === "no" && !action.trim())
           }
-          className="mt-7 h-14 w-full bg-[#f4c542] text-lg font-semibold text-[#171717]"
+          className="mt-7 h-14 w-full bg-brand-yellow text-lg font-semibold text-[#171717]"
           onClick={onSave}
         >
           {index + 1 === total ? "Complete check" : "Save & next question"}
@@ -251,6 +259,7 @@ export function ChecklistScreen({
 }
 
 type SecurityScreenProps = {
+  locationId: string;
   session: "AM" | "PM";
   question: string;
   index: number;
@@ -260,11 +269,12 @@ type SecurityScreenProps = {
   setTeamMemberId: Dispatch<SetStateAction<string>>;
   issue: string;
   setIssue: Dispatch<SetStateAction<string>>;
-  onSave: () => void | Promise<void>;
+  onSave: (teamMemberId?: string) => void | Promise<void>;
   onBack: () => void;
 };
 
 export function SecurityScreen({
+  locationId,
   session,
   question,
   index,
@@ -278,9 +288,32 @@ export function SecurityScreen({
   onBack,
 }: SecurityScreenProps) {
   const last = index + 1 === total;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rememberedMemberId, setRememberedMemberId] = useActiveTeamMember(locationId, teamMembers);
+  const selectedMemberId = teamMemberId || rememberedMemberId;
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(selectedMemberId || undefined);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "The answer could not be saved. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
-    <div className="min-h-screen bg-[#f6f7f5]">
-      <Top title={`${session} Security Check`} onBack={onBack} />
+    <div className="min-h-screen bg-white">
+      <OperationalHeader
+        title={`${session} Security Check`}
+        eyebrow="Daily checks"
+        date={operationalDateLabel()}
+        subtitle="Complete each security question and sign off the session."
+        progress={{ complete: index, total }}
+        onBack={onBack}
+      />
       <main className="mx-auto max-w-xl px-5 py-10">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
           Question {index + 1} of {total}
@@ -288,21 +321,7 @@ export function SecurityScreen({
         <h1 className="mt-5 text-3xl font-semibold leading-tight">
           {question}
         </h1>
-        <label className="mt-8 block text-sm font-semibold">
-          Completed by
-          <select
-            value={teamMemberId}
-            onChange={(event) => setTeamMemberId(event.target.value)}
-            className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-          >
-            <option value="">Select team member</option>
-            {teamMembers.map((member) => (
-              <option key={member._id} value={member._id}>
-                {member.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="mt-8"><ActiveStaffControl teamMembers={teamMembers} value={selectedMemberId} onChange={(value) => { setTeamMemberId(value); setRememberedMemberId(value); }} label="Completing security check as" /></div>
         {last && (
           <>
             <p className="mt-10 font-semibold">
@@ -325,14 +344,15 @@ export function SecurityScreen({
             </div>
           </>
         )}
+        {error && <p role="alert" className="mt-6 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3 text-sm text-[#8f3a31]">{error}</p>}
         <Button
-          aria-label="Mark complete"
+          aria-label={last ? "Complete security check" : "Save security answer"}
           className="mt-10 h-16 w-full bg-[#2d7951] text-lg font-semibold text-white hover:bg-[#246442]"
-          onClick={onSave}
-          disabled={!teamMemberId}
+          onClick={() => void handleSave()}
+          disabled={saving || !selectedMemberId}
         >
-          <span className="sr-only">Mark complete</span>
-          <Check className="size-6" />
+          {saving ? "Saving…" : last ? "Complete security check" : "Save answer"}
+          <Check className="ml-2 size-5" />
         </Button>
       </main>
     </div>

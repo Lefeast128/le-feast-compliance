@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
 import { buildWastagePayload, type WastagePickerProduct } from "@/lib/wastage-picker";
-import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember } from "@/components/dashboard/dashboard-types";
-import { submitTemperatureRound } from "@/components/dashboard/temperature-round";
+import type { DashboardData, DashboardIssue, Equipment, IssueProgress, TeamMember, TemperatureReading } from "@/components/dashboard/dashboard-types";
+import { submitTemperatureRound, type ExistingTemperatureIssue } from "@/components/dashboard/temperature-round";
+import { isItemComplete } from "@/lib/unified-checklist";
+import { correctiveActionReady, temperatureActionNote } from "@/lib/temperature-action";
 
 type WorkflowArgs = {
   dashboard: DashboardData | null | undefined;
@@ -21,6 +23,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [issueProgress, setIssueProgress] = useState<Record<string, IssueProgress>>({});
   const issueActionSubmittingRef = useRef(new Set<string>());
   const [roundEquipment, setRoundEquipment] = useState<Equipment[]>([]);
+  const [roundReadings, setRoundReadings] = useState<TemperatureReading[]>([]);
   const [probeOpen, setProbeOpen] = useState(false);
   const [probeProduct, setProbeProduct] = useState("");
   const [probeTemperature, setProbeTemperature] = useState("");
@@ -29,6 +32,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const [probeQuantity, setProbeQuantity] = useState("");
   const [wastageOpen, setWastageOpen] = useState(false);
   const [wastageCatalogue, setWastageCatalogue] = useState<WastagePickerProduct[]>([]);
+  const [wastageCategories, setWastageCategories] = useState<string[]>([]);
   const [wastageCatalogueLoading, setWastageCatalogueLoading] = useState(false);
   const [wastageCatalogueError, setWastageCatalogueError] = useState<string | null>(null);
   const [cleaningList, setCleaningList] = useState(false);
@@ -42,7 +46,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   const completeAdditionalMutation = useRestMutation(restApi.additional.complete);
   const completeTrainingRequirement = useRestMutation(restApi.compliance.completeTrainingRequirement);
-  const signOffChecklist = useRestMutation(restApi.compliance.signOffChecklist);
+  const signOffStructuredTask = useRestMutation(restApi.compliance.signOffStructuredTask);
   const signOffSecurity = useRestMutation(restApi.compliance.signOffSecurity);
   const addIssueUpdate = useRestMutation(restApi.compliance.addIssueUpdate);
   const completeCleaningTask = useRestMutation(restApi.compliance.completeCleaningTask);
@@ -61,20 +65,28 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     const catalogueLocationId = dashboard?.location?._id ?? currentLocationId;
     if (!wastageOpen || !catalogueLocationId) return;
     let cancelled = false;
-    restApi.catalogue.wastage({ locationId: catalogueLocationId })
-      .then((result: { products?: WastagePickerProduct[] }) => {
-        if (cancelled) return;
+    let generation = 0;
+    const refresh = () => { const request = ++generation; return restApi.catalogue.wastage({ locationId: catalogueLocationId })
+      .then((result: { products?: WastagePickerProduct[]; categories?: Array<{ name: string }> }) => {
+        if (cancelled || request !== generation) return;
+        setWastageCatalogueError(null);
         setWastageCatalogue(result?.products ?? []);
+        setWastageCategories((result?.categories ?? []).map(category => category.name));
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || request !== generation) return;
         setWastageCatalogue([]);
+        setWastageCategories([]);
         setWastageCatalogueError(error instanceof Error ? error.message : "Unable to load wastage catalogue");
       })
       .finally(() => {
-        if (!cancelled) setWastageCatalogueLoading(false);
-      });
-    return () => { cancelled = true; };
+        if (!cancelled && request === generation) setWastageCatalogueLoading(false);
+      }); };
+    void refresh();
+    window.addEventListener("rest:data-changed", refresh);
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener("rest:data-changed", refresh); window.removeEventListener("focus", refresh); };
   }, [wastageOpen, dashboard?.location?._id, currentLocationId]);
 
   const active = dashboard;
@@ -85,74 +97,216 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   const memberName = (id: string | undefined) => active?.teamMembers.find((member: TeamMember) => member._id === id)?.name ?? "Team member";
   const amRound = active?.rounds.find(item => item.session === "AM" && item.completedAt);
   const pmRound = active?.rounds.find(item => item.session === "PM" && item.completedAt);
+  const pendingAmRound = active?.rounds.find(item => item.session === "AM" && !item.completedAt);
+  const pendingPmRound = active?.rounds.find(item => item.session === "PM" && !item.completedAt);
   const amComplete = !!amRound;
   const pmComplete = !!pmRound;
-  const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string }>, signedOff: boolean, legacyComplete: boolean) => {
+  const temperatureIssueState = (source: DashboardData, targetRoundId: string) => {
+    const readings = source.readings.filter(reading => reading.roundId === targetRoundId);
+    const failed = readings.filter(reading => reading.result === "fail");
+    const recoveredIssues = failed.flatMap(reading => {
+      const issue = source.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
+      const item = source.equipment.find(equipmentItem => equipmentItem._id === reading.equipmentId);
+      return issue && item ? [{ ...item, issueId: issue._id, temperature: reading.temperature }] : [];
+    });
+    const progress = Object.fromEntries(recoveredIssues.map(issue => {
+      const linkedIssue = source.issues.find(item => item._id === issue.issueId);
+      const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+      return [issue.issueId, { action: update?.note ?? "", note: "", actionMemberId: update?.teamMemberId ?? "", actionsSaved: Boolean(update) }];
+    }));
+    const existingIssues: ExistingTemperatureIssue[] = recoveredIssues.map(issue => ({ ...issue, actionRecorded: Boolean(progress[issue.issueId]?.actionsSaved) }));
+    return { readings, recoveredIssues, progress, existingIssues };
+  };
+  const hydratePendingRound = (pending: NonNullable<typeof pendingAmRound>, source: DashboardData) => {
+    const state = temperatureIssueState(source, pending._id);
+    const { readings, recoveredIssues, progress } = state;
+    const recoveredStaffId = pending.teamMemberId ?? readings.find(reading => reading.teamMemberId)?.teamMemberId ?? Object.values(progress).find(item => item.actionMemberId)?.actionMemberId ?? null;
+    setRound(pending.session);
+    setRoundId(pending._id);
+    setRoundCompleterId(recoveredStaffId);
+    setRoundEquipment([...source.equipment]);
+    setRoundReadings(readings);
+    setTemperatures(Object.fromEntries(readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+    setRoundIssues(recoveredIssues);
+    setIssueProgress(progress);
+  };
+  const structuredComplete = (area: DashboardData["structuredTasks"][number]["area"], legacyResponses: Array<{ questionId: string; questionVersionRootId?: string | null; questionDefinitionKey?: string | null }>, signedOff: boolean, legacyComplete: boolean) => {
     const tasks = active?.structuredTasks.filter(task => task.area === area) ?? [];
-    if (!tasks.some(task => task.taskType === "with_steps")) return legacyComplete;
     const responses = active?.structuredTaskResponses.filter(response => response.taskArea === area) ?? [];
-    const complete = tasks.every(task => task.taskType === "with_steps"
-      ? (task.steps ?? []).filter(step => step.required !== false).every(step => responses.some(response => response.taskId === task._id && response.stepId === step.id))
-      : responses.some(response => response.taskId === task._id && response.stepId === "simple") || legacyResponses.some(response => response.questionId === task._id));
+    if (!tasks.length) return legacyComplete;
+    const complete = tasks.every(task => isItemComplete(task, legacyResponses, responses));
     return complete && signedOff;
   };
   const openingComplete = structuredComplete("opening", active?.checklists.opening.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening")), (active?.checklists.opening.responses.length ?? 0) >= (active?.checklists.opening.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "opening"));
   const closingComplete = structuredComplete("closing", active?.checklists.closing.responses ?? [], Boolean(active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing")), (active?.checklists.closing.responses.length ?? 0) >= (active?.checklists.closing.questions.length || 1) && !!active?.checklistSignOffs?.some(signOff => signOff.checklist === "closing"));
   const amSecurityComplete = structuredComplete("security_am", active?.securityResponses.AM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "AM")), (active?.securityResponses.AM.length ?? 0) >= (active?.security.AM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "AM"));
   const pmSecurityComplete = structuredComplete("security_pm", active?.securityResponses.PM ?? [], Boolean(active?.securitySignOffs?.some(signOff => signOff.session === "PM")), (active?.securityResponses.PM.length ?? 0) >= (active?.security.PM.length || 1) && !!active?.securitySignOffs?.some(signOff => signOff.session === "PM"));
-  const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete].filter(Boolean).length;
+  const requiredComplete = [amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, (active?.foodChecks.length ?? 0) > 0, (active?.wastageRecords.length ?? 0) > 0].filter(Boolean).length;
 
-  function beginRound(session: "AM" | "PM") {
+  async function beginRound(session: "AM" | "PM") {
     if (!dashboard) return;
-    setRoundId(null); setRoundEquipment([...equipment]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
+    let source = dashboard;
+    try {
+      source = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+    } catch (error) {
+      toast.error("Temperature round could not be refreshed", { description: error instanceof Error ? error.message : "Please retry." });
+    }
+    const pending = source.rounds.find(item => item.session === session && !item.completedAt);
+    if (pending) {
+      hydratePendingRound(pending, source);
+      return;
+    }
+    setRoundId(null); setRoundEquipment([...source.equipment]); setRoundReadings([]); setRoundCompleterId(null); setRound(session); setTemperatures({}); setRoundIssues([]); setIssueProgress({});
   }
 
   async function completeTemperatureRound(teamMemberId: string) {
-    if (!dashboard || !round || !teamMemberId || roundSubmittingRef.current || roundEquipment.some(item => !temperatures[item._id])) return;
+    if (!dashboard || !round || !teamMemberId || roundSubmittingRef.current) return;
     roundSubmittingRef.current = true;
     setRoundCompleterId(teamMemberId);
     setRoundSubmitting(true);
     try {
-      const result = await submitTemperatureRound({
-        roundId,
-        locationId: dashboard.location._id,
-        session: round,
-        teamMemberId,
-        equipment: roundEquipment,
-        temperatures,
-        startRound,
-        recordTemperature,
-        completeRound,
-      });
+      let readingsBeforeSubmit = roundReadings;
+      if (roundId) {
+        try {
+          const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+          const latestRound = latest.rounds.find(item => item._id === roundId);
+          const latestReadings = latest.readings.filter(reading => reading.roundId === roundId);
+          if (latestRound?.completedAt) {
+            toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+            resetForLocation();
+            return;
+          }
+          const merged = new Map([...roundReadings, ...latestReadings].map(reading => [reading.equipmentId, reading]));
+          readingsBeforeSubmit = [...merged.values()];
+          const latestTemperatureState = temperatureIssueState(latest, roundId);
+          setRoundIssues(latestTemperatureState.recoveredIssues);
+          setIssueProgress(latestTemperatureState.progress);
+          setRoundReadings(readingsBeforeSubmit);
+          setTemperatures(current => ({ ...current, ...Object.fromEntries(latestReadings.map(reading => [reading.equipmentId, String(reading.temperature)])) }));
+        } catch (error) {
+          toast.error("Temperature round could not be refreshed", { description: error instanceof Error ? error.message : "Please retry." });
+          return;
+        }
+      }
+      if (roundEquipment.some(item => !readingsBeforeSubmit.some(reading => reading.equipmentId === item._id) && !temperatures[item._id])) {
+        toast.error("Enter every remaining fridge reading before completing the round");
+        return;
+      }
+      let result: Awaited<ReturnType<typeof submitTemperatureRound>>;
+      try {
+        const runSubmission = async () => {
+          const authoritativeIssues: ExistingTemperatureIssue[] = roundId
+            ? temperatureIssueState(await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData, roundId).existingIssues
+            : roundIssues.map(issue => ({ ...issue, actionRecorded: Boolean(issueProgress[issue.issueId]?.actionsSaved) }));
+          const result = await submitTemperatureRound({
+            roundId,
+            locationId: dashboard.location._id,
+            session: round,
+            teamMemberId,
+            equipment: roundEquipment,
+            temperatures,
+            existingReadings: readingsBeforeSubmit,
+            existingIssues: authoritativeIssues,
+            reconcileReading: async ({ roundId: authoritativeRoundId, equipmentId }) => {
+              const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+              const reading = latest.readings.find(item => item.roundId === authoritativeRoundId && item.equipmentId === equipmentId);
+              if (!reading) return null;
+              const linkedIssue = latest.issues.find(item => item.sourceTemperatureReadingId === reading._id && item.category === "Temperature");
+              const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+              return {
+                reading: { equipmentId, issueId: linkedIssue?._id ?? null, result: reading.result, temperature: reading.temperature, teamMemberId: reading.teamMemberId, createdAt: reading.createdAt },
+                issue: linkedIssue ? { issueId: linkedIssue._id, actionRecorded: Boolean(update) } : undefined,
+              };
+            },
+            startRound,
+            recordTemperature,
+            completeRound,
+          });
+          return result;
+        };
+        result = await runSubmission();
+      } catch (error) {
+        try {
+          const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+          const latestRound = latest.rounds.find(item => item._id === (roundId ?? ""));
+          if (latestRound?.completedAt) {
+            toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+            resetForLocation();
+            return;
+          }
+          if (roundId) {
+            const latestTemperatureState = temperatureIssueState(latest, roundId);
+            setRoundReadings(latestTemperatureState.readings);
+            setTemperatures(Object.fromEntries(latestTemperatureState.readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+            setRoundIssues(latestTemperatureState.recoveredIssues);
+            setIssueProgress(latestTemperatureState.progress);
+          }
+        } catch {
+          // Keep the existing local state so the user can retry without losing input.
+        }
+        toast.error("Temperature round could not be completed", { description: error instanceof Error ? error.message : "Refresh and retry." });
+        return;
+      }
       setRoundId(result.roundId);
-      if (result.issues.length) {
-        setRoundIssues(result.issues);
-        setIssueProgress(Object.fromEntries(result.issues.map(issue => [issue.issueId, { action: "", note: "", actionMemberId: "", actionsSaved: false }])));
+      if (result.savedReadings.length) {
+        const recoveredReadings: TemperatureReading[] = result.savedReadings.map(reading => ({
+          _id: `local-${result.roundId}-${reading.equipmentId}`,
+          roundId: result.roundId,
+          equipmentId: reading.equipmentId,
+          result: reading.result ?? "pass",
+          temperature: reading.temperature,
+          teamMemberId: reading.teamMemberId ?? teamMemberId,
+          createdAt: reading.createdAt ?? new Date().toISOString(),
+        }));
+        setRoundReadings(current => [...current, ...recoveredReadings].filter((reading, index, all) => all.findIndex(candidate => candidate.equipmentId === reading.equipmentId) === index));
+      }
+      if (result.issues.length || result.error) {
+        const combinedIssues = [...roundIssues, ...result.issues].filter((issue, index, all) => all.findIndex(candidate => candidate.issueId === issue.issueId) === index);
+        setRoundIssues(combinedIssues);
+        setIssueProgress(current => Object.fromEntries(combinedIssues.map(issue => [issue.issueId, current[issue.issueId] ?? { action: "", note: "", actionMemberId: "", actionsSaved: false }])));
+        if (result.error) toast.error("Some readings could not be saved", { description: result.error.message });
         return;
       }
       toast.success(`${round} temperatures complete`, { description: `${roundEquipment.length} fridges recorded` });
-      setRound(null); setRoundId(null); setRoundEquipment([]);
+      setRound(null); setRoundId(null); setRoundEquipment([]); setRoundReadings([]);
     } finally {
       roundSubmittingRef.current = false;
       setRoundSubmitting(false);
     }
   }
 
-  async function saveTemperatureActions(issueId: string, action: string, note: string, teamMemberId: string) {
-    if (!issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
-    if (action === "Other" && !note.trim()) return;
+  async function saveTemperatureActions(issueId: string, action: string, note: string) {
+    const teamMemberId = roundCompleterId;
+    if (!dashboard || !issueId || !action || !teamMemberId || issueActionSubmittingRef.current.has(issueId)) return;
+    if (!correctiveActionReady(action, note)) return;
     issueActionSubmittingRef.current.add(issueId);
     try {
-      const combinedNote = note.trim() ? `${action} — ${note.trim()}` : action;
+      const combinedNote = temperatureActionNote(action, note);
       await addIssueAction({ issueId, action: combinedNote, teamMemberId });
       const nextProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: teamMemberId, actionsSaved: true } };
       setIssueProgress(nextProgress);
-      const allActionsSaved = roundIssues.length > 0 && roundIssues.every(issue => nextProgress[issue.issueId]?.actionsSaved);
-      if (allActionsSaved && dashboard && roundId && round && roundCompleterId) {
-        await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId: roundCompleterId });
-        toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
-        setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({});
-      } else toast.success("Corrective action recorded");
+      toast.success("Corrective action recorded");
+      if (roundIssues.length > 0 && roundIssues.every(issue => issue.issueId === issueId || nextProgress[issue.issueId]?.actionsSaved)) {
+        await completeRecoveredTemperatureRound(teamMemberId);
+      }
+    } catch (error) {
+      try {
+        const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+        const linkedIssue = latest.issues.find(item => item._id === issueId);
+        const update = linkedIssue?.updates?.find(item => item.updateType === "immediate_action" && item.note?.trim());
+        if (update) {
+          const reconciledProgress: Record<string, IssueProgress> = { ...issueProgress, [issueId]: { ...issueProgress[issueId], action, note, actionMemberId: update.teamMemberId ?? teamMemberId, actionsSaved: true } };
+          setIssueProgress(reconciledProgress);
+          toast.success("Corrective action recorded", { description: "The saved server record was reconciled." });
+          if (roundIssues.length > 0 && roundIssues.every(item => item.issueId === issueId || reconciledProgress[item.issueId]?.actionsSaved)) {
+            await completeRecoveredTemperatureRound(teamMemberId);
+          }
+          return;
+        }
+      } catch {
+        // Preserve the local form so the user can retry after reconnecting.
+      }
+      toast.error("Corrective action could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       issueActionSubmittingRef.current.delete(issueId);
     }
@@ -197,7 +351,7 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   async function signOffChecklistTask(teamMemberId: string) {
     if (!dashboard || !checklistList || !teamMemberId) return;
-    await signOffChecklist({ locationId: dashboard.location._id, checklist: checklistList, teamMemberId });
+    await signOffStructuredTask({ locationId: dashboard.location._id, area: checklistList, teamMemberId });
     toast.success(`${checklistList === "opening" ? "Opening" : "Closing"} Food Safety complete`);
     setChecklistList(null);
   }
@@ -206,11 +360,12 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     setSecurity(session); setSecurityIndex(index); setSecurityTeamMemberId(""); setSecurityIssue("");
   }
 
-  async function saveSecurity() {
-    if (!dashboard || !security || !currentSecurityQuestion || !securityTeamMemberId) return;
+  async function saveSecurity(teamMemberIdOverride?: string) {
+    const completingMemberId = teamMemberIdOverride || securityTeamMemberId;
+    if (!dashboard || !security || !currentSecurityQuestion || !completingMemberId) return;
     const last = securityIndex + 1 >= (currentSecurity?.length ?? 0);
-    await saveSecurityResponse({ locationId: dashboard.location._id, session: security, questionId: currentSecurityQuestion._id, issue: last ? securityIssue || undefined : undefined, teamMemberId: securityTeamMemberId });
-    if (last) { await signOffSecurity({ locationId: dashboard.location._id, session: security, teamMemberId: securityTeamMemberId }); toast.success(`${security} security check complete`); setSecurity(null); setSecurityTeamMemberId(""); }
+    await saveSecurityResponse({ locationId: dashboard.location._id, session: security, questionId: currentSecurityQuestion._id, issue: last ? securityIssue || undefined : undefined, teamMemberId: completingMemberId });
+    if (last) { await signOffSecurity({ locationId: dashboard.location._id, session: security, teamMemberId: completingMemberId }); toast.success(`${security} security check complete`); setSecurity(null); setSecurityTeamMemberId(""); }
     else setSecurityIndex(value => value + 1);
   }
 
@@ -222,8 +377,9 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
 
   async function completeCleaning(taskId: string, teamMemberId: string) {
     if (!dashboard) return;
-    await completeCleaningTask({ locationId: dashboard.location._id, taskId, teamMemberId });
-    toast.success("Cleaning job completed");
+    const result = await completeCleaningTask({ locationId: dashboard.location._id, taskId, teamMemberId });
+    toast.success(result?.state === "pending" ? "Cleaning saved on this device — pending sync" : "Cleaning job recorded");
+    return result;
   }
 
   async function reportCleaningIssue(description: string, teamMemberId: string) {
@@ -249,9 +405,43 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
     toast.success("Additional check completed");
   }
 
+  async function completeRecoveredTemperatureRound(teamMemberId: string) {
+    if (!dashboard || !round || !roundId || !teamMemberId || roundSubmittingRef.current) return;
+    roundSubmittingRef.current = true;
+    setRoundCompleterId(teamMemberId);
+    setRoundSubmitting(true);
+    try {
+      await completeRound({ roundId, locationId: dashboard.location._id, session: round, teamMemberId });
+      toast.success(`${round} temperatures complete`, { description: "Corrective action recorded; issue follow-up remains in Issues & Reviews" });
+      setRound(null); setRoundId(null); setRoundCompleterId(null); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({});
+      window.setTimeout(() => document.getElementById("issues-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    } catch (error) {
+      try {
+        const latest = await restApi.compliance.dashboard({ locationId: dashboard.location._id }) as DashboardData;
+        const latestRound = latest.rounds.find(item => item._id === roundId);
+        if (latestRound?.completedAt) {
+          toast.success(`${round} temperatures are already complete`, { description: "The latest server record was kept." });
+          resetForLocation();
+          return;
+        }
+        const latestTemperatureState = temperatureIssueState(latest, roundId);
+        setRoundReadings(latestTemperatureState.readings);
+        setTemperatures(Object.fromEntries(latestTemperatureState.readings.map(reading => [reading.equipmentId, String(reading.temperature)])));
+        setRoundIssues(latestTemperatureState.recoveredIssues);
+        setIssueProgress(latestTemperatureState.progress);
+      } catch {
+        // Keep the recovery screen and its local inputs available for retry.
+      }
+      toast.error("Temperature round could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      roundSubmittingRef.current = false;
+      setRoundSubmitting(false);
+    }
+  }
+
   function resetForLocation() {
     roundSubmittingRef.current = false;
-    setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
+    setRoundSubmitting(false); setRound(null); setRoundId(null); setRoundCompleterId(null); setTemperatures({}); setRoundEquipment([]); setRoundReadings([]); setRoundIssues([]); setIssueProgress({}); setChecklistList(null); setCleaningList(false); setSecurity(null); setSecurityTeamMemberId(""); setProbeOpen(false); setWastageOpen(false); setIssueSelected(null);
   }
 
   function openWastage() {
@@ -259,12 +449,12 @@ export function useDashboardWorkflows({ dashboard, currentLocationId }: Workflow
   }
 
   return {
-    active, equipment, openIssues, memberName, amRound, pmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
-    round, roundIssues, issueProgress, setIssueProgress, roundEquipment, temperatures, setTemperatures, roundSubmitting,
+    active, equipment, openIssues, memberName, amRound, pmRound, pendingAmRound, pendingPmRound, amComplete, pmComplete, openingComplete, closingComplete, amSecurityComplete, pmSecurityComplete, requiredComplete,
+    round, roundId, roundCompleterId, setRoundCompleterId, roundIssues, issueProgress, setIssueProgress, roundEquipment, roundReadings, temperatures, setTemperatures, roundSubmitting,
     probeOpen, setProbeOpen, probeProduct, setProbeProduct, probeTemperature, setProbeTemperature, probeFailed, setProbeFailed, probeIssueId, setProbeIssueId, probeQuantity, setProbeQuantity,
-    wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCatalogueLoading, wastageCatalogueError,
+    wastageOpen, openWastage, setWastageOpen, wastageCatalogue, wastageCategories, wastageCatalogueLoading, wastageCatalogueError,
     cleaningList, setCleaningList, checklistList, setChecklistList, security, setSecurity, securityIndex, securityTeamMemberId, setSecurityTeamMemberId, securityIssue, setSecurityIssue, currentSecurityQuestion,
     issueOpen, setIssueOpen, issueSelected, setIssueSelected,
-    beginRound, completeTemperatureRound, saveTemperatureActions, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
+    beginRound, completeTemperatureRound, saveTemperatureActions, completeRecoveredTemperatureRound, saveProbe, saveWastage, completeChecklistQuestion, saveChecklistIssue, signOffChecklistTask, beginSecurity, saveSecurity, saveIssue, completeCleaning, reportCleaningIssue, completeTraining, completeAdditional, addIssueUpdate, resetForLocation,
   };
 }

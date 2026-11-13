@@ -27,6 +27,7 @@ export const centralAllocationMode = pgEnum("central_allocation_mode", ["all", "
 
 export type StructuredStepResponseType = "confirm" | "yes_no" | "number" | "short_text";
 export type StructuredStepDefinition = {
+  correctiveActions?: string[];
   id: string;
   label: string;
   description?: string | null;
@@ -81,6 +82,7 @@ export const centralChecklistItems = pgTable("central_checklist_items", {
   question: text("question").notNull(),
   description: text("description"),
   taskType: text("task_type").notNull().default("simple"),
+  completionMode: text("completion_mode").notNull().default("question"),
   steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]),
   locationIds: jsonb("location_ids").$type<string[]>().notNull(),
   allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
@@ -100,6 +102,7 @@ export const centralOperationalItems = pgTable("central_operational_items", {
   question: text("question"),
   description: text("description"),
   taskType: text("task_type").notNull().default("simple"),
+  completionMode: text("completion_mode").notNull().default("question"),
   steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]),
   frequency: text("frequency"),
   interval: integer("interval"),
@@ -135,7 +138,7 @@ export const temperatureRounds = pgTable("temperature_rounds", {
 
 export const temperatureReadings = pgTable("temperature_readings", {
   id: id(), roundId: uuid("round_id").notNull().references(() => temperatureRounds.id, { onDelete: "restrict" }), equipmentId: uuid("equipment_id").notNull().references(() => equipment.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
-  temperature: real("temperature").notNull(), result: temperatureResult("result").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  temperature: real("temperature").notNull(), result: temperatureResult("result").notNull(), createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), voided: boolean("voided").notNull().default(false), equipmentName: text("equipment_name"),
   minimumTemperature: real("minimum_temperature"), preferredTemperature: real("preferred_temperature"), maximumTemperature: real("maximum_temperature"),
 }, table => ({ locationCreated: index("temperature_readings_location_created_idx").on(table.locationId, table.createdAt), roundEquipment: uniqueIndex("temperature_readings_round_equipment_voided_idx").on(table.roundId, table.equipmentId, table.voided) }));
@@ -147,7 +150,7 @@ export const probeProducts = pgTable("probe_products", {
 }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "probe_products_root_fk" }).onDelete("restrict") }));
 
 export const checklistQuestions = pgTable("checklist_questions", {
-  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), checklist: checklistKind("checklist").notNull(), question: text("question").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), order: integer("sort_order").notNull(),
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), checklist: checklistKind("checklist").notNull(), question: text("question").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), completionMode: text("completion_mode").notNull().default("question"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), order: integer("sort_order").notNull(),
   centralItemId: uuid("central_item_id").references(() => centralChecklistItems.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), createdAt: createdAt(),
 }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "checklist_questions_root_fk" }).onDelete("restrict") }));
@@ -160,7 +163,7 @@ export const checklistSignOffs = pgTable("checklist_sign_offs", {
 }, table => ({ day: uniqueIndex("checklist_sign_offs_day_idx").on(table.locationId, table.checklist, table.dateKey) }));
 
 export const securityQuestions = pgTable("security_questions", {
-  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), session: temperatureSession("session").notNull(), question: text("question").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), order: integer("sort_order").notNull(),
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), session: temperatureSession("session").notNull(), question: text("question").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), completionMode: text("completion_mode").notNull().default("question"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), order: integer("sort_order").notNull(),
   centralItemId: uuid("central_item_id").references(() => centralOperationalItems.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), createdAt: createdAt(),
 }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "security_questions_root_fk" }).onDelete("restrict") }));
@@ -174,18 +177,34 @@ export const securitySignOffs = pgTable("security_sign_offs", {
 
 export const foodChecks = pgTable("food_checks", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), product: text("product").notNull(), quantity: text("quantity"), temperature: real("temperature").notNull(), result: text("result").notNull(), action: text("action"),
-  createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), probeProductId: uuid("probe_product_id").references(() => probeProducts.id, { onDelete: "restrict" }), minimumTemperature: real("minimum_temperature"), holdMinutes: integer("hold_minutes"),
+  createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), probeProductId: uuid("probe_product_id").references(() => probeProducts.id, { onDelete: "restrict" }), minimumTemperature: real("minimum_temperature"), holdMinutes: integer("hold_minutes"),
 }, table => ({ locationCreated: index("food_checks_location_created_idx").on(table.locationId, table.createdAt) }));
-export const wastageItems = pgTable("wastage_items", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt() });
+export const wastageItems = pgTable("wastage_items", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), category: text("category"), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt() });
+export const wastageCategories = pgTable("wastage_categories", {
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt(),
+}, table => ({ locationOrder: index("wastage_categories_location_order_idx").on(table.locationId, table.active, table.order) }));
 export const wastageRecords = pgTable("wastage_records", {
-  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), itemId: uuid("item_id").references(() => wastageItems.id, { onDelete: "restrict" }), catalogueProductId: uuid("catalogue_product_id").references(() => catalogueProducts.id, { onDelete: "restrict" }), itemName: text("item_name"), cataloguePlu: integer("catalogue_plu"), categorySnapshot: text("category_snapshot"), wastageSource: text("wastage_source").notNull().default("legacy"), quantity: text("quantity"), notes: text("notes"), noWaste: boolean("no_waste").notNull().default(false), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }),
-}, table => ({ locationCreated: index("wastage_records_location_created_idx").on(table.locationId, table.createdAt), catalogueProduct: index("wastage_records_catalogue_product_idx").on(table.catalogueProductId) }));
+  markdownProductId: uuid("markdown_product_id").references(() => markdownProducts.id, { onDelete: "restrict" }),
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), itemId: uuid("item_id").references(() => wastageItems.id, { onDelete: "restrict" }), catalogueProductId: uuid("catalogue_product_id").references(() => catalogueProducts.id, { onDelete: "restrict" }), itemName: text("item_name"), cataloguePlu: integer("catalogue_plu"), categorySnapshot: text("category_snapshot"), wastageSource: text("wastage_source").notNull().default("legacy"), quantity: text("quantity"), notes: text("notes"), noWaste: boolean("no_waste").notNull().default(false), createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }),
+}, table => ({ locationCreated: index("wastage_records_location_created_idx").on(table.locationId, table.createdAt), markdownProduct: index("wastage_records_markdown_product_idx").on(table.markdownProductId), catalogueProduct: index("wastage_records_catalogue_product_idx").on(table.catalogueProductId) }));
 export const catalogueProducts = pgTable("catalogue_products", {
   id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), siteId: text("site_id").notNull(), plu: integer("plu").notNull(), name: text("name").notNull(), department: text("department"), group: text("product_group"), valueSources: jsonb("value_sources"), active: boolean("active").notNull().default(true), needsCategoryReview: boolean("needs_category_review").notNull().default(true), wastageCategory: text("wastage_category"), excludedFromWastage: boolean("excluded_from_wastage").notNull().default(false), wastageReviewedAt: timestampColumn("wastage_reviewed_at"), wastageReviewedBy: uuid("wastage_reviewed_by").references(() => users.id, { onDelete: "restrict" }), firstSeenAt: createdAt("first_seen_at"), lastSeenAt: createdAt("last_seen_at"), lastSuccessfulSyncAt: createdAt("last_successful_sync_at"),
 }, table => ({ locationPlu: uniqueIndex("catalogue_products_location_plu_idx").on(table.locationId, table.plu), wastagePicker: index("catalogue_products_wastage_picker_idx").on(table.locationId, table.active, table.excludedFromWastage, table.plu) }));
 export const catalogueSyncStatus = pgTable("catalogue_sync_status", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), lastSuccessfulSyncAt: timestampColumn("last_successful_sync_at"), lastAttemptedSyncAt: createdAt("last_attempted_sync_at"), lastError: text("last_error"), productCount: integer("product_count"), addedCount: integer("added_count"), renamedCount: integer("renamed_count"), removedCount: integer("removed_count") }, table => ({ location: uniqueIndex("catalogue_sync_status_location_idx").on(table.locationId) }));
 
-export const cleaningTasks = pgTable("cleaning_tasks", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), frequency: text("frequency").notNull(), weekdays: jsonb("weekdays").$type<number[]>().notNull(), centralItemId: uuid("central_item_id").references(() => centralOperationalItems.id, { onDelete: "restrict" }), active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), order: integer("sort_order").notNull().default(0), createdAt: createdAt() }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "cleaning_tasks_root_fk" }).onDelete("restrict") }));
+export const markdownProducts = pgTable("markdown_products", {
+  wastageItemId: uuid("wastage_item_id").references(() => wastageItems.id, { onDelete: "restrict" }),
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
+  name: text("name").notNull(), catalogueProductId: uuid("catalogue_product_id").references(() => catalogueProducts.id, { onDelete: "restrict" }), quickSelect: boolean("quick_select").notNull().default(false), source: text("source").notNull().default("custom"), temporaryDateKey: text("temporary_date_key"), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), createdAt: createdAt(),
+}, table => ({ manualProduct: uniqueIndex("markdown_products_wastage_item_idx").on(table.locationId, table.wastageItemId), locationOrder: index("markdown_products_location_order_idx").on(table.locationId, table.active, table.order), catalogue: index("markdown_products_catalogue_idx").on(table.locationId, table.catalogueProductId), quickSelect: index("markdown_products_quick_select_idx").on(table.locationId, table.quickSelect, table.active, table.order) }));
+export const markdownSheets = pgTable("markdown_sheets", {
+  id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), dateKey: text("date_key").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+}, table => ({ locationDay: uniqueIndex("markdown_sheets_location_day_idx").on(table.locationId, table.dateKey) }));
+export const markdownSheetItems = pgTable("markdown_sheet_items", {
+  id: id(), sheetId: uuid("sheet_id").notNull().references(() => markdownSheets.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), productId: uuid("product_id").notNull().references(() => markdownProducts.id, { onDelete: "restrict" }), mode: text("mode").notNull(), quantity: integer("quantity").notNull().default(0), completedAt: timestampColumn("completed_at"), completedBy: uuid("completed_by").references(() => users.id, { onDelete: "restrict" }), completedTeamMemberId: uuid("completed_team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), reviewedAt: timestampColumn("reviewed_at"), reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "restrict" }), createdAt: createdAt(),
+}, table => ({ sheetProductMode: uniqueIndex("markdown_sheet_items_sheet_product_mode_idx").on(table.sheetId, table.productId, table.mode), locationCreated: index("markdown_sheet_items_location_created_idx").on(table.locationId, table.createdAt) }));
+
+export const cleaningTasks = pgTable("cleaning_tasks", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), name: text("name").notNull(), description: text("description"), taskType: text("task_type").notNull().default("simple"), completionMode: text("completion_mode").notNull().default("question"), steps: jsonb("steps").$type<StructuredStepDefinition[]>().notNull().default([]), frequency: text("frequency").notNull(), weekdays: jsonb("weekdays").$type<number[]>().notNull(), centralItemId: uuid("central_item_id").references(() => centralOperationalItems.id, { onDelete: "restrict" }), active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), order: integer("sort_order").notNull().default(0), createdAt: createdAt() }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "cleaning_tasks_root_fk" }).onDelete("restrict") }));
 export const cleaningCompletions = pgTable("cleaning_completions", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), taskId: uuid("task_id").notNull().references(() => cleaningTasks.id, { onDelete: "restrict" }), dateKey: text("date_key").notNull(), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) }, table => ({ locationDate: index("cleaning_completions_location_date_idx").on(table.locationId, table.dateKey), taskDay: uniqueIndex("cleaning_completions_task_day_idx").on(table.locationId, table.taskId, table.dateKey) }));
 
 export const structuredTaskResponses = pgTable("structured_task_responses", {
@@ -224,6 +243,40 @@ export const documents = pgTable("documents", {
   locationPurpose: index("documents_location_purpose_idx").on(table.locationId, table.purpose, table.status),
 }));
 
+export const controlledDocuments = pgTable("controlled_documents", {
+  id: id(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  locationIds: jsonb("location_ids").$type<string[]>().notNull(),
+  allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  displayInLibrary: boolean("display_in_library").notNull().default(true),
+  requireTrainingAcknowledgement: boolean("require_training_acknowledgement").notNull().default(false),
+  acknowledgementDeadline: timestampColumn("acknowledgement_deadline"),
+  publicationDate: timestampColumn("publication_date"),
+  reviewDate: timestampColumn("review_date"),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(),
+  updatedAt: timestampColumn("updated_at"),
+}, table => ({ organisationActive: index("controlled_documents_organisation_active_idx").on(table.organisationId, table.active) }));
+
+export const controlledDocumentVersions = pgTable("controlled_document_versions", {
+  id: id(),
+  controlledDocumentId: uuid("controlled_document_id").notNull().references(() => controlledDocuments.id, { onDelete: "restrict" }),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "restrict" }),
+  versionNumber: integer("version_number").notNull(),
+  publishedAt: timestampColumn("published_at"),
+  reviewDate: timestampColumn("review_date"),
+  requiresReacknowledgement: boolean("requires_reacknowledgement").notNull().default(true),
+  createdAt: createdAt(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+}, table => ({
+  documentVersion: uniqueIndex("controlled_document_versions_document_version_idx").on(table.controlledDocumentId, table.versionNumber),
+  document: index("controlled_document_versions_document_idx").on(table.documentId),
+}));
+
 export const libraryDocuments = pgTable("library_documents", {
   id: id(),
   organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
@@ -233,6 +286,7 @@ export const libraryDocuments = pgTable("library_documents", {
   important: boolean("important").notNull().default(false),
   locationIds: jsonb("location_ids").$type<string[]>().notNull(),
   allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  controlledDocumentId: uuid("controlled_document_id").references(() => controlledDocuments.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: createdAt(),
@@ -243,6 +297,7 @@ export const libraryDocumentVersions = pgTable("library_document_versions", {
   id: id(),
   libraryDocumentId: uuid("library_document_id").notNull().references(() => libraryDocuments.id, { onDelete: "restrict" }),
   documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "restrict" }),
+  controlledDocumentVersionId: uuid("controlled_document_version_id").references(() => controlledDocumentVersions.id, { onDelete: "restrict" }),
   versionNumber: integer("version_number").notNull(),
   createdAt: createdAt(),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
@@ -261,6 +316,7 @@ export const centralTrainingPublications = pgTable("central_training_publication
   trainingFormat: text("training_format").notNull().default("briefing"),
   locationIds: jsonb("location_ids").$type<string[]>().notNull(),
   allocationMode: centralAllocationMode("allocation_mode").notNull().default("selected"),
+  controlledDocumentId: uuid("controlled_document_id").references(() => controlledDocuments.id, { onDelete: "restrict" }),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
   createdAt: createdAt(),
@@ -268,7 +324,7 @@ export const centralTrainingPublications = pgTable("central_training_publication
 });
 
 export const trainingRequirements = pgTable("training_requirements", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), title: text("title").notNull(), active: boolean("active").notNull().default(true), order: integer("sort_order").notNull().default(0), documentStorageId: text("document_storage_id"), documentName: text("document_name"), currentDocumentVersionId: uuid("current_document_version_id"), requiredDocumentVersionId: uuid("required_document_version_id"), trainingFormat: text("training_format").notNull().default("briefing"), currentContentVersionId: uuid("current_content_version_id"), requiredContentVersionId: uuid("required_content_version_id"), description: text("description"), category: text("category"), audience: text("audience"), selectedTeamMemberIds: jsonb("selected_team_member_ids").$type<string[]>(), centralPublicationId: uuid("central_publication_id").references(() => centralTrainingPublications.id, { onDelete: "restrict" }), createdAt: createdAt() });
-export const trainingDocumentVersions = pgTable("training_document_versions", { id: id(), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), versionNumber: integer("version_number").notNull(), storageId: text("storage_id").notNull(), documentName: text("document_name").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
+export const trainingDocumentVersions = pgTable("training_document_versions", { id: id(), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), controlledDocumentVersionId: uuid("controlled_document_version_id").references(() => controlledDocumentVersions.id, { onDelete: "restrict" }), versionNumber: integer("version_number").notNull(), storageId: text("storage_id").notNull(), documentName: text("document_name").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
 export const trainingContentVersions = pgTable("training_content_versions", { id: id(), requirementId: uuid("requirement_id").notNull(), versionNumber: integer("version_number").notNull(), content: text("content").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), requiresReacknowledgement: boolean("requires_reacknowledgement") });
 export const trainingCompletions = pgTable("training_completions", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), requirementId: uuid("requirement_id").notNull().references(() => trainingRequirements.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").notNull().references(() => teamMembers.id, { onDelete: "restrict" }), documentVersionId: uuid("document_version_id").references(() => trainingDocumentVersions.id, { onDelete: "restrict" }), contentVersionId: uuid("content_version_id").references(() => trainingContentVersions.id, { onDelete: "restrict" }), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }) }, table => ({ locationMember: index("training_completions_location_member_idx").on(table.locationId, table.teamMemberId), requirement: index("training_completions_requirement_idx").on(table.requirementId) }));
 
@@ -288,9 +344,22 @@ export const trainingRequirementsRelations = relations(trainingRequirements, ({ 
 export const additionalRequirements = pgTable("additional_requirements", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), title: text("title").notNull(), description: text("description"), frequency: text("frequency").notNull(), interval: integer("interval"), weekdays: jsonb("weekdays").$type<number[]>().notNull().default([]), dayOfMonth: integer("day_of_month"), nextDueAt: timestamp("next_due_at", { withTimezone: true }).notNull(), fields: jsonb("fields").notNull(), centralItemId: uuid("central_item_id").references(() => centralOperationalItems.id, { onDelete: "restrict" }), active: boolean("active").notNull().default(true), deactivatedAt: timestamp("deactivated_at", { withTimezone: true }), versionRootId: uuid("version_root_id"), order: integer("sort_order").notNull().default(0), createdAt: createdAt() }, table => ({ root: foreignKey({ columns: [table.versionRootId], foreignColumns: [table.id], name: "additional_requirements_root_fk" }).onDelete("restrict"), locationDue: index("additional_requirements_location_due_idx").on(table.locationId, table.active, table.nextDueAt) }));
 export const additionalCompletions = pgTable("additional_completions", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), requirementId: uuid("requirement_id").notNull().references(() => additionalRequirements.id, { onDelete: "restrict" }), completedAt: timestamp("completed_at", { withTimezone: true }).notNull(), checkedDate: text("checked_date"), nextDueAt: timestamp("next_due_at", { withTimezone: true }), scheduledDueAt: timestamp("scheduled_due_at", { withTimezone: true }), answers: jsonb("answers").notNull(), certificateReference: text("certificate_reference"), documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }), documentStorageId: text("document_storage_id"), documentName: text("document_name"), teamMemberId: uuid("team_member_id").notNull().references(() => teamMembers.id, { onDelete: "restrict" }), completedBy: uuid("completed_by").notNull().references(() => users.id, { onDelete: "restrict" }) }, table => ({ locationCompleted: index("additional_completions_location_completed_idx").on(table.locationId, table.completedAt), requirementCompleted: index("additional_completions_requirement_completed_idx").on(table.requirementId, table.completedAt), document: index("additional_completions_document_idx").on(table.documentId) }));
 
-export const issues = pgTable("issues", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), category: text("category").notNull(), title: text("title").notNull(), description: text("description").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), action: text("action"), resolvedAt: timestampColumn("resolved_at"), resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "restrict" }), resolutionNote: text("resolution_note"), originalReading: text("original_reading"), sourceTemperatureReadingId: uuid("source_temperature_reading_id").references(() => temperatureReadings.id, { onDelete: "restrict" }), sourceFoodCheckId: uuid("source_food_check_id").references(() => foodChecks.id, { onDelete: "restrict" }), sourceAdditionalCompletionId: uuid("source_additional_completion_id").references(() => additionalCompletions.id, { onDelete: "restrict" }) }, table => ({ locationStatusCreated: index("issues_location_status_created_idx").on(table.locationId, table.status, table.createdAt) }));
-export const rechecks = pgTable("rechecks", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), readingId: uuid("reading_id").references(() => temperatureReadings.id, { onDelete: "restrict" }), temperature: real("temperature").notNull(), result: text("result").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) });
-export const issueUpdates = pgTable("issue_updates", { id: id(), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), updateType: text("update_type").notNull(), note: text("note").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) }, table => ({ issueCreated: index("issue_updates_issue_created_idx").on(table.issueId, table.createdAt), locationCreated: index("issue_updates_location_created_idx").on(table.locationId, table.createdAt) }));
+export const issues = pgTable("issues", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), category: text("category").notNull(), title: text("title").notNull(), description: text("description").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }), action: text("action"), resolvedAt: timestampColumn("resolved_at"), resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "restrict" }), resolutionNote: text("resolution_note"), originalReading: text("original_reading"), sourceTemperatureReadingId: uuid("source_temperature_reading_id").references(() => temperatureReadings.id, { onDelete: "restrict" }), sourceFoodCheckId: uuid("source_food_check_id").references(() => foodChecks.id, { onDelete: "restrict" }), sourceAdditionalCompletionId: uuid("source_additional_completion_id").references(() => additionalCompletions.id, { onDelete: "restrict" }) }, table => ({ locationStatusCreated: index("issues_location_status_created_idx").on(table.locationId, table.status, table.createdAt) }));
+export const rechecks = pgTable("rechecks", { id: id(), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), readingId: uuid("reading_id").references(() => temperatureReadings.id, { onDelete: "restrict" }), temperature: real("temperature").notNull(), result: text("result").notNull(), createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) });
+export const issueUpdates = pgTable("issue_updates", { id: id(), issueId: uuid("issue_id").notNull().references(() => issues.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }), updateType: text("update_type").notNull(), note: text("note").notNull(), status: issueStatus("status").notNull(), createdAt: createdAt(), capturedAt: timestampColumn("captured_at"), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), teamMemberId: uuid("team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }) }, table => ({ issueCreated: index("issue_updates_issue_created_idx").on(table.issueId, table.createdAt), locationCreated: index("issue_updates_location_created_idx").on(table.locationId, table.createdAt) }));
+export const shiftHandoverNotes = pgTable("shift_handover_notes", {
+  id: id(), organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }), locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
+  title: text("title").notNull(), message: text("message").notNull(), shift: text("shift").notNull(), category: text("category").notNull(), version: integer("version").notNull().default(1),
+  createdAt: createdAt(), createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdByTeamMemberId: uuid("created_by_team_member_id").references(() => teamMembers.id, { onDelete: "restrict" }),
+  deletedAt: timestampColumn("deleted_at"), deletedBy: uuid("deleted_by").references(() => users.id, { onDelete: "restrict" }),
+}, table => ({ locationCreated: index("shift_handover_notes_location_created_idx").on(table.locationId, table.createdAt), locationActiveCreated: index("shift_handover_notes_location_active_created_idx").on(table.locationId, table.deletedAt, table.createdAt) }));
+export const shiftHandoverAcknowledgements = pgTable("shift_handover_acknowledgements", {
+  id: id(), noteId: uuid("note_id").notNull().references(() => shiftHandoverNotes.id, { onDelete: "restrict" }), noteVersion: integer("note_version").notNull(), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }), acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => ({ noteUserVersion: uniqueIndex("shift_handover_ack_note_user_version_idx").on(table.noteId, table.noteVersion, table.userId), note: index("shift_handover_ack_note_idx").on(table.noteId) }));
+export const shiftHandoverResolutions = pgTable("shift_handover_resolutions", {
+  id: id(), noteId: uuid("note_id").notNull().references(() => shiftHandoverNotes.id, { onDelete: "restrict" }), note: text("note").notNull(), resolvedAt: timestamp("resolved_at", { withTimezone: true }).defaultNow().notNull(), resolvedBy: uuid("resolved_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+}, table => ({ note: uniqueIndex("shift_handover_resolution_note_idx").on(table.noteId) }));
 export const auditEvents = pgTable("audit_events", { id: id(), locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }), type: text("type").notNull(), detail: text("detail").notNull(), createdAt: createdAt() });
 export const managerReviews = pgTable("manager_reviews", {
   id: id(),
@@ -320,6 +389,25 @@ export const authSessions = pgTable("auth_sessions", {
   createdAt: createdAt(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), revokedAt: timestampColumn("revoked_at"), lastUsedAt: timestampColumn("last_used_at"), rotatedFromId: uuid("rotated_from_id"),
 }, table => ({ token: uniqueIndex("auth_sessions_token_hash_idx").on(table.tokenHash), user: index("auth_sessions_user_created_idx").on(table.userId, table.createdAt) }));
 
+export const offlineSubmissions = pgTable("offline_submissions", {
+  id: id(),
+  submissionId: text("submission_id").notNull(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "restrict" }),
+  locationId: uuid("location_id").notNull().references(() => locations.id, { onDelete: "restrict" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  operation: text("operation").notNull(),
+  payloadHash: text("payload_hash"),
+  status: text("status").notNull().default("processing"),
+  response: jsonb("response"),
+  createdAt: createdAt(),
+  completedAt: timestampColumn("completed_at"),
+}, table => ({ submission: uniqueIndex("offline_submissions_submission_id_idx").on(table.submissionId), scope: index("offline_submissions_scope_idx").on(table.organisationId, table.locationId, table.userId) }));
+
+export const authLoginAttempts = pgTable("auth_login_attempts", {
+  key: text("key").primaryKey(), failures: integer("failures").notNull().default(0),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(), blockedUntil: timestampColumn("blocked_until"),
+});
+
 export const foundationTables = {
   organisations, users, locations, memberships, teamMembers, scheduledTasks, equipment,
   temperatureRounds, temperatureReadings, probeProducts, checklistQuestions, checklistResponses,
@@ -327,6 +415,6 @@ export const foundationTables = {
   wastageItems, wastageRecords, catalogueProducts, catalogueSyncStatus, cleaningTasks,
   cleaningCompletions, documents, libraryDocuments, libraryDocumentVersions, trainingRequirements, trainingDocumentVersions, trainingCompletions,
   centralTrainingPublications, centralChecklistItems, centralOperationalItems,
-  additionalRequirements, additionalCompletions, structuredTaskResponses, trainingContentVersions, rechecks, issues, issueUpdates, auditEvents, managerReviews,
-  authOtpChallenges, authSessions,
+  additionalRequirements, additionalCompletions, structuredTaskResponses, trainingContentVersions, rechecks, issues, issueUpdates, shiftHandoverNotes, shiftHandoverAcknowledgements, shiftHandoverResolutions, auditEvents, managerReviews,
+  authOtpChallenges, authSessions, offlineSubmissions, authLoginAttempts,
 } as const;

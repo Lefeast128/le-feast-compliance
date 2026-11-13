@@ -37,7 +37,11 @@ export function requireMutationRequest(req: ApiRequest) {
   }
 }
 
-export function parseBody(req: ApiRequest) {
+export function parseBody(req: ApiRequest, allowEmpty = false) {
+  if (req.body === undefined) {
+    if (allowEmpty) return {};
+    throw new ApiError(400, "Invalid JSON body");
+  }
   let body: unknown;
   try {
     body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -46,6 +50,11 @@ export function parseBody(req: ApiRequest) {
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(400, "Invalid JSON body");
   return body as Record<string, unknown>;
+}
+
+export function getHeader(req: ApiRequest, name: string) {
+  const value = req.headers?.[name.toLowerCase()] ?? req.headers?.[name] ?? req.headers?.[name.replace(/(^|-)([a-z])/g, (_, dash, letter) => `${dash}${letter.toUpperCase()}`)];
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export function respondError(res: ApiResponse, error: unknown) {
@@ -82,7 +91,7 @@ export async function handleMutation(req: ApiRequest, res: ApiResponse, operatio
 
 export async function handleWrite(req: ApiRequest, res: ApiResponse, methods: string[], operation: (context: AuthContext, body: Record<string, unknown>) => Promise<unknown>) {
   if (!methods.includes(req.method ?? "")) { res.status(405).json({ ok: false, error: "Method not allowed" }); return; }
-  try { requireMutationRequest(req); const context = await requireContext(req); const body = parseBody(req); res.status(200).json({ ok: true, data: await operation(context, body) }); } catch (error) { respondError(res, error); }
+  try { requireMutationRequest(req); const context = await requireContext(req); const body = parseBody(req, req.method === "DELETE"); res.status(200).json({ ok: true, data: await operation(context, body) }); } catch (error) { respondError(res, error); }
 }
 
 export async function handleQuery(req: ApiRequest, res: ApiResponse, operation: (context: AuthContext) => Promise<unknown>) {

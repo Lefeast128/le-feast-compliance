@@ -25,15 +25,17 @@ import type {
 } from "@/components/admin/admin-types";
 import { Button } from "@/components/ui/button";
 import { documentsApi, restApi, useRestMutation } from "@/lib/rest-domain";
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
 
 type Props = {
   store: AdminStore;
   team: AdminTeamResponse | undefined;
   onOpenCatalogue: () => void;
   scope?: AdminFeatureKey;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type IssueUpdatePayload = Record<string, unknown>;
@@ -51,12 +53,16 @@ const trainingAudienceLabels: Record<string, string> = {
   managers_only: "Managers only",
   selected_people: "Selected people",
 };
+const cleaningWeekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const cleaningDaysFor = (task: AdminCleaningTask) => task.frequency === "daily" ? [0, 1, 2, 3, 4, 5, 6] : task.frequency === "weekly" || task.frequency === "specific_days" ? task.weekdays : [];
+const cleaningFrequencyLabel = (frequency: AdminCleaningTask["frequency"]) => frequency === "daily" ? "Daily" : frequency === "weekly" ? "Weekly" : frequency === "specific_days" ? "Specific days" : "After use";
 
 export default function AdminStoreOverview({
   store,
   team,
   onOpenCatalogue,
   scope,
+  onDirtyChange,
 }: Props) {
   const [teamEditor, setTeamEditor] = useState<AdminTeamEditorMember | false>(
     false,
@@ -67,6 +73,14 @@ export default function AdminStoreOverview({
   const [fridgeEditor, setFridgeEditor] = useState<FridgeEditorState | null>(
     null,
   );
+  const [draggedCleaningId, setDraggedCleaningId] = useState<string | null>(null);
+  const [draggedWastageId, setDraggedWastageId] = useState<string | null>(null);
+  const [draggedTrainingId, setDraggedTrainingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(teamEditor || editor || fridgeEditor));
+    return () => onDirtyChange?.(false);
+  }, [editor, fridgeEditor, onDirtyChange, teamEditor]);
 
   const addQuestion = useRestMutation(restApi.admin.addChecklistQuestion);
   const updateQuestion = useRestMutation(restApi.admin.updateChecklistQuestion);
@@ -174,6 +188,16 @@ export default function AdminStoreOverview({
     setEditor({ kind: "security", item, session: item.session });
   }
 
+  async function removeSecurityQuestion(item: AdminSecurityQuestion) {
+    if (!window.confirm("Remove this security question? Historical answers and audit evidence will be preserved.")) return;
+    try {
+      await deleteSecurity({ questionId: item._id });
+      toast.success("Security question removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to remove security question");
+    }
+  }
+
   async function move(
     kind: "question" | "wastage",
     id: string,
@@ -182,6 +206,34 @@ export default function AdminStoreOverview({
     if (kind === "question")
       await reorderQuestion({ questionId: id, direction });
     else await reorderWastage({ itemId: id, direction });
+  }
+
+  async function moveCleaningByDrag(fromId: string, toId: string) {
+    const from = store.cleaningTasks.findIndex((item) => item._id === fromId);
+    const to = store.cleaningTasks.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1) {
+      await reorderCleaning({ taskId: fromId, direction });
+    }
+  }
+
+  async function moveWastageByDrag(fromId: string, toId: string) {
+    const from = store.wastageItems.findIndex((item) => item._id === fromId);
+    const to = store.wastageItems.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1)
+      await reorderWastage({ itemId: fromId, direction });
+  }
+
+  async function moveTrainingByDrag(fromId: string, toId: string) {
+    const from = store.trainingRequirements.findIndex((item) => item._id === fromId);
+    const to = store.trainingRequirements.findIndex((item) => item._id === toId);
+    if (from < 0 || to < 0 || from === to) return;
+    const direction = from < to ? "down" : "up";
+    for (let index = from; direction === "down" ? index < to : index > to; index += direction === "down" ? 1 : -1)
+      await reorderTraining({ requirementId: fromId, direction });
   }
 
   function openEditor(
@@ -237,6 +289,7 @@ export default function AdminStoreOverview({
           name: data.name,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
           frequency: data.frequency,
           weekdays: data.weekdays,
@@ -247,6 +300,7 @@ export default function AdminStoreOverview({
           name: data.name,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
           frequency: data.frequency,
           weekdays: data.weekdays,
@@ -259,6 +313,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
       else
@@ -268,6 +323,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
     } else if (editor.kind === "product") {
@@ -297,6 +353,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
       else
@@ -306,6 +363,7 @@ export default function AdminStoreOverview({
           question: data.question,
           description: data.description,
           taskType: data.taskType,
+          completionMode: data.completionMode,
           steps: data.steps,
         });
     } else if (editor.kind === "training") {
@@ -496,26 +554,40 @@ export default function AdminStoreOverview({
             action="Add task"
             onAdd={promptAddCleaning}
           >
+            <div className="mb-4 rounded-xl border border-black/[0.07] bg-[#fafbf9] p-3"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Weekly overview</p><p className="text-xs text-[#89918b]">Scheduled tasks by weekday</p></div><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">{cleaningWeekdays.map((day, dayIndex) => { const tasks = store.cleaningTasks.filter(task => cleaningDaysFor(task).includes(dayIndex)); return <div key={day} className="rounded-lg border border-black/[0.07] bg-white p-2"><p className="text-[10px] font-bold uppercase tracking-wide text-[#89918b]">{day.slice(0, 3)}</p>{tasks.length ? <div className="mt-1 space-y-1">{tasks.map(task => <p key={task._id} className="truncate text-xs font-semibold" title={task.name}>{task.name}</p>)}</div> : <p className="mt-1 text-xs text-[#89918b]">None</p>}</div>; })}</div></div>
+            {(() => { const overlappingDays = cleaningWeekdays.map((day, dayIndex) => ({ day, tasks: store.cleaningTasks.filter(task => cleaningDaysFor(task).includes(dayIndex)) })).filter(entry => entry.tasks.length > 1); return overlappingDays.length ? <div className="mb-4 rounded-xl border border-[#f0d98a] bg-[#fffdf4] p-3 text-sm"><p className="font-semibold">Potential schedule overlap</p><p className="mt-1 text-xs text-[#7b6b2a]">More than one cleaning task is scheduled on {overlappingDays.map(entry => entry.day).join(", ")}. Review the tasks below if that overlap is intentional.</p></div> : null; })()}
             <div className="space-y-2">
               {store.cleaningTasks.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable={!item.centralItemId}
+                  onDragStart={() => setDraggedCleaningId(item._id)}
+                  onDragEnd={() => setDraggedCleaningId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => { if (draggedCleaningId && draggedCleaningId !== item._id && !item.centralItemId) void moveCleaningByDrag(draggedCleaningId, item._id); setDraggedCleaningId(null); }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedCleaningId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {!item.centralItemId && <button type="button" draggable aria-label={`Drag ${item.name} to reorder`} title="Drag to reorder" className="cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button>}
                   <div>
                     <p className="font-semibold">
                       {index + 1}. {item.name}
-                      {item.centralItemId && (
+                      {item.centralItemId ? (
                         <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                           Organisation standard
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                          Store-only
                         </span>
                       )}
                     </p>
                     <p className="text-xs text-[#89918b]">
-                      {item.frequency === "specific_days"
-                        ? `Specific days: ${item.weekdays.join(", ")}`
-                        : item.frequency.replace("_", " ")}
+                      {item.frequency === "weekly" || item.frequency === "specific_days"
+                        ? `${cleaningFrequencyLabel(item.frequency)}: ${cleaningWeekdaySummary(item.frequency, item.weekdays)}`
+                        : cleaningFrequencyLabel(item.frequency)}
                     </p>
+                  </div>
                   </div>
                   {item.centralItemId ? (
                     <span className="text-xs font-semibold text-[#477152]">
@@ -523,27 +595,8 @@ export default function AdminStoreOverview({
                     </span>
                   ) : (
                     <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          reorderCleaning({ taskId: item._id, direction: "up" })
-                        }
-                      >
-                        <ChevronUp className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          reorderCleaning({
-                            taskId: item._id,
-                            direction: "down",
-                          })
-                        }
-                      >
-                        <ChevronDown className="size-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" aria-label={`Move ${item.name} up`} title="Move up (accessible alternative)" onClick={() => reorderCleaning({ taskId: item._id, direction: "up" })}><span aria-hidden="true">↑</span></Button>
+                      <Button variant="ghost" size="icon" aria-label={`Move ${item.name} down`} title="Move down (accessible alternative)" onClick={() => reorderCleaning({ taskId: item._id, direction: "down" })}><span aria-hidden="true">↓</span></Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -622,25 +675,37 @@ export default function AdminStoreOverview({
               {store.wastageItems.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable
+                  onDragStart={() => setDraggedWastageId(item._id)}
+                  onDragEnd={() => setDraggedWastageId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedWastageId && draggedWastageId !== item._id) {
+                      void moveWastageByDrag(draggedWastageId, item._id);
+                    }
+                    setDraggedWastageId(null);
+                  }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedWastageId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
-                  <span className="font-semibold">
-                    {index + 1}. {item.name}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-3"><button type="button" draggable aria-label={`Drag ${item.name} to reorder`} title="Drag to reorder" className="cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button><span className="font-semibold">{index + 1}. {item.name}</span></div>
                   <div className="flex gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Move ${item.name} up`}
+                      title="Move up (accessible alternative)"
                       onClick={() => move("wastage", item._id, "up")}
                     >
-                      <ChevronUp className="size-4" />
+                      <span aria-hidden="true">↑</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Move ${item.name} down`}
+                      title="Move down (accessible alternative)"
                       onClick={() => move("wastage", item._id, "down")}
                     >
-                      <ChevronDown className="size-4" />
+                      <span aria-hidden="true">↓</span>
                     </Button>
                     <Button
                       variant="ghost"
@@ -694,15 +759,22 @@ export default function AdminStoreOverview({
                       >
                         <span>
                           {item.question}
-                          {item.centralItemId && (
+                          {item.centralItemId ? (
                             <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                               Organisation standard
+                            </span>
+                          ) : (
+                            <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                              Store-only
                             </span>
                           )}
                         </span>
                         {item.centralItemId ? (
-                          <span className="text-xs font-semibold text-[#477152]">
-                            Organisation standard
+                          <span className="text-right text-xs font-semibold text-[#477152]">
+                            <span className="block">Organisation standard</span>
+                            <span className="mt-1 block font-normal text-[#727a74]">
+                              Managed in Organisation Admin
+                            </span>
                           </span>
                         ) : (
                           <div className="flex gap-1">
@@ -717,9 +789,9 @@ export default function AdminStoreOverview({
                               variant="ghost"
                               size="icon"
                               className="text-[#b64738]"
-                              onClick={() =>
-                                deleteSecurity({ questionId: item._id })
-                              }
+                              aria-label={`Remove ${item.question}`}
+                              title="Remove security question"
+                              onClick={() => void removeSecurityQuestion(item)}
                             >
                               <Trash2 className="size-4" />
                             </Button>
@@ -743,14 +815,30 @@ export default function AdminStoreOverview({
               {store.trainingRequirements.map((item, index) => (
                 <div
                   key={item._id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] px-3 py-3 text-sm"
+                  draggable={!item.centralPublicationId}
+                  onDragStart={() => !item.centralPublicationId && setDraggedTrainingId(item._id)}
+                  onDragEnd={() => setDraggedTrainingId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (!item.centralPublicationId && draggedTrainingId && draggedTrainingId !== item._id) {
+                      void moveTrainingByDrag(draggedTrainingId, item._id);
+                    }
+                    setDraggedTrainingId(null);
+                  }}
+                  className={`flex items-center justify-between rounded-xl bg-white px-3 py-3 text-sm transition-shadow ${draggedTrainingId === item._id ? "shadow-lg ring-2 ring-brand-yellow/60" : "border border-black/[0.06]"}`}
                 >
-                  <div>
+                  <div className="flex min-w-0 items-start gap-3">
+                    {!item.centralPublicationId && <button type="button" draggable aria-label={`Drag ${item.title} to reorder`} title="Drag to reorder" className="mt-0.5 cursor-grab touch-none rounded-lg border border-black/[0.08] px-2 py-1 text-[#68716a] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow">☷</button>}
+                    <div>
                     <p className="font-semibold">
                       {index + 1}. {item.title}
-                      {item.centralPublicationId && (
+                      {item.centralPublicationId ? (
                         <span className="ml-2 rounded-full bg-[#e9f0e6] px-2 py-1 text-[10px] font-semibold text-[#477152]">
                           Organisation standard
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded-full bg-[#f0f1ef] px-2 py-1 text-[10px] font-semibold text-[#68716a]">
+                          Store-only
                         </span>
                       )}
                     </p>
@@ -758,6 +846,7 @@ export default function AdminStoreOverview({
                       {trainingCategoryLabels[item.category ?? "other"]} ·{" "}
                       {trainingAudienceLabels[item.audience ?? "all_team"]}
                     </p>
+                    </div>
                   </div>
                   {item.centralPublicationId ? (
                     <span className="text-xs font-semibold text-[#477152]">
@@ -768,6 +857,8 @@ export default function AdminStoreOverview({
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Move ${item.title} up`}
+                        title="Move up (accessible alternative)"
                         onClick={() =>
                           reorderTraining({
                             requirementId: item._id,
@@ -775,11 +866,13 @@ export default function AdminStoreOverview({
                           })
                         }
                       >
-                        <ChevronUp className="size-4" />
+                        <span aria-hidden="true">↑</span>
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={`Move ${item.title} down`}
+                        title="Move down (accessible alternative)"
                         onClick={() =>
                           reorderTraining({
                             requirementId: item._id,
@@ -787,7 +880,7 @@ export default function AdminStoreOverview({
                           })
                         }
                       >
-                        <ChevronDown className="size-4" />
+                        <span aria-hidden="true">↓</span>
                       </Button>
                       <Button
                         variant="ghost"

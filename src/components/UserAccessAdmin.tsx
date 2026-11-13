@@ -6,7 +6,7 @@ import { Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-type Editor = { mode: "invite" | "edit"; user?: UserAccessUser };
+type Editor = { mode: "invite" | "create" | "edit"; user?: UserAccessUser };
 type SelectedStores = Record<string, UserAccessRole>;
 
 const roleLabel = (role: UserAccessRole) => role === "manager" ? "Manager" : "Staff";
@@ -24,12 +24,15 @@ function selectionsFor(user: UserAccessUser): SelectedStores {
 export default function UserAccessAdmin({ visible = true }: { visible?: boolean }) {
   const data = useRestQuery<UserAccessResponse>(visible ? "user-access" : null, restApi.admin.userAccess.list, visible);
   const invite = useRestMutation(restApi.admin.userAccess.invite);
+  const createWithPassword = useRestMutation(restApi.admin.userAccess.createWithPassword);
   const update = useRestMutation(restApi.admin.userAccess.update);
   const remove = useRestMutation(restApi.admin.userAccess.remove);
   const resend = useRestMutation(restApi.admin.userAccess.resend);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<UserAccessRole>("staff");
   const [selectedStores, setSelectedStores] = useState<SelectedStores>({});
   const [saving, setSaving] = useState(false);
@@ -40,6 +43,18 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
     setEditor({ mode: "invite" });
     setName("");
     setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setRole("staff");
+    setSelectedStores({});
+  }
+
+  function openCreate() {
+    setEditor({ mode: "create" });
+    setName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
     setRole("staff");
     setSelectedStores({});
   }
@@ -55,6 +70,8 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
   function closeEditor() {
     setEditor(null);
     setSaving(false);
+    setPassword("");
+    setConfirmPassword("");
   }
 
   function setStoreSelected(locationId: string, checked: boolean) {
@@ -73,6 +90,10 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
 
   async function save() {
     if (!editor || !name.trim()) return;
+    if (editor.mode === "create" && password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
     const memberships = Object.entries(selectedStores).map(([locationId, selectedRole]) => ({ locationId, role: selectedRole }));
     if (!memberships.length) {
       toast.error(editor.mode === "invite" ? "Select at least one store" : "Select at least one store or use the existing account without access");
@@ -81,8 +102,9 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
     setSaving(true);
     try {
       if (editor.mode === "invite") await invite({ name: name.trim(), email: email.trim(), role, locations: memberships });
+      else if (editor.mode === "create") await createWithPassword({ name: name.trim(), email: email.trim(), password, role, locations: memberships });
       else if (editor.user) await update({ userId: editor.user.id, name: name.trim(), memberships });
-      toast.success(editor.mode === "invite" ? "Invitation sent" : "User access updated");
+      toast.success(editor.mode === "invite" ? "Invitation sent" : editor.mode === "create" ? "Account created" : "User access updated");
       closeEditor();
     } catch (error) {
       window.dispatchEvent(new Event("rest:data-changed"));
@@ -120,7 +142,7 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
           <h2 className="mt-1 text-xl font-semibold">User Access</h2>
           <p className="mt-1 text-sm text-[#727a74]">Manage login accounts and the stores they can access.</p>
         </div>
-        <Button className="bg-[#202522] text-white" onClick={openInvite}><Plus className="mr-1 size-4" /> Invite user</Button>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={openInvite}><Plus className="mr-1 size-4" /> Invite user</Button><Button className="bg-[#202522] text-white" onClick={openCreate}><Plus className="mr-1 size-4" /> Create account</Button></div>
       </div>
 
       <div className="mt-5 divide-y divide-black/[0.07] rounded-xl border border-black/[0.07]">
@@ -172,7 +194,7 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
           <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 sm:rounded-3xl">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold">{editor.mode === "invite" ? "Invite user" : "Edit user access"}</h2>
+                <h2 className="text-xl font-semibold">{editor.mode === "invite" ? "Invite user" : editor.mode === "create" ? "Create account" : "Edit user access"}</h2>
                 <p className="mt-1 text-sm text-[#727a74]">Store access is separate from operational Team Members.</p>
               </div>
               <Button variant="ghost" size="icon" onClick={closeEditor}><X className="size-5" /></Button>
@@ -180,6 +202,7 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
             <div className="mt-6 space-y-4">
               <label className="block text-sm font-semibold">Name<Input value={name} onChange={event => setName(event.target.value)} className="mt-2 h-12" /></label>
               <label className="block text-sm font-semibold">Email<Input type="email" value={email} disabled={editor.mode === "edit"} onChange={event => setEmail(event.target.value)} className="mt-2 h-12" /></label>
+              {editor.mode === "create" && <><label className="block text-sm font-semibold">Password<Input type="password" autoComplete="new-password" minLength={10} value={password} onChange={event => setPassword(event.target.value)} className="mt-2 h-12" /></label><label className="block text-sm font-semibold">Confirm password<Input type="password" autoComplete="new-password" minLength={10} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} className="mt-2 h-12" /></label><p className="text-xs text-[#727a74]">The password is stored only as a secure hash. No invitation email is sent. Share the credentials with the user securely.</p></>}
               <div>
                 <p className="text-sm font-semibold">Store access</p>
                 <div className="mt-2 space-y-2">
@@ -194,7 +217,7 @@ export default function UserAccessAdmin({ visible = true }: { visible?: boolean 
               </div>
               <label className="block text-sm font-semibold">Role for selected stores<select value={role} onChange={event => changeRole(event.target.value as UserAccessRole)} className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"><option value="staff">Staff</option><option value="manager">Manager</option></select></label>
               {editor.mode === "edit" && editor.user && <div className="rounded-xl border border-[#e8c1b9] bg-[#fff8f6] p-4"><p className="font-semibold text-[#7f3026]">Remove user access</p><p className="mt-1 text-sm text-[#7f625d]">Removes this user’s login and store access. Historical compliance records are preserved.</p><Button type="button" variant="outline" className="mt-3 border-[#c8796d] text-[#7f3026]" onClick={() => void removeUser(editor.user!)}><Trash2 className="mr-1 size-4" /> Remove user</Button></div>}
-              <div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={closeEditor}>Cancel</Button><Button className="bg-[#202522] text-white" disabled={saving || !name.trim() || !email.trim()} onClick={save}>{saving ? "Saving…" : editor.mode === "invite" ? "Invite user" : "Save access"}</Button></div>
+              <div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={closeEditor}>Cancel</Button><Button className="bg-[#202522] text-white" disabled={saving || !name.trim() || !email.trim() || (editor.mode === "create" && (password.length < 10 || !confirmPassword))} onClick={save}>{saving ? "Saving…" : editor.mode === "invite" ? "Invite user" : editor.mode === "create" ? "Create account" : "Save access"}</Button></div>
             </div>
           </div>
         </div>

@@ -9,15 +9,17 @@ const admin = await read("src/components/OrganisationAdmin.tsx");
 const trainingView = await read("src/components/TrainingView.tsx");
 const rest = await read("src/lib/rest-domain.ts");
 const documentRoute = await read("api/documents/[id].ts");
+const documentService = await read("src/server/documents/service.ts");
 
 const checks = [
   [service, ["A PDF is required for document training", "documentSelected", "attachmentStatus", "attached", "missing", "safeTrainingRequirements"]],
   [training, ["currentDocumentVersionId", "trainingFormat: \"document\"", "centralTrainingPublications", "documentUrl: requirement.trainingFormat === \"document\"", "removeTrainingDocument", "central_training_document_removed"]],
-  [dashboard, ["documentUrl: requirement.trainingFormat === \"document\""]],
+  [dashboard, ["currentDocumentId: currentDocument?.id ?? null", "documentUrl: requirement.trainingFormat === \"document\""]],
   [admin, ["Training type", "Briefing / instruction", "Document / PDF", "aria-pressed", "Current PDF attached", "Required for Document / PDF training", "Attach missing PDF", "PDF attachment incomplete", "documentSelected", "attachmentStatus", "Remove PDF", "removeCentralTrainingDocument", "PDF removed", "The training requirement and historical records will be preserved."]],
-  [trainingView, ["<iframe", "Open PDF", "documentUrl", "whitespace-pre-wrap"]],
+  [trainingView, ["<VerifiedPdfPreview", "documentUrl", "whitespace-pre-wrap", "trainingFormatLabel", "Document / PDF", "Briefing", "Acknowledged", "Not acknowledged", "acknowledgementPdfVerified"]],
   [rest, ["/api/documents/upload", "attachTrainingDocument", "removeTrainingDocument"]],
-  [documentRoute, ["documentForAccess", "readPrivateDocument", "Content-Disposition"]],
+  [documentRoute, ["documentForAccess", "readPrivateDocument", "Content-Disposition", "X-Document-Id", "Cache-Control"]],
+  [documentService, ["eq(documents.id, documentId)", "get(document.pathname, { access: \"private\", token: token() })"]],
 ];
 
 let count = 0;
@@ -32,5 +34,7 @@ assert.doesNotMatch(admin, /Optional supporting document/);
 assert.doesNotMatch(trainingView, /View supporting PDF/);
 assert.doesNotMatch(service, /pathname.*return|storageId.*return/);
 assert.match(documentRoute, /requireContext/);
+assert.match(trainingView, /requirement\.trainingFormat/);
+assert.match(training, /currentDocumentId: currentDocument\?\.id \?\? null/);
 
 console.log(`Training PDF attachment tests passed: ${count}/${count}`);

@@ -25,22 +25,23 @@ check.equal(selectedQuestionMember("q2", { q1: "person-a" }, "person-b"), "perso
 check.equal(selectedSignOffMember("person-b", "person-a"), "person-b", "explicit sign-off member wins");
 check.equal(selectedSignOffMember("", "person-a"), "person-a", "sign-off defaults to current member");
 
-check(checklist.includes("questionMemberOverrides"), "checklist keeps per-question pending member state");
-check(checklist.includes("selectedQuestionMember"), "checklist uses question member selection helper");
-check(checklist.includes("onComplete(question._id, questionMemberId)"), "response sends actual question member");
-check(checklist.includes("onIssue(issueQuestion._id, problem, action, memberId)"), "issue sends actual question member");
-check(checklist.includes("selectedSignOffMember(signOffTeamMemberId, workflowTeamMemberId)"), "sign-off has separate actor selection");
+check(checklist.includes("const [overrides, setOverrides]"), "checklist keeps per-item pending member state");
+check(checklist.includes("const memberFor = (key: string)"), "checklist resolves the active or overridden member");
+check(checklist.includes("saveQuestion(task, \"yes\")"), "response sends the selected question member");
+check(checklist.includes("saveQuestion(task, \"no\")"), "issue response sends the selected question member");
+check(checklist.includes("workflowMemberId"), "sign-off uses the workflow member when recovery is needed");
 check(checklist.includes("onSignOff(memberId)"), "sign-off sends selected actor");
 check(checklist.includes("response.teamMemberId"), "completed response reads persisted actor");
 check(checklist.includes("response?.createdAt"), "completed response reads persisted timestamp");
-check(checklist.includes("Current team member"), "workflow member is presented as a default");
-check(checklist.includes("Signed off by"), "sign-off is presented separately");
+check(checklist.includes("workflowMemberId"), "workflow member is presented as a default");
+check(checklist.includes("Finish recording completion"), "completion recovery remains explicit when needed");
 
-check(cleaning.includes("selected[task._id]"), "cleaning selection is keyed per task");
-check(cleaning.includes("onComplete(task._id, selected[task._id])"), "cleaning sends task actor");
-check(cleaning.includes("completion.teamMemberName"), "cleaning displays persisted actor");
-check(cleaning.includes("completion.completedAt"), "cleaning displays persisted timestamp");
-check(!cleaning.includes("setSelected((current) => ({ ...current, [task._id]: \"\""), "completed cleaning has no reassignment path");
+check(cleaning.includes("<StructuredTaskWorkflow"), "cleaning delegates to the shared checklist renderer");
+check(cleaning.includes("cleaningCompletions={completions}"), "cleaning passes persisted completion evidence");
+check(cleaning.includes("onCompleteCleaning={onComplete}"), "cleaning preserves the completion actor callback");
+check(cleaning.includes("onReportCleaningIssue={onIssue}"), "cleaning preserves the issue callback");
+check(source.includes("response.teamMemberId"), "structured cleaning displays persisted actor");
+check(source.includes("response.createdAt"), "structured cleaning displays persisted timestamp");
 
 check(compliance.includes("await activeMember(location.id, input.teamMemberId)"), "new checklist response requires active local member");
 check(compliance.includes("teamMemberId: input.teamMemberId"), "checklist response stores actor");
@@ -54,7 +55,7 @@ check(reports.includes("memberName(response.teamMemberId)"), "report exception u
 check(reports.includes("openingComplete") && reports.includes("Boolean(openingSignoff)"), "report completion remains response plus sign-off");
 
 check(workflows.includes("saveChecklistResponse({ locationId: dashboard.location._id, checklist: checklistList, questionId, answer: \"yes\", teamMemberId })"), "workflow preserves response payload");
-check(workflows.includes("signOffChecklist({ locationId: dashboard.location._id, checklist: checklistList, teamMemberId })"), "workflow preserves sign-off payload");
+check(workflows.includes("signOffStructuredTask({ locationId: dashboard.location._id, area: checklistList, teamMemberId })"), "workflow preserves sign-off payload");
 check(workflows.includes("setChecklistList(null); setCleaningList(false)"), "store reset clears checklist and cleaning state");
 check(dashboard.includes("key={`${dashboard.location._id}:${workflows.checklistList}`}"), "store/checklist key resets pending checklist state");
 check(dashboard.includes("key={dashboard.location._id}"), "store key resets pending cleaning state");

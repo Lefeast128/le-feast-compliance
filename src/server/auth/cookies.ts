@@ -18,10 +18,28 @@ export const clearSessionCookie = () => {
   return `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`;
 };
 
-export const allowedOrigins = () => (process.env.AUTH_ALLOWED_ORIGINS ?? "")
-  .split(",")
-  .map(origin => origin.trim())
-  .filter(Boolean);
+const vercelHostOrigin = (value: string | undefined) => {
+  const hostname = value?.trim().toLowerCase();
+  if (!hostname || !/^[a-z0-9.-]+\.vercel\.app$/.test(hostname)) return null;
+  try {
+    const parsed = new URL(`https://${hostname}`);
+    return parsed.hostname === hostname && parsed.origin === `https://${hostname}` ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+};
+
+// Previews are reachable at both the one-off deployment URL (VERCEL_URL) and the
+// branch alias (VERCEL_BRANCH_URL) that GitHub and Vercel comments link to.
+const vercelPreviewOrigins = () => {
+  if (process.env.VERCEL_ENV !== "preview") return [];
+  return [vercelHostOrigin(process.env.VERCEL_URL), vercelHostOrigin(process.env.VERCEL_BRANCH_URL)].filter((origin): origin is string => Boolean(origin));
+};
+
+export const allowedOrigins = () => [...new Set([
+  ...(process.env.AUTH_ALLOWED_ORIGINS ?? "").split(",").map(origin => origin.trim()).filter(Boolean),
+  ...vercelPreviewOrigins(),
+])];
 
 export const requestOrigin = (request: { headers?: Record<string, string | string[] | undefined> }) => {
   const origin = request.headers?.origin;

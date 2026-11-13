@@ -3,6 +3,7 @@ export const MAX_AD_HOC_WASTAGE_NAME_LENGTH = 200;
 type WastageInput = {
   noWaste?: unknown;
   itemId?: unknown;
+  markdownProductId?: unknown;
   catalogueProductId?: unknown;
   adHocItemName?: unknown;
   quantity?: unknown;
@@ -14,19 +15,24 @@ export type WastageMode =
   | { source: "no_waste" }
   | { source: "catalogue"; productId: string }
   | { source: "adhoc"; itemName: string }
-  | { source: "legacy"; itemId: string };
+  | { source: "legacy"; itemId: string }
+  | { source: "markdown"; productId: string };
 
 export function parseWastageMode(input: WastageInput): WastageMode {
   if (input.noWaste === true) {
-    if (supplied(input, "itemId") || supplied(input, "catalogueProductId") || supplied(input, "adHocItemName") || supplied(input, "quantity")) {
+    if (supplied(input, "markdownProductId") || supplied(input, "itemId") || supplied(input, "catalogueProductId") || supplied(input, "adHocItemName") || supplied(input, "quantity")) {
       throw new Error("No Waste cannot include an item, product, name or quantity");
     }
     return { source: "no_waste" };
   }
 
-  const choices = [supplied(input, "catalogueProductId"), supplied(input, "adHocItemName"), supplied(input, "itemId")].filter(Boolean).length;
+  const choices = [supplied(input, "markdownProductId"), supplied(input, "catalogueProductId"), supplied(input, "adHocItemName"), supplied(input, "itemId")].filter(Boolean).length;
   if (choices !== 1) throw new Error("Provide exactly one wastage product, ad-hoc name or legacy item");
 
+  if (supplied(input, "markdownProductId")) {
+    if (typeof input.markdownProductId !== "string") throw new Error("markdownProductId must be a valid identifier");
+    return { source: "markdown", productId: input.markdownProductId };
+  }
   if (supplied(input, "catalogueProductId")) {
     if (typeof input.catalogueProductId !== "string") throw new Error("catalogueProductId must be a valid identifier");
     return { source: "catalogue", productId: input.catalogueProductId };

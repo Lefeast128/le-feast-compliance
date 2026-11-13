@@ -18,9 +18,24 @@ import {
   type StructuredStepResponseType,
 } from "../db/schema.js";
 import { ApiError } from "./errors.js";
+
+// Staff may only record against today or yesterday (late-shift close-down) in the
+// location's timezone; anything else would allow backdating compliance records.
+export function writableDateKey(value: unknown, timeZone: string, now = Date.now()) {
+  const today = localDateKey(now, timeZone);
+  if (value === undefined || value === null || value === "") return today;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, "dateKey must be YYYY-MM-DD");
+  const yesterday = localDateKey(now - 24 * 60 * 60 * 1000, timeZone);
+  if (value !== today && value !== yesterday) throw new ApiError(422, "Responses can only be recorded for today or yesterday");
+  return value;
+}
+import { cleaningRunsOn, localWeekdayForDate } from "../../shared/cleaning-scheduling.js";
 import { localDateKey, localDayRange } from "../dashboard/time.js";
 import { activeMember } from "./shared.js";
 import { id, locationFor, text } from "../management/shared.js";
+import type { Transaction } from "../management/shared.js";
+import { checklistDefinitionKey, checklistVersionRoot } from "../../shared/unified-checklist.js";
+import { idempotentOfflineMutation } from "./offline-idempotency.js";
 
 export const structuredAreas = ["opening", "closing", "cleaning", "security_am", "security_pm"] as const;
 export type StructuredTaskArea = typeof structuredAreas[number];
@@ -64,6 +79,7 @@ export function validateStructuredSteps(value: unknown, taskType: StructuredTask
       description: typeof item.description === "string" && item.description.trim() ? item.description.trim() : null,
       responseType: responseType as StructuredStepResponseType,
       required: item.required !== false,
+      correctiveActions: Array.isArray(item.correctiveActions) ? [...new Set(item.correctiveActions.filter((action): action is string => typeof action === "string").map(action => action.trim()).filter(Boolean))].slice(0, 20) : undefined,
     } satisfies StructuredStepDefinition;
   });
   if (taskType === "with_steps" && !steps.length) throw new ApiError(422, "At least one task step is required");
@@ -74,6 +90,12 @@ function taskTypeOf(input: Record<string, unknown>, existing?: TaskRow): Structu
   const value = input.taskType ?? existing?.taskType ?? "simple";
   if (typeof value !== "string" || !structuredTaskTypes.includes(value as StructuredTaskType)) throw new ApiError(422, "Task type is invalid");
   return value as StructuredTaskType;
+}
+
+function completionModeOf(input: Record<string, unknown>, existing?: TaskRow) {
+  const value = input.completionMode ?? existing?.completionMode ?? ("name" in (existing ?? {}) ? "task" : "question");
+  if (value !== "task" && value !== "question") throw new ApiError(422, "Completion mode is invalid");
+  return value as "task" | "question";
 }
 
 function rowTitle(row: TaskRow) {
@@ -97,6 +119,7 @@ function dto(row: TaskRow) {
     name: "name" in row ? row.name : undefined,
     description: row.description,
     taskType: (row.taskType ?? "simple") as StructuredTaskType,
+    completionMode: row.completionMode ?? ("name" in row ? "task" : "question"),
     steps: (row.steps ?? []) as StructuredStepDefinition[],
     checklist: "checklist" in row ? row.checklist : undefined,
     session: "session" in row ? row.session : undefined,
@@ -106,7 +129,66 @@ function dto(row: TaskRow) {
     active: row.active,
     order: row.order,
     versionRootId: row.versionRootId,
+    definitionKey: checklistDefinitionKey(row),
   };
+}
+
+export function structuredResponseStepForTask(row: TaskRow, requestedStepId: string) {
+  if (row.taskType === "with_steps") {
+    return ((row.steps ?? []) as StructuredStepDefinition[]).find(step => step.id === requestedStepId) ?? null;
+  }
+  const completionMode = row.completionMode ?? ("name" in row ? "task" : "question");
+  if (requestedStepId !== "simple") return null;
+  return {
+    id: "simple",
+    label: rowTitle(row),
+    responseType: completionMode === "task" ? "confirm" as const : "yes_no" as const,
+    required: true,
+  };
+}
+
+function responseMatchesTask(task: TaskRow, response: { taskId: string }, versionsById: Map<string, TaskRow>) {
+  if (response.taskId === task.id) return true;
+  const previous = versionsById.get(response.taskId);
+  return Boolean(previous && checklistVersionRoot(previous) === checklistVersionRoot(task) && checklistDefinitionKey(previous) === checklistDefinitionKey(task));
+}
+
+/**
+ * Complete a checklist in the same transaction as its final response. The
+ * client still requests sign-off for compatibility, but completion must not
+ * depend on a second network request succeeding after the answer is saved.
+ */
+export async function maybeAutoSignOffStructuredChecklist(
+  tx: Transaction,
+  input: { locationId: string; area: StructuredTaskArea; dateKey: string; timezone: string; completedBy: string; teamMemberId: string },
+) {
+  if (input.area === "cleaning") return false;
+  const checklist = input.area === "opening" || input.area === "closing" ? input.area : null;
+  const tasks = checklist
+    ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, input.locationId), eq(checklistQuestions.checklist, checklist), eq(checklistQuestions.active, true)))
+    : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, input.locationId), eq(securityQuestions.session, input.area === "security_am" ? "AM" : "PM"), eq(securityQuestions.active, true)));
+  if (!tasks.length) return false;
+  const versionTasks = checklist
+    ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, input.locationId), eq(checklistQuestions.checklist, checklist)))
+    : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, input.locationId), eq(securityQuestions.session, input.area === "security_am" ? "AM" : "PM")));
+  const versionsById = new Map<string, TaskRow>(versionTasks.map(task => [task.id, task as TaskRow] as [string, TaskRow]));
+  const { start, end } = localDayRange(Date.parse(`${input.dateKey}T12:00:00Z`), input.timezone);
+  const legacyResponses = checklist
+    ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, input.locationId), eq(checklistResponses.checklist, checklist), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
+    : await tx.select({ questionId: securityResponses.questionId }).from(securityResponses).where(and(eq(securityResponses.locationId, input.locationId), eq(securityResponses.session, input.area === "security_am" ? "AM" : "PM"), gte(securityResponses.createdAt, new Date(start)), lt(securityResponses.createdAt, new Date(end))));
+  const structuredResponses = await tx.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, input.locationId), eq(structuredTaskResponses.taskArea, input.area), eq(structuredTaskResponses.dateKey, input.dateKey)));
+  const complete = tasks.every(task => task.taskType === "with_steps"
+    ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structuredResponses.some(response => response.taskId === task.id && response.stepId === step.id) || structuredResponses.some(response => response.stepId === step.id && responseMatchesTask(task as TaskRow, response, versionsById)))
+    : task.completionMode === "task"
+      ? structuredResponses.some(response => response.taskId === task.id && response.stepId === "simple") || structuredResponses.some(response => response.stepId === "simple" && responseMatchesTask(task as TaskRow, response, versionsById))
+      : structuredResponses.some(response => response.taskId === task.id && response.stepId === "simple") || structuredResponses.some(response => response.stepId === "simple" && responseMatchesTask(task as TaskRow, response, versionsById)) || legacyResponses.some(response => response.questionId === task.id || (versionsById.has(response.questionId) && responseMatchesTask(task as TaskRow, { taskId: response.questionId }, versionsById))));
+  if (!complete) return false;
+  if (checklist) {
+    await tx.insert(checklistSignOffs).values({ locationId: input.locationId, checklist, dateKey: input.dateKey, completedAt: new Date(), completedBy: input.completedBy, teamMemberId: input.teamMemberId }).onConflictDoNothing({ target: [checklistSignOffs.locationId, checklistSignOffs.checklist, checklistSignOffs.dateKey] });
+  } else {
+    await tx.insert(securitySignOffs).values({ locationId: input.locationId, session: input.area === "security_am" ? "AM" : "PM", dateKey: input.dateKey, completedAt: new Date(), completedBy: input.completedBy, teamMemberId: input.teamMemberId }).onConflictDoNothing({ target: [securitySignOffs.locationId, securitySignOffs.session, securitySignOffs.dateKey] });
+  }
+  return true;
 }
 
 async function findActiveTask(area: StructuredTaskArea, rawTaskId: unknown, locationId: string, executor = db()): Promise<TaskRow> {
@@ -129,7 +211,20 @@ export async function listStructuredTasks(context: AuthContext, input: { locatio
   ]);
   const dateKey = input.date ?? localDateKey(Date.now(), location[0].timezone);
   const responses = await db().select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.dateKey, dateKey)));
-  return { dateKey, tasks: [...checklists, ...cleaning, ...security].map(dto), responses: responses.map(row => ({ ...row, createdAt: row.createdAt.toISOString() })) };
+  const [checklistVersions, cleaningVersions, securityVersions] = await Promise.all([
+    db().select().from(checklistQuestions).where(eq(checklistQuestions.locationId, locationId)),
+    db().select().from(cleaningTasks).where(eq(cleaningTasks.locationId, locationId)),
+    db().select().from(securityQuestions).where(eq(securityQuestions.locationId, locationId)),
+  ]);
+  const versionsById = new Map([...checklistVersions, ...cleaningVersions, ...securityVersions].map(row => [row.id, row as TaskRow]));
+  return {
+    dateKey,
+    tasks: [...checklists, ...cleaning.filter(task => cleaningRunsOn(task.frequency, task.weekdays, localWeekdayForDate(dateKey, location[0].timezone))), ...security].map(dto),
+    responses: responses.map(row => {
+      const task = versionsById.get(row.taskId);
+      return { ...row, createdAt: row.createdAt.toISOString(), taskVersionRootId: task ? checklistVersionRoot(task) : null, taskDefinitionKey: task ? checklistDefinitionKey(task) : null };
+    }),
+  };
 }
 
 export async function updateLocalStructuredTask(context: AuthContext, input: Record<string, unknown>) {
@@ -140,6 +235,7 @@ export async function updateLocalStructuredTask(context: AuthContext, input: Rec
   const location = await locationFor(context, existing.locationId);
   if (existing.centralItemId && context.user.role !== "admin") throw new ApiError(403, "Organisation standard tasks are controlled centrally");
   const type = taskTypeOf(input, existing);
+  const completionMode = type === "with_steps" ? "question" : completionModeOf(input, existing);
   const steps = validateStructuredSteps(input.steps ?? existing.steps, type);
   const description = input.description === undefined ? existing.description : (input.description === null ? null : text(input.description, "Description"));
   const table = areaTable(parsedArea);
@@ -147,7 +243,7 @@ export async function updateLocalStructuredTask(context: AuthContext, input: Rec
   const at = new Date();
   return db().transaction(async tx => {
     await tx.update(table).set({ active: false, deactivatedAt: at } as never).where(eq(table.id, existing.id));
-    const common = { active: true, versionRootId, order: existing.order, description, taskType: type, steps };
+    const common = { active: true, versionRootId, order: existing.order, description, taskType: type, completionMode, steps };
     let row: unknown;
     if (parsedArea === "cleaning") {
       const current = existing as typeof cleaningTasks.$inferSelect;
@@ -196,29 +292,30 @@ export async function saveStructuredTaskResponse(context: AuthContext, input: Re
   const area = input.area;
   if (typeof area !== "string" || !structuredAreas.includes(area as StructuredTaskArea)) throw new ApiError(422, "Task area is invalid");
   const row = await findActiveTask(area as StructuredTaskArea, input.taskId, locationId);
-  const steps = (row.steps ?? []) as StructuredStepDefinition[];
   const requestedStepId = typeof input.stepId === "string" ? input.stepId : "";
-  const step = row.taskType === "with_steps" ? steps.find(item => item.id === requestedStepId) : { id: "simple", label: rowTitle(row), responseType: "confirm" as const };
+  const step = structuredResponseStepForTask(row, requestedStepId);
   if (!step) throw new ApiError(404, "Task step not found");
-  const value = validateStructuredTaskResponse(step, input.value);
+  const reportingIssue = input.value === "issue_reported";
+  const value = reportingIssue ? "issue_reported" : validateStructuredTaskResponse(step, input.value);
   const memberId = id(input.teamMemberId, "teamMemberId");
   await activeMember(locationId, memberId);
-  const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
+  const dateKey = writableDateKey(input.dateKey, location[0].timezone);
   const problem = typeof input.problem === "string" ? input.problem.trim() : "";
   const action = typeof input.action === "string" ? input.action.trim() : "";
-  return db().transaction(async tx => {
+  return db().transaction(async tx => idempotentOfflineMutation(tx, context, { key: typeof input.idempotencyKey === "string" ? input.idempotencyKey : undefined, organisationId: location[0].organisationId, locationId, operation: area === "cleaning" ? "cleaning-response" : "security-response", payload: input }, async () => {
     const existing = await tx.select({ id: structuredTaskResponses.id }).from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, area), eq(structuredTaskResponses.taskId, row.id), eq(structuredTaskResponses.dateKey, dateKey), eq(structuredTaskResponses.stepId, step.id))).limit(1);
     if (existing.length) throw new ApiError(409, "This task step has already been completed");
     let issueId: string | undefined;
-    if (step.responseType === "yes_no" && value === "no") {
+    if (reportingIssue || (step.responseType === "yes_no" && value === "no")) {
       if (!problem || !action) throw new ApiError(422, "A problem and corrective action are required");
       const [issue] = await tx.insert(issues).values({ locationId, category: "Operational task", title: `${rowTitle(row)}: ${step.label}`, description: problem, status: "monitoring", createdBy: context.user.id, teamMemberId: memberId, action }).returning({ id: issues.id });
       issueId = issue?.id;
       if (issueId) await tx.insert(issueUpdates).values({ issueId, locationId, updateType: "immediate_action", note: action, status: "monitoring", createdBy: context.user.id, teamMemberId: memberId });
     }
     const [response] = await tx.insert(structuredTaskResponses).values({ locationId, taskArea: area, taskId: row.id, stepId: step.id, responseType: step.responseType, responseValue: value, dateKey, createdBy: context.user.id, teamMemberId: memberId }).returning();
+    await maybeAutoSignOffStructuredChecklist(tx, { locationId, area: area as StructuredTaskArea, dateKey, timezone: location[0].timezone, completedBy: context.user.id, teamMemberId: memberId });
     return { responseId: response.id, issueId, taskId: row.id, stepId: step.id };
-  });
+  }));
 }
 
 export async function signOffStructuredChecklist(context: AuthContext, input: Record<string, unknown>) {
@@ -229,7 +326,7 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
   const location = await db().select().from(locations).where(eq(locations.id, locationId)).limit(1);
   if (!location[0]) throw new ApiError(404, "Location not found");
   requireLocationAccess(context, locationId, location[0].organisationId);
-  const dateKey = input.dateKey ? text(input.dateKey, "dateKey") : localDateKey(Date.now(), location[0].timezone);
+  const dateKey = writableDateKey(input.dateKey, location[0].timezone);
   const memberId = id(input.teamMemberId, "teamMemberId");
   await activeMember(locationId, memberId);
   const { start, end } = localDayRange(Date.parse(`${dateKey}T12:00:00Z`), location[0].timezone);
@@ -237,6 +334,10 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
     const tasks = area === "opening" || area === "closing"
       ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, locationId), eq(checklistQuestions.checklist, parsedArea as "opening" | "closing"), eq(checklistQuestions.active, true)))
       : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, locationId), eq(securityQuestions.session, area === "security_am" ? "AM" : "PM"), eq(securityQuestions.active, true)));
+    const versionTasks = area === "opening" || area === "closing"
+      ? await tx.select().from(checklistQuestions).where(and(eq(checklistQuestions.locationId, locationId), eq(checklistQuestions.checklist, parsedArea as "opening" | "closing")))
+      : await tx.select().from(securityQuestions).where(and(eq(securityQuestions.locationId, locationId), eq(securityQuestions.session, area === "security_am" ? "AM" : "PM")));
+    const versionsById = new Map<string, TaskRow>(versionTasks.map(task => [task.id, task as TaskRow] as [string, TaskRow]));
     if (!tasks.length) throw new ApiError(422, "No active checklist tasks exist for this location");
     const legacyChecklist = area === "opening" || area === "closing"
       ? await tx.select({ questionId: checklistResponses.questionId }).from(checklistResponses).where(and(eq(checklistResponses.locationId, locationId), eq(checklistResponses.checklist, parsedArea as "opening" | "closing"), gte(checklistResponses.createdAt, new Date(start)), lt(checklistResponses.createdAt, new Date(end))))
@@ -246,8 +347,10 @@ export async function signOffStructuredChecklist(context: AuthContext, input: Re
       : [];
     const structured = await tx.select().from(structuredTaskResponses).where(and(eq(structuredTaskResponses.locationId, locationId), eq(structuredTaskResponses.taskArea, parsedArea), eq(structuredTaskResponses.dateKey, dateKey)));
     const complete = tasks.every(task => task.taskType === "with_steps"
-      ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structured.some(response => response.taskId === task.id && response.stepId === step.id))
-      : structured.some(response => response.taskId === task.id && response.stepId === "simple") || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id));
+      ? ((task.steps ?? []) as StructuredStepDefinition[]).filter(step => step.required !== false).every(step => structured.some(response => response.taskId === task.id && response.stepId === step.id) || structured.some(response => response.stepId === step.id && responseMatchesTask(task, response, versionsById)))
+      : task.completionMode === "task"
+        ? structured.some(response => response.taskId === task.id && response.stepId === "simple") || structured.some(response => response.stepId === "simple" && responseMatchesTask(task, response, versionsById))
+        : structured.some(response => response.taskId === task.id && response.stepId === "simple") || structured.some(response => response.stepId === "simple" && responseMatchesTask(task, response, versionsById)) || (area === "opening" || area === "closing" ? legacyChecklist : legacySecurity).some(response => response.questionId === task.id || versionsById.has(response.questionId) && responseMatchesTask(task, { taskId: response.questionId }, versionsById)));
     if (!complete) throw new ApiError(422, "Every active task must be completed before sign-off");
     const [signoff] = area === "opening" || area === "closing"
       ? await tx.insert(checklistSignOffs).values({ locationId, checklist: area, dateKey, completedAt: new Date(), completedBy: context.user.id, teamMemberId: memberId }).onConflictDoNothing({ target: [checklistSignOffs.locationId, checklistSignOffs.checklist, checklistSignOffs.dateKey] }).returning({ id: checklistSignOffs.id })

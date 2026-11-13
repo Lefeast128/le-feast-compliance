@@ -6,6 +6,7 @@ import { additionalRequirements, auditEvents, centralChecklistItems, centralOper
 import { audit, db, type Transaction } from "./shared.js";
 import { validateStructuredSteps } from "../compliance/structured-task-service.js";
 import { validateAdditionalSchedule } from "../additional/scheduling.js";
+import { allocatedStoresMissingActiveRows, type AllocationRow } from "../../shared/admin-allocation.js";
 
 const trainingCategories = ["northern_rail", "food_safety", "security", "equipment", "alcohol", "company_procedure", "other"] as const;
 const trainingAudiences = ["all_team", "managers_only", "selected_people"] as const;
@@ -97,6 +98,7 @@ function checklistDto(row: typeof centralChecklistItems.$inferSelect, storeNames
     question: row.question,
     description: row.description,
     taskType: row.taskType,
+    completionMode: row.completionMode,
     steps: row.steps,
     checklist: row.checklist,
     active: row.active,
@@ -117,6 +119,7 @@ function operationalDto(row: typeof centralOperationalItems.$inferSelect, storeN
     question: row.question,
     description: row.description,
     taskType: row.taskType,
+    completionMode: row.completionMode,
     steps: row.steps,
     frequency: row.frequency,
     interval: row.interval,
@@ -265,11 +268,13 @@ export async function updateCentralTraining(context: AuthContext, publicationId:
 
 function checklistValues(input: Record<string, unknown>) {
   const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
+  const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "question", "completionMode", ["question", "task"] as const);
   return {
     checklist: requireEnum(input.checklist, "checklist", ["opening", "closing"] as const),
     question: requireString(input.question, "Question"),
     description: textOrNull(input.description, "Description"),
     taskType,
+    completionMode,
     steps: validateStructuredSteps(input.steps, taskType),
   };
 }
@@ -283,7 +288,7 @@ export async function publishCentralChecklist(context: AuthContext, input: Recor
     const rows = [];
     for (const store of stores) {
       const existing = await tx.select({ id: checklistQuestions.id }).from(checklistQuestions).where(and(eq(checklistQuestions.locationId, store.id), eq(checklistQuestions.checklist, values.checklist), eq(checklistQuestions.active, true)));
-      const [row] = await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: existing.length, active: true, centralItemId: item.id }).returning();
+      const [row] = await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: existing.length, active: true, centralItemId: item.id }).returning();
       rows.push(row);
     }
     await audit(tx, null, context.user.id, "central_checklist_created", JSON.stringify({ centralItemId: item.id, locationIds: stores.map(store => store.id), checklist: values.checklist }));
@@ -298,22 +303,29 @@ export async function updateCentralChecklist(context: AuthContext, itemId: strin
   if (!existing) throw new ApiError(404, "Central checklist item not found");
   if (input.retire === true) return retireCentralChecklist(context, itemId);
   const stores = await selectedLocations(context, input.locationIds ?? existing.locationIds, allocationMode(input, existing.allocationMode) === "all");
-  const values = checklistValues({ checklist: input.checklist ?? existing.checklist, question: input.question ?? existing.question, description: input.description ?? existing.description, taskType: input.taskType ?? existing.taskType, steps: input.steps ?? existing.steps });
+  const values = checklistValues({ checklist: input.checklist ?? existing.checklist, question: input.question ?? existing.question, description: input.description ?? existing.description, taskType: input.taskType ?? existing.taskType, completionMode: input.completionMode ?? existing.completionMode, steps: input.steps ?? existing.steps });
   return db().transaction(async tx => {
     await tx.update(centralChecklistItems).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, existing.allocationMode), updatedAt: new Date() }).where(eq(centralChecklistItems.id, existing.id));
     const current = await tx.select().from(checklistQuestions).where(eq(checklistQuestions.centralItemId, existing.id));
     const selected = new Set(stores.map(store => store.id));
+    const versionedLocations = new Set<string>();
     for (const old of current) {
       if (!selected.has(old.locationId)) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
-      } else if (old.active && (old.question !== values.question || old.checklist !== values.checklist || old.description !== values.description || old.taskType !== values.taskType || JSON.stringify(old.steps) !== JSON.stringify(values.steps))) {
+      } else if (old.active && (old.question !== values.question || old.checklist !== values.checklist || old.description !== values.description || old.taskType !== values.taskType || old.completionMode !== values.completionMode || JSON.stringify(old.steps) !== JSON.stringify(values.steps))) {
         await tx.update(checklistQuestions).set({ active: false, deactivatedAt: new Date() }).where(eq(checklistQuestions.id, old.id));
-        await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: existing.id });
+        await tx.insert(checklistQuestions).values({ locationId: old.locationId, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: existing.id });
+        versionedLocations.add(old.locationId);
       }
     }
-    for (const store of stores.filter(item => !current.some(row => row.locationId === item.id && row.active))) {
+    const missingStores = allocatedStoresMissingActiveRows(
+      stores.map((store) => store.id),
+      current,
+      versionedLocations,
+    );
+    for (const store of stores.filter((item) => missingStores.includes(item.id))) {
       const rows = await tx.select({ id: checklistQuestions.id }).from(checklistQuestions).where(and(eq(checklistQuestions.locationId, store.id), eq(checklistQuestions.checklist, values.checklist), eq(checklistQuestions.active, true)));
-      await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order: rows.length, active: true, centralItemId: existing.id });
+      await tx.insert(checklistQuestions).values({ locationId: store.id, checklist: values.checklist, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order: rows.length, active: true, centralItemId: existing.id });
     }
     const previous = new Set(existing.locationIds ?? []);
     const selectedLocationIds = new Set(stores.map(store => store.id));
@@ -365,12 +377,15 @@ function operationalValues(input: Record<string, unknown>, kind: OperationalKind
     const frequency = requireEnum(input.frequency, "frequency", ["after_use", "daily", "weekly", "specific_days"] as const);
     const weekdays = input.weekdays === undefined ? [] : input.weekdays;
     if (!Array.isArray(weekdays) || weekdays.some(day => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6)) throw new ApiError(400, "weekdays must contain values from 0 to 6");
+    if ((frequency === "weekly" || frequency === "specific_days") && !weekdays.length) throw new ApiError(422, "Select at least one cleaning weekday");
     const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
-    return { name: requireString(input.name, "Name"), description: textOrNull(input.description, "Description"), taskType, steps: validateStructuredSteps(input.steps, taskType), frequency, weekdays: weekdays as number[] };
+    const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "task", "completionMode", ["question", "task"] as const);
+    return { name: requireString(input.name, "Name"), description: textOrNull(input.description, "Description"), taskType, completionMode, steps: validateStructuredSteps(input.steps, taskType), frequency, weekdays: weekdays as number[] };
   }
   if (kind === "security_am" || kind === "security_pm") {
     const taskType = input.taskType === undefined ? "simple" : requireEnum(input.taskType, "taskType", ["simple", "with_steps"] as const);
-    return { session: (kind === "security_am" ? "AM" : "PM") as "AM" | "PM", question: requireString(input.question, "Question"), description: textOrNull(input.description, "Description"), taskType, steps: validateStructuredSteps(input.steps, taskType) };
+    const completionMode = taskType === "with_steps" ? "question" : requireEnum(input.completionMode ?? "question", "completionMode", ["question", "task"] as const);
+    return { session: (kind === "security_am" ? "AM" : "PM") as "AM" | "PM", question: requireString(input.question, "Question"), description: textOrNull(input.description, "Description"), taskType, completionMode, steps: validateStructuredSteps(input.steps, taskType) };
   }
   const frequency = requireEnum(input.frequency, "frequency", additionalFrequencies);
   const nextDueAt = new Date(typeof input.nextDueAt === "string" || typeof input.nextDueAt === "number" ? input.nextDueAt : NaN);
@@ -394,17 +409,17 @@ async function operationalSource(context: AuthContext, centralItemId: string) {
 
 async function insertOperationalRow(tx: Transaction, kind: OperationalKind, locationId: string, sourceId: string, values: Record<string, unknown>, order: number, versionRootId?: string) {
   if (kind === "cleaning") {
-    return tx.insert(cleaningTasks).values({ locationId, name: values.name, description: values.description, taskType: values.taskType, steps: values.steps, frequency: values.frequency, weekdays: values.weekdays, order, versionRootId, active: true, centralItemId: sourceId } as typeof cleaningTasks.$inferInsert).returning();
+    return tx.insert(cleaningTasks).values({ locationId, name: values.name, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, frequency: values.frequency, weekdays: values.weekdays, order, versionRootId, active: true, centralItemId: sourceId } as typeof cleaningTasks.$inferInsert).returning();
   }
   if (kind === "security_am" || kind === "security_pm") {
-    return tx.insert(securityQuestions).values({ locationId, session: values.session, question: values.question, description: values.description, taskType: values.taskType, steps: values.steps, order, versionRootId, active: true, centralItemId: sourceId } as typeof securityQuestions.$inferInsert).returning();
+    return tx.insert(securityQuestions).values({ locationId, session: values.session, question: values.question, description: values.description, taskType: values.taskType, completionMode: values.completionMode, steps: values.steps, order, versionRootId, active: true, centralItemId: sourceId } as typeof securityQuestions.$inferInsert).returning();
   }
   return tx.insert(additionalRequirements).values({ locationId, title: values.title, description: values.description, frequency: values.frequency, interval: values.interval, weekdays: values.weekdays, dayOfMonth: values.dayOfMonth, nextDueAt: values.nextDueAt, fields: values.fields, order, versionRootId, active: true, centralItemId: sourceId } as typeof additionalRequirements.$inferInsert).returning();
 }
 
 function operationalChanged(kind: OperationalKind, row: Record<string, unknown>, values: Record<string, unknown>) {
-  if (kind === "cleaning") return row.name !== values.name || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.frequency !== values.frequency || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays);
-  if (kind === "security_am" || kind === "security_pm") return row.question !== values.question || row.description !== values.description || row.taskType !== values.taskType || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.session !== values.session;
+  if (kind === "cleaning") return row.name !== values.name || row.description !== values.description || row.taskType !== values.taskType || row.completionMode !== values.completionMode || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.frequency !== values.frequency || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays);
+  if (kind === "security_am" || kind === "security_pm") return row.question !== values.question || row.description !== values.description || row.taskType !== values.taskType || row.completionMode !== values.completionMode || JSON.stringify(row.steps) !== JSON.stringify(values.steps) || row.session !== values.session;
   return row.title !== values.title || row.description !== values.description || row.frequency !== values.frequency || row.interval !== values.interval || JSON.stringify(row.weekdays) !== JSON.stringify(values.weekdays) || row.dayOfMonth !== values.dayOfMonth || String(row.nextDueAt) !== String(values.nextDueAt) || JSON.stringify(row.fields) !== JSON.stringify(values.fields);
 }
 
@@ -448,6 +463,7 @@ export async function updateCentralOperationalTask(context: AuthContext, central
     await tx.update(centralOperationalItems).set({ ...values, locationIds: stores.map(store => store.id), allocationMode: allocationMode(input, source.allocationMode), updatedAt: new Date() } as Partial<CentralOperationalInsert>).where(eq(centralOperationalItems.id, source.id));
     const current = await centralOperationalRows(kind, source.id, tx);
     const selected = new Set(stores.map(store => store.id));
+    const versionedLocations = new Set<string>();
     for (const old of current as Array<Record<string, unknown>>) {
       if (!selected.has(String(old.locationId))) {
         await (kind === "cleaning" ? tx.update(cleaningTasks) : kind === "security_am" || kind === "security_pm" ? tx.update(securityQuestions) : tx.update(additionalRequirements)).set({ active: false, deactivatedAt: new Date() }).where(eq(kind === "cleaning" ? cleaningTasks.id : kind === "security_am" || kind === "security_pm" ? securityQuestions.id : additionalRequirements.id, String(old.id)));
@@ -455,9 +471,15 @@ export async function updateCentralOperationalTask(context: AuthContext, central
         const table = kind === "cleaning" ? cleaningTasks : kind === "security_am" || kind === "security_pm" ? securityQuestions : additionalRequirements;
         await tx.update(table).set({ active: false, deactivatedAt: new Date() }).where(eq(table.id, String(old.id)));
         await insertOperationalRow(tx, kind, String(old.locationId), source.id, values, Number(old.order), String(old.versionRootId ?? old.id));
+        versionedLocations.add(String(old.locationId));
       }
     }
-    for (const store of stores.filter(item => !(current as Array<Record<string, unknown>>).some(row => row.locationId === item.id && row.active))) {
+    const missingStores = allocatedStoresMissingActiveRows(
+      stores.map((store) => store.id),
+      current as Array<AllocationRow>,
+      versionedLocations,
+    );
+    for (const store of stores.filter((item) => missingStores.includes(item.id))) {
       const existing = kind === "cleaning"
         ? await tx.select({ id: cleaningTasks.id }).from(cleaningTasks).where(eq(cleaningTasks.locationId, store.id))
         : kind === "security_am" || kind === "security_pm"

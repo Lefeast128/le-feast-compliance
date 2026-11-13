@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "uk.co.lefeast.eho.test",
+      "sha256_cert_fingerprints": [
+        "26:78:E2:F7:74:8C:2C:C6:58:B2:52:4F:EA:47:43:55:F7:8A:B9:D4:A1:0E:C8:E6:CC:60:75:23:47:43:B8:FB"
+      ]
+    }
+  }
+]

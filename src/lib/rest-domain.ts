@@ -4,8 +4,13 @@ import { put as putBlob } from "@vercel/blob/client";
 import { apiRequest } from "@/lib/api-client";
 import { dateKeyFrom } from "@/lib/date-key";
 import { MAX_PDF_BYTES } from "@/lib/pdf-constants.js";
+import { enqueueOfflineMutation } from "@/lib/offline/outbox";
+import { readOfflineSession } from "@/lib/offline/device-session";
+import { offlineOperationalWorkflowEnabled } from "@/lib/offline/feature";
 
 type AnyRecord = Record<string, any>;
+const changes = typeof window !== "undefined" && typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("mise:records-changed") : null;
+if (changes) changes.onmessage = () => window.dispatchEvent(new Event("rest:data-changed"));
 
 export type UserAccessLocation = { id: string; name: string; shortName: string };
 export type UserAccessRole = "staff" | "manager";
@@ -47,6 +52,17 @@ const compat = (value: any): any => {
 const idOf = (value: any) => value?._id ?? value?.id ?? value;
 const query = (path: string): Promise<any> => apiRequest<any>(path).then((body) => unwrap<any>(body));
 const post = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
+const offlinePost = async (path: string, body: AnyRecord, operation: "cleaning-response" | "security-response" | "additional-check-response" | "temperature-reading" | "probe-reading" | "issue-update" | "wastage-record" | "handover-note" | "markdown-sheet") => {
+  const workflow = operation.replace("-response", "").replace("-reading", "").replace("-record", "").replace("-update", "").replace("-note", "") as "cleaning" | "security" | "additional-check" | "temperature" | "probe" | "issue" | "wastage" | "handover" | "markdown-sheet";
+  const enabled = offlineOperationalWorkflowEnabled(workflow === "additional-check" ? "additional" : workflow === "issue" ? "issues" : workflow);
+  const session = readOfflineSession();
+  const locationId = body.locationId ?? session?.locationId;
+  if (enabled && typeof navigator !== "undefined" && navigator.onLine === false && session && session.locationId === locationId && sessionCanWriteForBody(session, locationId)) {
+    return enqueueOfflineMutation({ organisationId: session.organisationId, locationId: session.locationId, userId: session.userId, deviceSessionId: session.deviceSessionId }, { operation, endpoint: path, payload: body });
+  }
+  return post(path, body);
+};
+const sessionCanWriteForBody = (session: ReturnType<typeof readOfflineSession>, locationId: unknown) => Boolean(session && session.locationId === locationId && Date.parse(session.expiresAt) > Date.now());
 const patch = (path: string, body: AnyRecord): Promise<any> => apiRequest<any>(path, { method: "PATCH", body: JSON.stringify(body) }).then((value) => unwrap<any>(value));
 const remove = (path: string): Promise<any> => apiRequest<any>(path, { method: "DELETE" }).then((value) => unwrap<any>(value));
 
@@ -81,31 +97,46 @@ export const restApi = {
       const value: any = await post("/api/compliance/temperature-rounds", body);
       return value?.roundId ?? value;
     },
-    recordTemperature: (body: AnyRecord) => post("/api/compliance/temperature-readings", body),
+    recordTemperature: (body: AnyRecord) => offlinePost("/api/compliance/temperature-readings", body, "temperature-reading"),
     completeRound: (body: AnyRecord) => post(`/api/compliance/temperature-rounds/${encodeURIComponent(idOf(body.roundId))}/complete`, body),
-    recordFoodCheck: (body: AnyRecord) => post("/api/compliance/food-checks", body),
-    recordProbeRecheck: (body: AnyRecord) => post(`/api/compliance/probe-issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
+    recordFoodCheck: (body: AnyRecord) => offlinePost("/api/compliance/food-checks", body, "probe-reading"),
+    recordProbeRecheck: (body: AnyRecord) => offlinePost(`/api/compliance/probe-issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body, "issue-update"),
     saveChecklistResponse: (body: AnyRecord) => post("/api/compliance/checklists/responses", body),
     signOffChecklist: (body: AnyRecord) => post("/api/compliance/checklists/signoff", body),
-    saveSecurityResponse: (body: AnyRecord) => post("/api/compliance/security/responses", body),
+    saveSecurityResponse: (body: AnyRecord) => offlinePost("/api/compliance/security/responses", body, "security-response"),
     signOffSecurity: (body: AnyRecord) => post("/api/compliance/security/signoff", body),
-    recordWastage: (body: AnyRecord) => post("/api/compliance/wastage", body),
-    completeCleaningTask: (body: AnyRecord) => post("/api/compliance/cleaning/completions", body),
+    recordWastage: (body: AnyRecord) => offlinePost("/api/compliance/wastage", body, "wastage-record"),
+    completeCleaningTask: (body: AnyRecord) => offlinePost("/api/compliance/cleaning/completions", body, "cleaning-response"),
     structuredTasks: async ({ locationId, date }: AnyRecord) => {
       const params = new URLSearchParams({ locationId: String(locationId) });
       if (date) params.set("date", dateKey(date));
       return compat(await query(`/api/structured-tasks?${params.toString()}`));
     },
-    saveStructuredTaskResponse: (body: AnyRecord) => post("/api/compliance/structured-tasks/responses", body),
+    saveStructuredTaskResponse: (body: AnyRecord) => offlinePost("/api/compliance/structured-tasks/responses", body, body.area === "cleaning" ? "cleaning-response" : "security-response"),
     signOffStructuredTask: (body: AnyRecord) => post("/api/compliance/structured-tasks/signoff", body),
-    createManualIssue: (body: AnyRecord) => post("/api/compliance/issues", body),
-    addIssueAction: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body),
-    addRecheck: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body),
-    addIssueUpdate: (body: AnyRecord) => post(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body),
+    createManualIssue: (body: AnyRecord) => offlinePost("/api/compliance/issues", body, "issue-update"),
+    addIssueAction: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/action`, body, "issue-update"),
+    addRecheck: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/recheck`, body, "issue-update"),
+    addIssueUpdate: (body: AnyRecord) => offlinePost(`/api/compliance/issues/${encodeURIComponent(idOf(body.issueId))}/updates`, body, "issue-update"),
+    handover: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/handover?locationId=${encodeURIComponent(locationId)}`)),
+      create: (body: AnyRecord) => offlinePost("/api/handover", body, "handover-note"),
+      acknowledge: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/acknowledge`, body),
+      resolve: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/resolve`, body),
+      delete: (body: AnyRecord) => post(`/api/handover/${encodeURIComponent(idOf(body.noteId))}/delete`, body),
+    },
+    markdownSheet: {
+      list: async ({ locationId, dateKey }: AnyRecord) => compat(await query(`/api/markdown-sheet?locationId=${encodeURIComponent(locationId)}&dateKey=${encodeURIComponent(dateKey)}`)),
+      change: (body: AnyRecord) => offlinePost("/api/markdown-sheet", body, "markdown-sheet"),
+      addProduct: (body: AnyRecord) => post("/api/markdown-sheet", { ...body, action: "add-product" }),
+    },
     completeTrainingRequirement: (body: AnyRecord) => post("/api/training/complete", body),
   },
   reports: {
     compliance: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
+    inspectionPack: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/reports/compliance/inspection-pack?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
+    controlledDocumentAcknowledgements: async ({ controlledDocumentId, locationId }: AnyRecord) => compat(await query(`/api/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}/acknowledgements?locationId=${encodeURIComponent(locationId)}`)),
+    controlledDocuments: async ({ locationId }: AnyRecord) => compat(await query(`/api/controlled-documents?locationId=${encodeURIComponent(locationId)}`)),
   },
   library: {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/library?locationId=${encodeURIComponent(locationId)}`)),
@@ -114,11 +145,14 @@ export const restApi = {
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/manager-reviews?locationId=${encodeURIComponent(locationId)}`)),
     complete: (body: AnyRecord) => post("/api/manager-reviews", body),
   },
+  managerOverview: {
+    allStores: async () => compat(await query("/api/manager-overview/stores")),
+  },
   additional: {
     dashboard: async ({ locationId }: AnyRecord) => compat(await query(`/api/additional?locationId=${encodeURIComponent(locationId)}`)),
     history: async ({ locationId, start, end }: AnyRecord) => compat(await query(`/api/additional/history?locationId=${encodeURIComponent(locationId)}&start=${dateKey(start)}&end=${dateKey(end)}`)),
     generateUploadUrl: async ({ locationId, data, filename, contentType, purpose }: AnyRecord) => documentsApi.upload({ locationId, data, filename, contentType, purpose: purpose ?? "additional_check_certificate" }),
-    complete: (body: AnyRecord) => post("/api/additional/complete", body),
+    complete: (body: AnyRecord) => offlinePost("/api/additional/complete", body, "additional-check-response"),
     list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/additional-requirements?locationId=${encodeURIComponent(locationId)}`)),
     add: (body: AnyRecord) => post("/api/admin/additional-requirements", body),
     update: (body: AnyRecord) => patch(`/api/admin/additional-requirements/${encodeURIComponent(idOf(body.requirementId))}`, body),
@@ -126,6 +160,10 @@ export const restApi = {
     reorder: (body: AnyRecord) => post(`/api/admin/additional-requirements/${encodeURIComponent(idOf(body.requirementId))}/reorder`, body),
   },
   admin: {
+    markdownSheet: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/markdown-sheet?locationId=${encodeURIComponent(locationId)}`)),
+      update: (body: AnyRecord) => post("/api/admin/markdown-sheet", body),
+    },
     addEquipment: (body: AnyRecord) => post("/api/admin/equipment", body),
     updateEquipmentLimits: (body: AnyRecord) => patch(`/api/admin/equipment/${encodeURIComponent(idOf(body.equipmentId))}`, body),
     setFridgeCount: (body: AnyRecord) => post("/api/admin/equipment/count", body),
@@ -147,6 +185,13 @@ export const restApi = {
     updateWastageItem: (body: AnyRecord) => patch(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`, body),
     deleteWastageItem: (body: AnyRecord) => remove(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}`),
     reorderWastageItem: (body: AnyRecord) => post(`/api/admin/wastage-items/${encodeURIComponent(idOf(body.itemId))}/reorder`, body),
+    wastageManagement: {
+      list: async ({ locationId }: AnyRecord) => compat(await query(`/api/admin/wastage?locationId=${encodeURIComponent(locationId)}`)),
+      addCategory: (body: AnyRecord) => post("/api/admin/wastage", body),
+      updateCategory: ({ categoryId, ...body }: AnyRecord) => patch(`/api/admin/wastage/${encodeURIComponent(idOf(categoryId))}`, body),
+      deleteCategory: ({ categoryId }: AnyRecord) => remove(`/api/admin/wastage/${encodeURIComponent(idOf(categoryId))}`),
+      reorderCategory: (body: AnyRecord) => post(`/api/admin/wastage/${encodeURIComponent(idOf(body.categoryId))}/reorder`, body),
+    },
     updateStructuredTask: (body: AnyRecord) => patch(`/api/admin/structured-tasks/${encodeURIComponent(idOf(body.taskId))}`, body),
     addTrainingRequirement: (body: AnyRecord) => post("/api/admin/training-requirements", body),
     updateTrainingRequirement: (body: AnyRecord) => patch(`/api/admin/training-requirements/${encodeURIComponent(idOf(body.requirementId))}`, body),
@@ -160,6 +205,7 @@ export const restApi = {
     userAccess: {
       list: async (): Promise<UserAccessResponse> => compat(await query("/api/admin/user-access")),
       invite: (body: AnyRecord) => post("/api/admin/user-access", body),
+      createWithPassword: (body: AnyRecord) => post("/api/admin/user-access/create", body),
       update: ({ userId, ...body }: AnyRecord) => patch(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`, body),
       remove: ({ userId }: AnyRecord) => remove(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}`),
       resend: ({ userId }: AnyRecord) => post(`/api/admin/user-access/${encodeURIComponent(idOf(userId))}/resend`, {}),
@@ -171,6 +217,13 @@ export const restApi = {
         publish: (body: AnyRecord) => post("/api/admin/organisation/library", body),
         update: ({ libraryDocumentId, ...body }: AnyRecord) => patch(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
         replace: ({ libraryDocumentId, ...body }: AnyRecord) => post(`/api/admin/organisation/library/${encodeURIComponent(idOf(libraryDocumentId))}`, body),
+      },
+      controlledDocuments: {
+        list: async () => compat(await query("/api/admin/organisation/controlled-documents")),
+        create: (body: AnyRecord) => post("/api/admin/organisation/controlled-documents", body),
+        update: ({ controlledDocumentId, ...body }: AnyRecord) => patch(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}`, body),
+        replace: ({ controlledDocumentId, ...body }: AnyRecord) => post(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}`, body),
+        acknowledgements: async ({ controlledDocumentId, locationId }: AnyRecord) => compat(await query(`/api/admin/organisation/controlled-documents/${encodeURIComponent(idOf(controlledDocumentId))}/acknowledgements${locationId ? `?locationId=${encodeURIComponent(locationId)}` : ""}`)),
       },
       publishTraining: (body: AnyRecord) => post("/api/admin/organisation/training", body),
       updateTraining: ({ publicationId, ...body }: AnyRecord) => patch(`/api/admin/organisation/training/${encodeURIComponent(idOf(publicationId))}`, body),
@@ -189,7 +242,7 @@ export const documentsApi = {
   upload: async ({ locationId, file, data, filename, contentType, purpose, onUploadProgress }: AnyRecord) => {
     if (!file) return post("/api/documents/upload", { locationId, purpose, filename, contentType, data });
     if (file.type !== "application/pdf") throw new Error("Only PDF files are supported.");
-    if (file.size > MAX_PDF_BYTES) throw new Error("This PDF is larger than the 25 MB maximum.");
+    if (file.size > MAX_PDF_BYTES) throw new Error("This PDF is larger than the 100 MB maximum.");
     const grant = await post("/api/documents/upload-token", {
       locationId,
       purpose,
@@ -223,7 +276,7 @@ export const documentsApi = {
 };
 
 export function useRestQuery<T>(key: string | null, loader: () => Promise<T>, enabled = true): T | undefined {
-  const [value, setValue] = useState<T>();
+  const [snapshot, setSnapshot] = useState<{ key: string; value: T }>();
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const refresh = () => setRevision((current) => current + 1);
@@ -232,14 +285,14 @@ export function useRestQuery<T>(key: string | null, loader: () => Promise<T>, en
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!enabled || !key) { setValue(undefined); return; }
+    if (!enabled || !key) { setSnapshot(undefined); return; }
     let cancelled = false;
-    loader().then((result) => { if (!cancelled) setValue(result); }).catch(() => { if (!cancelled) setValue(undefined); });
+    loader().then((result) => { if (!cancelled) setSnapshot({ key, value: result }); }).catch(() => { if (!cancelled) setSnapshot(undefined); });
     return () => { cancelled = true; };
     // The key controls the request inputs; callers may create a closure for those inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, revision]);
-  return value;
+  return snapshot?.key === key ? snapshot.value : undefined;
 }
 
 export type RestQueryState<T> = {
@@ -250,9 +303,10 @@ export type RestQueryState<T> = {
 };
 
 export function useRestQueryState<T>(key: string | null, loader: () => Promise<T>, enabled = true): RestQueryState<T> {
-  const [state, setState] = useState<{ data: T | undefined; loading: boolean; error: Error | null }>({
+  const [state, setState] = useState<{ key: string | null; data: T | undefined; loading: boolean; error: Error | null }>({
+    key: null,
     data: undefined,
-    loading: enabled && Boolean(key),
+    loading: false,
     error: null,
   });
   const [revision, setRevision] = useState(0);
@@ -264,27 +318,33 @@ export function useRestQueryState<T>(key: string | null, loader: () => Promise<T
   useEffect(() => {
     if (!enabled || !key) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ data: undefined, loading: false, error: null });
+      setState({ key: null, data: undefined, loading: false, error: null });
       return;
     }
     let cancelled = false;
-    setState({ data: undefined, loading: true, error: null });
+    setState({ key, data: undefined, loading: true, error: null });
     loader().then((data) => {
-      if (!cancelled) setState({ data, loading: false, error: null });
+      if (!cancelled) setState({ key, data, loading: false, error: null });
     }).catch((error: unknown) => {
-      if (!cancelled) setState({ data: undefined, loading: false, error: error instanceof Error ? error : new Error("Request failed") });
+      if (!cancelled) setState({ key, data: undefined, loading: false, error: error instanceof Error ? error : new Error("Request failed") });
     });
     return () => { cancelled = true; };
     // The key controls the request inputs; callers may create a closure for those inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, revision]);
-  return { ...state, retry: () => setRevision((current) => current + 1) };
+  return {
+    data: state.key === key ? state.data : undefined,
+    loading: Boolean(enabled && key) && (state.key !== key || state.loading),
+    error: state.key === key ? state.error : null,
+    retry: () => setRevision((current) => current + 1),
+  };
 }
 
 export function useRestMutation<TArgs extends AnyRecord, TResult = any>(operation: (args: TArgs) => Promise<TResult>) {
   return useCallback(async (args: TArgs) => {
     const result = await operation(args);
     window.dispatchEvent(new Event("rest:data-changed"));
+    changes?.postMessage("invalidate");
     return result;
   }, [operation]);
 }

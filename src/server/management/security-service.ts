@@ -7,6 +7,7 @@ import { db, id, locationFor, text } from "./shared.js";
 import { validateStructuredSteps } from "../compliance/structured-task-service.js";
 
 const taskType = (value: unknown) => value === undefined ? "simple" : value === "with_steps" ? "with_steps" : value === "simple" ? "simple" : (() => { throw new ApiError(422, "Task type is invalid"); })();
+const completionMode = (value: unknown, fallback = "question") => value === undefined ? fallback : value === "task" ? "task" : value === "question" ? "question" : (() => { throw new ApiError(422, "Completion mode is invalid"); })();
 const description = (value: unknown) => value === undefined || value === null || value === "" ? null : text(value, "Description");
 
 async function securityLocation(context: AuthContext, questionId: string) {
@@ -23,10 +24,11 @@ export async function addSecurity(context: AuthContext, input: Record<string, un
   const session = requireEnum(input.session, "session", ["AM", "PM"] as const);
   const question = text(input.question, "Question");
   const type = taskType(input.taskType);
+  const mode = type === "with_steps" ? "question" : completionMode(input.completionMode);
   const steps = validateStructuredSteps(input.steps, type);
   const details = description(input.description);
   const rows = await db().select().from(securityQuestions).where(and(eq(securityQuestions.locationId, location.id), eq(securityQuestions.session, session)));
-  const [row] = await db().insert(securityQuestions).values({ locationId: location.id, session, question, description: details, taskType: type, steps, order: rows.length, active: true }).returning();
+  const [row] = await db().insert(securityQuestions).values({ locationId: location.id, session, question, description: details, taskType: type, completionMode: mode, steps, order: rows.length, active: true }).returning();
   return row;
 }
 
@@ -35,12 +37,13 @@ export async function updateSecurity(context: AuthContext, questionId: string, i
   if (!old.active) throw new ApiError(409, "This configuration version is no longer active");
   const question = text(input.question, "Question");
   const type = taskType(input.taskType ?? old.taskType);
+  const mode = type === "with_steps" ? "question" : completionMode(input.completionMode, old.completionMode ?? "question");
   const steps = validateStructuredSteps(input.steps ?? old.steps, type);
   const details = input.description === undefined ? old.description : description(input.description);
   return db().transaction(async tx => {
     const at = new Date();
     await tx.update(securityQuestions).set({ active: false, deactivatedAt: at }).where(eq(securityQuestions.id, old.id));
-    const [row] = await tx.insert(securityQuestions).values({ locationId: old.locationId, session: old.session, question, description: details, taskType: type, steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: old.centralItemId }).returning();
+    const [row] = await tx.insert(securityQuestions).values({ locationId: old.locationId, session: old.session, question, description: details, taskType: type, completionMode: mode, steps, order: old.order, active: true, versionRootId: old.versionRootId ?? old.id, centralItemId: old.centralItemId }).returning();
     return row;
   });
 }

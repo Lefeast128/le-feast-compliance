@@ -1,9 +1,9 @@
 import ComplianceReports from "@/components/ComplianceReports";
-import ManagerReviews from "@/components/ManagerReviews";
 import AdminFeatureCards, {
   type AdminFeatureKey,
 } from "@/components/admin/AdminFeatureCards";
 import AdminStoreOverview from "@/components/admin/AdminStoreOverview";
+import { AdminScopeNotice } from "@/components/admin/AdminScopeNotice";
 import OrganisationAdmin from "@/components/OrganisationAdmin";
 import type {
   AdminLocation,
@@ -12,6 +12,7 @@ import type {
   AdminTeamResponse,
 } from "@/components/admin/admin-types";
 import WastageCatalogueAdmin from "@/components/WastageCatalogueAdmin";
+import MarkdownSheetAdmin from "@/components/MarkdownSheetAdmin";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { restApi, useRestQuery } from "@/lib/rest-domain";
@@ -21,6 +22,8 @@ import { useState } from "react";
 type Props = {
   onBack: () => void;
   onOpenDay?: (date: string, locationId: string) => void;
+  onManagerReviews?: (locationId?: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 const featureTitles: Record<AdminFeatureKey, string> = {
@@ -35,6 +38,7 @@ const featureTitles: Record<AdminFeatureKey, string> = {
   fridges: "Fridges & Temperatures",
   probes: "Probe Products",
   wastage: "Wastage",
+  markdown: "Markdown Sheet",
 };
 
 function FeatureHeader({
@@ -63,7 +67,7 @@ function FeatureHeader({
   );
 }
 
-export default function AdminSetup({ onBack, onOpenDay }: Props) {
+export default function AdminSetup({ onBack, onOpenDay, onManagerReviews, onDirtyChange }: Props) {
   const { user } = useAuth();
   const isOrganisationAdmin = user?.role === "admin";
   const stores = useRestQuery<AdminOperation[]>(
@@ -100,12 +104,12 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
   }
 
   if (organisationAdminOpen && isOrganisationAdmin) {
-    return <OrganisationAdmin onBack={() => setOrganisationAdminOpen(false)} />;
+    return <OrganisationAdmin onBack={() => setOrganisationAdminOpen(false)} onDirtyChange={onDirtyChange} />;
   }
 
   if (!stores || (selectedLocationId && !currentStore)) {
     return (
-      <div className="min-h-screen bg-[#f6f7f5] p-8 text-sm text-[#727a74]">
+      <div className="min-h-screen bg-white p-8 text-sm text-[#727a74]">
         Loading store setup…
       </div>
     );
@@ -124,26 +128,21 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
         />
       );
     }
-    if (feature === "issues") {
-      return (
-        <ManagerReviews
-          locationId={selectedLocationId}
-          locations={locations}
-          onBack={() => setFeature(null)}
-        />
-      );
-    }
     if (feature === "wastage") {
       return (
         <WastageCatalogueAdmin
           locationId={selectedLocationId}
           locations={locations}
           onClose={() => setFeature(null)}
+          onDirtyChange={onDirtyChange}
         />
       );
     }
+    if (feature === "markdown") {
+      return <MarkdownSheetAdmin locationId={selectedLocationId} locationName={currentStore.location.name} onBack={() => setFeature(null)} onDirtyChange={onDirtyChange} />;
+    }
     return (
-      <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+      <div className="min-h-screen bg-white text-[#171918]">
         <FeatureHeader
           title={featureTitles[feature]}
           storeName={currentStore.location.name}
@@ -156,6 +155,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
             team={team ?? undefined}
             onOpenCatalogue={() => setFeature("wastage")}
             scope={feature}
+            onDirtyChange={onDirtyChange}
           />
         </main>
       </div>
@@ -163,7 +163,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <div>
@@ -203,6 +203,13 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
             </select>
           </label>
         </div>
+        <div className="mt-5">
+          <AdminScopeNotice
+            scope="store"
+            title={`Store-only setup · ${selected?.location.name ?? "Selected store"}`}
+            detail="Changes here apply only to this store. Organisation standards are read-only and managed through Organisation Admin."
+          />
+        </div>
         {isOrganisationAdmin && (
           <section className="mt-7 rounded-3xl border border-[#e5d77b] bg-[#fffdf1] p-5 shadow-[0_4px_16px_rgba(23,25,24,0.03)]">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
@@ -234,7 +241,7 @@ export default function AdminSetup({ onBack, onOpenDay }: Props) {
             </p>
           </div>
           <AdminFeatureCards
-            onSelect={setFeature}
+            onSelect={feature => feature === "issues" ? onManagerReviews?.(selectedLocationId ?? undefined) : setFeature(feature)}
             counts={
               currentStore
                 ? {

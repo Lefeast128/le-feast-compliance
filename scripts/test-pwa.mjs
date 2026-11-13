@@ -8,13 +8,13 @@ const assert = (condition, message) => {
 };
 
 const manifest = JSON.parse(read("public/manifest.webmanifest"));
-assert(manifest.name === "Le Feast Compliance", "manifest name");
-assert(manifest.short_name === "Le Feast", "manifest short name");
+assert(manifest.name === "mise. by Le Feast", "manifest name");
+assert(manifest.short_name === "mise.", "manifest short name");
 assert(manifest.start_url === "/", "manifest start URL");
 assert(manifest.scope === "/", "manifest scope");
 assert(manifest.display === "standalone", "manifest standalone display");
 assert(manifest.orientation === "any", "manifest orientation");
-assert(manifest.theme_color === "#ffde59", "manifest theme colour");
+assert(manifest.theme_color === "#FFDE56", "manifest theme colour");
 
 const iconSizes = new Set();
 for (const icon of manifest.icons) {
@@ -40,6 +40,7 @@ assert(index.includes('apple-mobile-web-app-capable" content="yes"'), "iOS capab
 assert(index.includes('apple-mobile-web-app-status-bar-style" content="default"'), "iOS status bar metadata");
 assert(index.includes('apple-touch-icon"'), "Apple touch icon link");
 assert(index.includes("viewport-fit=cover"), "safe-area viewport metadata");
+assert(index.includes('theme-color" content="#FFDE56"'), "official brand theme colour");
 
 const viteConfig = read("vite.config.ts");
 assert(viteConfig.includes('fileName: "sw.js"'), "production service worker emitted");
@@ -49,8 +50,9 @@ const serviceWorker = read("src/pwa/sw-template.js");
 assert(serviceWorker.includes("cache.addAll(SHELL_ASSETS)"), "static shell precache");
 assert(serviceWorker.includes(".filter("), "old cache cleanup");
 assert(serviceWorker.includes('url.pathname.startsWith("/api/")'), "API requests excluded");
-assert(!serviceWorker.includes("indexedDB"), "no offline database");
-assert(!serviceWorker.includes("sync"), "no background mutation sync");
+assert(read("src/lib/offline/indexeddb.ts").includes("indexedDB"), "offline database foundation");
+assert(read("src/lib/offline/outbox.ts").includes("Idempotency-Key"), "offline idempotency header");
+assert(read("src/lib/offline/types.ts").includes('"conflict"'), "offline conflict state");
 assert(!serviceWorker.includes("/api/documents"), "private documents not precached");
 
 const pwaRegister = read("src/pwa/register.ts");
@@ -62,16 +64,17 @@ const pwaStatus = read("src/components/PwaStatus.tsx");
 assert(pwaStatus.includes("offline") && pwaStatus.includes("Reconnect to continue"), "offline banner");
 assert(pwaStatus.includes("beforeinstallprompt"), "install prompt capture");
 assert(pwaStatus.includes("Share → Add to Home Screen"), "iOS install guidance");
-assert(pwaStatus.includes("A new version of Le Feast Compliance is available."), "update notice");
+assert(pwaStatus.includes("A new version of mise. is available."), "update notice");
 assert(pwaStatus.includes("Version {APP_VERSION}"), "build version visibility");
 
 const apiClient = read("src/lib/api-client.ts");
 assert(apiClient.includes("OFFLINE_MUTATION_MESSAGE"), "offline mutation message");
 assert(apiClient.includes('navigator.onLine === false'), "offline mutation guard");
 assert(apiClient.includes('["GET", "HEAD", "OPTIONS"]'), "read methods remain available offline");
-assert(!apiClient.includes("indexedDB"), "no mutation queue in API client");
+assert(apiClient.includes("OFFLINE_MUTATION_MESSAGE"), "online-only workflows retain offline guard");
 
 const css = read("src/index.css");
+assert(css.includes("--brand-yellow: #FFDE56"), "shared brand yellow token");
 assert(css.includes("100dvh"), "dynamic viewport height");
 assert(css.includes("safe-area-inset"), "safe-area CSS support");
 

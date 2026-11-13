@@ -49,7 +49,7 @@ contains(service, "isPendingInvite", "pending invitation state");
 assert.doesNotMatch(service, /teamMembers/, "user access must stay separate from Team Members");
 
 contains(resend, "sendInvitationEmail", "invitation sender");
-contains(resend, "You've been invited to Le Feast Compliance", "invitation subject");
+contains(resend, "You've been invited to mise. by Le Feast", "invitation subject");
 contains(resend, "https://le-feast-compliance.vercel.app", "production application link");
 assert.doesNotMatch(resend, /password|invitation token|session token/i, "invitation must not introduce authentication secrets");
 

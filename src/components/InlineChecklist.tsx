@@ -1,38 +1,63 @@
+import CorrectiveActionControl from "@/components/CorrectiveActionControl";
+import { WorkflowSteps } from "@/components/WorkflowSteps";
 import { Button } from "@/components/ui/button";
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { restApi, useRestMutation } from "@/lib/rest-domain";
 import {
-  selectedQuestionMember,
-  selectedSignOffMember,
-  type PendingMemberOverrides,
-} from "@/lib/team-handover";
+  buildBulkCompletionPlan,
+  checklistProgress,
+  isItemComplete,
+  isSimpleCompletionTask,
+  type UnifiedItem,
+} from "@/lib/unified-checklist";
+import { checklistIsReadyToSignOff } from "@/lib/checklist-autocomplete";
+import type {
+  ChecklistResponse,
+  StructuredStep,
+  StructuredTaskResponse,
+  TeamMember,
+} from "@/components/dashboard/dashboard-types";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  Loader2,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { versionedChecklistResponseMatches } from "@/shared/unified-checklist";
+import { ActiveStaffControl, StaffAttributionLine } from "@/components/dashboard/StaffAttribution";
+import { useActiveTeamMember } from "@/hooks/use-active-team-member";
+import OperationalHeader from "@/components/dashboard/OperationalHeader";
+import { operationalDateLabel } from "@/lib/operational-date";
+import { useAuth } from "@/hooks/use-auth";
+import { establishOfflineSession, getDeviceSessionId } from "@/lib/offline/device-session";
+import { enqueueChecklistResponse, installOutboxRuntime } from "@/lib/offline/outbox";
+import { offlineChecklistEnabled } from "@/lib/offline/feature";
 
-type ChecklistQuestion = { _id: string; question: string };
-type ChecklistResponse = {
-  questionId: string;
-  answer: string;
-  action?: string | null;
-  teamMemberId?: string | null;
-  createdAt?: number | string;
-};
-type TeamMember = { _id: string; name: string };
-
-type Props = {
+type ChecklistTask = UnifiedItem & {
   title: string;
-  questions: ChecklistQuestion[];
-  responses: ChecklistResponse[];
+  description?: string | null;
+  taskType?: "simple" | "with_steps";
+  steps?: StructuredStep[];
+};
+type Props = {
+  locationId: string;
+  checklist: "opening" | "closing";
+  title: string;
+  tasks: ChecklistTask[];
+  legacyResponses: ChecklistResponse[];
+  structuredResponses: StructuredTaskResponse[];
   teamMembers: TeamMember[];
-  perTaskSignOff?: boolean;
-  onComplete: (questionId: string, teamMemberId: string) => Promise<void>;
-  onIssue: (
-    questionId: string,
-    problem: string,
-    action: string,
-    teamMemberId: string,
-  ) => Promise<void>;
   onSignOff: (teamMemberId: string) => Promise<void>;
+  signOffRecorded?: boolean;
   onBack: () => void;
 };
+type IssueDraft = { problem: string; action: string };
+type MemberMap = Record<string, string>;
+
+const MemberSelect = StaffAttributionLine;
 
 const timeLabel = (value?: number | string) =>
   value === undefined
@@ -41,305 +66,508 @@ const timeLabel = (value?: number | string) =>
         hour: "2-digit",
         minute: "2-digit",
       });
+const stepLabel = (step: StructuredStep) =>
+  step.responseType === "yes_no"
+    ? "Yes / No"
+    : step.responseType === "number"
+      ? "Number"
+      : step.responseType === "short_text"
+        ? "Short text"
+        : "Confirm";
 
 export default function InlineChecklist({
+  locationId,
+  checklist,
   title,
-  questions,
-  responses,
+  tasks,
+  legacyResponses,
+  structuredResponses,
   teamMembers,
-  perTaskSignOff = false,
-  onComplete,
-  onIssue,
   onSignOff,
+  signOffRecorded = false,
   onBack,
 }: Props) {
-  const [issueQuestion, setIssueQuestion] = useState<ChecklistQuestion | null>(
-    null,
+  const [requestedTaskIndex, setTaskIndex] = useState(0);
+  const taskIndex = Math.min(requestedTaskIndex, Math.max(0, tasks.length - 1));
+  const saveLegacy = useRestMutation(restApi.compliance.saveChecklistResponse);
+  const { user, memberships } = useAuth();
+  const saveStructured = useRestMutation(
+    restApi.compliance.saveStructuredTaskResponse,
   );
-  const [problem, setProblem] = useState("");
-  const [action, setAction] = useState("");
-  const [workflowTeamMemberId, setWorkflowTeamMemberId] = useState("");
-  const [issueTeamMemberId, setIssueTeamMemberId] = useState("");
-  const [signOffTeamMemberId, setSignOffTeamMemberId] = useState("");
-  const [questionMemberOverrides, setQuestionMemberOverrides] =
-    useState<PendingMemberOverrides>({});
-  const complete =
-    questions.length > 0 &&
-    questions.every((question) =>
-      responses.some((response) => response.questionId === question._id),
-    );
-  const responseFor = (id: string) =>
-    responses.find((response) => response.questionId === id);
-  const memberName = (id?: string | null) =>
-    id
-      ? (teamMembers.find((member) => member._id === id)?.name ??
-        "Not recorded")
-      : "Not recorded";
 
-  async function saveIssue() {
-    const memberId =
-      issueTeamMemberId ||
-      (issueQuestion
-        ? selectedQuestionMember(
-            issueQuestion._id,
-            questionMemberOverrides,
-            workflowTeamMemberId,
-          )
-        : workflowTeamMemberId);
-    if (!issueQuestion || !problem.trim() || !action.trim() || !memberId)
-      return;
-    await onIssue(issueQuestion._id, problem, action, memberId);
-    setIssueQuestion(null);
-    setProblem("");
-    setAction("");
-    setIssueTeamMemberId("");
+  const [workflowMemberId, setWorkflowMemberId] = useActiveTeamMember(locationId, teamMembers);
+  const [overrides, setOverrides] = useState<MemberMap>({});
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [issueDrafts, setIssueDrafts] = useState<Record<string, IssueDraft>>(
+    {},
+  );
+  const [issueOpen, setIssueOpen] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectedSimple, setSelectedSimple] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const autoSignOffRef = useRef(false);
+  const [localLegacyResponses, setLocalLegacyResponses] = useState<
+    ChecklistResponse[]
+  >([]);
+  const [localStructuredResponses, setLocalStructuredResponses] = useState<
+    StructuredTaskResponse[]
+  >([]);
+
+  useEffect(() => {
+    if (user?.organisationId) establishOfflineSession(user, locationId, memberships);
+  }, [locationId, memberships, user]);
+  useEffect(() => installOutboxRuntime(() => user?.organisationId ? ({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }) : null), [locationId, user]);
+
+  const effectiveLegacyResponses = [
+    ...legacyResponses,
+    ...localLegacyResponses,
+  ].filter(
+    (response, index, all) =>
+      all.findIndex(
+        (candidate) => candidate.questionId === response.questionId,
+      ) === index,
+  );
+  const effectiveStructuredResponses = [
+    ...structuredResponses,
+    ...localStructuredResponses,
+  ].filter(
+    (response, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.taskId === response.taskId &&
+          candidate.taskArea === response.taskArea &&
+          candidate.stepId === response.stepId,
+      ) === index,
+  );
+  const legacy = effectiveLegacyResponses.map((response) => ({
+    questionId: response.questionId,
+    questionVersionRootId: response.questionVersionRootId,
+    questionDefinitionKey: response.questionDefinitionKey,
+  }));
+  const structured = effectiveStructuredResponses.map((response) => ({
+    taskId: response.taskId,
+    stepId: response.stepId,
+    taskVersionRootId: response.taskVersionRootId,
+    taskDefinitionKey: response.taskDefinitionKey,
+  }));
+  const progress = checklistProgress(tasks, legacy, structured);
+  const memberFor = (key: string) => overrides[key] || workflowMemberId;
+  const memberName = (id?: string | null) =>
+    teamMembers.find((member) => member._id === id)?.name ?? "Not recorded";
+  const responseFor = (taskId: string, stepId: string) => {
+    const task = tasks.find((candidate) => candidate._id === taskId);
+    return effectiveStructuredResponses.find(
+      (response) =>
+        response.taskArea === checklist &&
+        response.stepId === stepId &&
+        task &&
+        versionedChecklistResponseMatches(task, response),
+    );
+  };
+  const legacyFor = (taskId: string) => {
+    const task = tasks.find((candidate) => candidate._id === taskId);
+    return effectiveLegacyResponses.find(
+      (response) => task && versionedChecklistResponseMatches(task, response),
+    );
+  };
+  const responseTime = (response?: StructuredTaskResponse | ChecklistResponse) =>
+    timeLabel(response?.createdAt);
+  const completedTask = (task: ChecklistTask) =>
+    isItemComplete(task, legacy, structured);
+  const bulkPlan = buildBulkCompletionPlan(
+    tasks,
+    selectedSimple,
+    workflowMemberId,
+    overrides,
+    legacy,
+    structured,
+  );
+  const bulkMissingMember = bulkPlan.some((entry) => !entry.teamMemberId);
+  const eligibleSimpleTasks = tasks.filter(
+    (task) => isSimpleCompletionTask(task) && !completedTask(task),
+  );
+  const allSimpleSelected =
+    eligibleSimpleTasks.length > 0 &&
+    eligibleSimpleTasks.every((task) => selectedSimple.includes(task._id));
+  const needsSignOffRecovery = progress.allComplete && !signOffRecorded;
+
+  async function maybeAutoSignOff(
+    nextLegacy: typeof legacy,
+    nextStructured: typeof structured,
+    memberId: string,
+  ) {
+    if (!checklistIsReadyToSignOff(tasks, nextLegacy, nextStructured) || autoSignOffRef.current) return;
+    autoSignOffRef.current = true;
+    setSaving("signoff");
+    try {
+      await onSignOff(memberId);
+      toast.success("Checklist complete", { description: "All required items are recorded." });
+    } catch (error) {
+      autoSignOffRef.current = false;
+      toast.error("Checklist could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
   }
 
-  async function signOff() {
-    const memberId = selectedSignOffMember(
-      signOffTeamMemberId,
-      workflowTeamMemberId,
+  async function finishRecordingCompletion() {
+    if (!workflowMemberId || saving || !needsSignOffRecovery) return;
+    await maybeAutoSignOff(legacy, structured, workflowMemberId);
+  }
+
+  function updateOverride(key: string, value: string) {
+    setOverrides((current) => ({ ...current, [key]: value }));
+  }
+  function toggleTask(taskId: string) {
+    setExpandedTaskId((current) => (current === taskId ? null : taskId));
+  }
+  function selectAllSimple() {
+    const eligible = eligibleSimpleTasks.map((task) => task._id);
+    setSelectedSimple((current) =>
+      current.length === eligible.length ? [] : eligible,
     );
-    if (!complete || !memberId) return;
-    await onSignOff(memberId);
+  }
+
+  async function saveSimpleTask(
+    task: ChecklistTask,
+    memberId = memberFor(task._id),
+  ) {
+    if (!memberId || saving || completedTask(task)) return;
+    setSaving(task._id);
+    try {
+      const result = await saveStructured({
+        locationId,
+        area: checklist,
+        taskId: task._id,
+        stepId: "simple",
+        value: "confirmed",
+        teamMemberId: memberId,
+      });
+      const newResponse: StructuredTaskResponse = {
+          _id: `local-${task._id}-simple`,
+          taskArea: checklist,
+          taskId: task._id,
+          stepId: "simple",
+          responseType: "confirm",
+          responseValue: "confirmed",
+          dateKey: new Date().toISOString().slice(0, 10),
+          createdAt: new Date().toISOString(),
+          teamMemberId: memberId,
+          taskVersionRootId: task.versionRootId,
+          taskDefinitionKey: task.definitionKey,
+        };
+      if (result?.state === "pending") { setIssueOpen(null); setExpandedTaskId(null); toast.success("Saved on this device — pending sync"); return; }
+      const nextStructured = [...structured, { taskId: newResponse.taskId, stepId: newResponse.stepId, taskVersionRootId: newResponse.taskVersionRootId, taskDefinitionKey: newResponse.taskDefinitionKey }];
+      setLocalStructuredResponses((current) => [...current, newResponse]);
+      setSelectedSimple((current) => current.filter((id) => id !== task._id));
+      setExpandedTaskId(null);
+      await maybeAutoSignOff(legacy, nextStructured, memberId);
+      toast.success("Task completed");
+    } catch (error) {
+      toast.error("Task could not be completed", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function saveQuestion(
+    task: ChecklistTask,
+    answer: "yes" | "no",
+    memberId = memberFor(task._id),
+  ) {
+    if (!memberId || saving || completedTask(task)) return;
+    const issue = issueDrafts[task._id];
+    if (answer === "no" && (!issue?.problem.trim() || !issue.action.trim())) {
+      return;
+    }
+    setSaving(task._id);
+    let queued = false;
+    try {
+      const payload = {
+        locationId,
+        checklist,
+        questionId: task._id,
+        answer,
+        problem: issue?.problem,
+        action: issue?.action,
+        teamMemberId: memberId,
+      };
+      const pilotEnabled = offlineChecklistEnabled(checklist) && user?.organisationId;
+      if (pilotEnabled && user?.organisationId) {
+        try {
+          await saveLegacy(payload);
+        } catch (error) {
+          const networkFailure = typeof navigator !== "undefined" && navigator.onLine === false || (error instanceof TypeError) || (error instanceof Error && "status" in error && [0, 502, 503].includes((error as { status?: unknown }).status as number));
+          if (!networkFailure) throw error;
+          await enqueueChecklistResponse({ organisationId: user.organisationId, locationId, userId: user.id, deviceSessionId: getDeviceSessionId() }, checklist, payload);
+          queued = true;
+        }
+      } else {
+        await saveLegacy(payload);
+      }
+      if (queued) { setIssueOpen(null); toast.success("Saved on this device — pending sync"); return; }
+      const newResponse: ChecklistResponse = {
+          _id: `local-${task._id}`,
+          questionId: task._id,
+          answer,
+          problem: issue?.problem,
+          action: issue?.action,
+          teamMemberId: memberId,
+          createdAt: new Date().toISOString(),
+          questionVersionRootId: task.versionRootId,
+          questionDefinitionKey: task.definitionKey,
+        };
+      const nextLegacy = [...legacy, { questionId: newResponse.questionId, questionVersionRootId: newResponse.questionVersionRootId, questionDefinitionKey: newResponse.questionDefinitionKey }];
+      setLocalLegacyResponses((current) => [...current, newResponse]);
+      setIssueOpen(null);
+      setExpandedTaskId(null);
+      // A locally queued response is not server-confirmed evidence. The server
+      // owns automatic sign-off when the outbox replay succeeds.
+      if (!queued) await maybeAutoSignOff(nextLegacy, structured, memberId);
+      toast.success(
+        queued ? "Answer saved on this device" : answer === "no" ? "Issue and action recorded" : "Answer recorded",
+        queued ? { description: "It will sync when the connection returns." } : undefined,
+      );
+    } catch (error) {
+      toast.error("Answer could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function reportSimpleTaskIssue(
+    task: ChecklistTask,
+    memberId = memberFor(task._id),
+  ) {
+    const issue = issueDrafts[task._id];
+    if (!memberId || !issue?.problem.trim() || !issue.action.trim() || saving) {
+      return;
+    }
+    await saveStep(task, { id: "simple", label: task.title, responseType: "confirm", required: true }, memberId, "issue_reported");
+  }
+
+  async function saveStep(
+    task: ChecklistTask,
+    step: StructuredStep,
+    memberId = memberFor(`${task._id}:${step.id}`),
+    value = values[`${task._id}:${step.id}`],
+  ) {
+    const key = `${task._id}:${step.id}`;
+    if (!memberId || !value || saving || responseFor(task._id, step.id)) {
+      return;
+    }
+    const issue = issueDrafts[key] ?? (step.id === "simple" ? issueDrafts[task._id] : undefined);
+    if (
+      step.responseType === "yes_no" &&
+      value === "no" &&
+      (!issue?.problem.trim() || !issue.action.trim())
+    ) {
+      return;
+    }
+    setSaving(key);
+    try {
+      const responseValue = value === "issue_reported" ? value : step.responseType === "confirm" ? "confirmed" : value;
+      const result = await saveStructured({
+        locationId,
+        area: checklist,
+        taskId: task._id,
+        stepId: step.id,
+        value: responseValue,
+        teamMemberId: memberId,
+        problem: issue?.problem,
+        action: issue?.action,
+      });
+      if (result?.state === "pending") { setIssueOpen(null); toast.success("Saved on this device — pending sync"); return; }
+      const newResponse: StructuredTaskResponse = {
+          _id: `local-${task._id}-${step.id}`,
+          taskArea: checklist,
+          taskId: task._id,
+          stepId: step.id,
+          responseType: step.responseType,
+          responseValue,
+          dateKey: new Date().toISOString().slice(0, 10),
+          createdAt: new Date().toISOString(),
+          teamMemberId: memberId,
+          taskVersionRootId: task.versionRootId,
+          taskDefinitionKey: task.definitionKey,
+        };
+      const nextStructured = [...structured, { taskId: newResponse.taskId, stepId: newResponse.stepId, taskVersionRootId: newResponse.taskVersionRootId, taskDefinitionKey: newResponse.taskDefinitionKey }];
+      setLocalStructuredResponses((current) => [...current, newResponse]);
+      setIssueOpen(null);
+      setValues((current) => ({ ...current, [key]: "" }));
+      await maybeAutoSignOff(legacy, nextStructured, memberId);
+      toast.success("Step recorded");
+    } catch (error) {
+      toast.error("Step could not be saved", { description: error instanceof Error ? error.message : "Please retry." });
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function reportStepIssue(
+    task: ChecklistTask,
+    step: StructuredStep,
+    memberId = memberFor(`${task._id}:${step.id}`),
+  ) {
+    await saveStep(task, step, memberId, "issue_reported");
+  }
+
+  async function confirmBulk() {
+    const plan = buildBulkCompletionPlan(
+      tasks,
+      selectedSimple,
+      workflowMemberId,
+      overrides,
+      legacy,
+      structured,
+    );
+    if (saving || !plan.length || plan.some((entry) => !entry.teamMemberId)) {
+      return;
+    }
+    setSaving("bulk");
+    let savedCount = 0;
+    let queuedCount = 0;
+    const unsaved = new Set(plan.map((entry) => entry.taskId));
+    const bulkResponses = [...structured];
+    let lastSavedMemberId = "";
+    try {
+      for (const entry of plan) {
+        const task = tasks.find((candidate) => candidate._id === entry.taskId);
+        if (!task || completedTask(task)) {
+          unsaved.delete(entry.taskId);
+          continue;
+        }
+        const result = await saveStructured({
+          locationId,
+          area: checklist,
+          taskId: entry.taskId,
+          stepId: "simple",
+          value: "confirmed",
+          teamMemberId: entry.teamMemberId,
+        });
+        if (result?.state === "pending") { queuedCount += 1; unsaved.delete(entry.taskId); continue; }
+        setLocalStructuredResponses((current) => [
+          ...current,
+          {
+            _id: `local-${entry.taskId}-simple`,
+            taskArea: checklist,
+            taskId: entry.taskId,
+            stepId: "simple",
+            responseType: "confirm",
+            responseValue: "confirmed",
+            dateKey: new Date().toISOString().slice(0, 10),
+            createdAt: new Date().toISOString(),
+            teamMemberId: entry.teamMemberId,
+            taskVersionRootId: task?.versionRootId,
+            taskDefinitionKey: task?.definitionKey,
+          },
+        ]);
+        bulkResponses.push({ taskId: entry.taskId, stepId: "simple", taskVersionRootId: task.versionRootId, taskDefinitionKey: task.definitionKey });
+        lastSavedMemberId = entry.teamMemberId;
+        unsaved.delete(entry.taskId);
+        savedCount += 1;
+      }
+      setSelectedSimple([]);
+      setBulkOpen(false);
+      await maybeAutoSignOff(legacy, bulkResponses, lastSavedMemberId || workflowMemberId || plan[0]?.teamMemberId || "");
+      toast.success(`${savedCount} confirmed${queuedCount ? ` · ${queuedCount} saved on this device, pending sync` : ""}`);
+    } catch (error) {
+      setSelectedSimple([...unsaved]);
+      toast.error(
+        `${savedCount} task${savedCount === 1 ? "" : "s"} saved. ${unsaved.size} remain to complete.`,
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : "The remaining tasks were not saved.",
+        },
+      );
+    } finally {
+      setSaving(null);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
-      <header className="border-b border-black/[0.07] bg-white">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-5 py-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ChevronLeft className="size-5" />
+    <div className="min-h-screen bg-white pb-[calc(7rem+env(safe-area-inset-bottom))] text-[#171918]">
+      <OperationalHeader
+        title={title}
+        eyebrow="Daily checklist"
+        date={operationalDateLabel()}
+        progress={{ complete: progress.complete, total: progress.total }}
+        onBack={onBack}
+      />
+
+      <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
+        <ActiveStaffControl teamMembers={teamMembers} value={workflowMemberId} onChange={setWorkflowMemberId} />
+
+        {needsSignOffRecovery && <section className="rounded-2xl border border-[#f0d98a] bg-[#fffdf1] p-4" role="status">
+          <p className="font-semibold text-[#5f5115]">All checklist items are recorded</p>
+          <p className="mt-1 text-sm text-[#796513]">Finish recording completion to update Daily Checks.</p>
+          <Button type="button" disabled={!workflowMemberId || saving === "signoff"} className="mt-3 h-11 bg-brand-yellow text-[#202522] hover:bg-brand-yellow" onClick={() => void finishRecordingCompletion()}>
+            {saving === "signoff" ? "Recording…" : "Finish recording completion"}
           </Button>
-          <div>
-            <p className="font-semibold">{title}</p>
-            <p className="text-xs text-[#89918b]">Complete jobs in any order</p>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-2xl px-4 py-7 sm:px-6">
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
-              Daily checklist
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold">{title}</h1>
-          </div>
-          <p className="text-sm text-[#727a74]">
-            {responses.length} of {questions.length}
-          </p>
-        </div>
-        <label className="mb-5 block text-sm font-semibold">
-          Current team member
-          <select
-            value={workflowTeamMemberId}
-            onChange={(event) => setWorkflowTeamMemberId(event.target.value)}
-            className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-          >
-            <option value="">Select team member before starting</option>
-            {teamMembers.map((member) => (
-              <option key={member._id} value={member._id}>
-                {member.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="space-y-2">
-          {questions.map((question) => {
-            const response = responseFor(question._id);
-            const issueOpen = issueQuestion?._id === question._id;
-            const questionMemberId = selectedQuestionMember(
-              question._id,
-              questionMemberOverrides,
-              workflowTeamMemberId,
-            );
-            const recordedTime = timeLabel(response?.createdAt);
-            return (
-              <div
-                key={question._id}
-                className={`rounded-2xl border bg-white p-4 ${response?.answer === "no" ? "border-[#efc8c3]" : "border-black/[0.07]"}`}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p
-                      className={`text-sm font-semibold ${response ? "text-[#59625c]" : "text-[#171918]"}`}
-                    >
-                      {question.question}
-                    </p>
-                    {response && (
-                      <p className="mt-1 text-xs text-[#727a74]">
-                        Completed by {memberName(response.teamMemberId)}
-                        {recordedTime ? ` · ${recordedTime}` : ""}
-                      </p>
-                    )}
-                  </div>
-                  {response ? (
-                    <span
-                      className={`flex shrink-0 items-center gap-1 text-sm font-semibold ${response.answer === "no" ? "text-[#b64738]" : "text-[#2d7951]"}`}
-                    >
-                      {response.answer === "no" ? "Issue" : "Completed"}{" "}
-                      <Check className="size-4" />
-                    </span>
-                  ) : (
-                    <div className="grid w-full gap-2 sm:ml-4 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.6fr)]">
-                      <select
-                        aria-label={`Completed by for ${question.question}`}
-                        value={questionMemberId}
-                        onChange={(event) =>
-                          setQuestionMemberOverrides((current) => ({
-                            ...current,
-                            [question._id]: event.target.value,
-                          }))
-                        }
-                        className="h-11 min-w-0 w-full rounded-xl border border-black/[0.1] bg-white px-3 text-sm"
-                      >
-                        <option value="">Completed by…</option>
-                        {teamMembers.map((member) => (
-                          <option key={member._id} value={member._id}>
-                            {member.name}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button
-                          type="button"
-                          aria-label="Mark complete"
-                          size="icon"
-                          disabled={!questionMemberId}
-                          className="h-11 w-full bg-[#2d7951] text-white hover:bg-[#246442]"
-                          onClick={() =>
-                            onComplete(question._id, questionMemberId)
-                          }
-                        >
-                          <Check className="size-5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={!questionMemberId}
-                          onClick={() => {
-                            setIssueQuestion(question);
-                            setProblem("");
-                            setAction("");
-                            setIssueTeamMemberId("");
-                          }}
-                        >
-                          Issue
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {response?.answer === "no" && (
-                  <div className="mt-3 rounded-xl bg-[#fff5f3] p-3 text-sm">
-                    <p className="font-semibold text-[#8f3a31]">
-                      Action recorded
-                    </p>
-                    <p className="mt-1 text-[#727a74]">{response.action}</p>
-                  </div>
-                )}
-                {issueOpen && (
-                  <div className="mt-4 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-4">
-                    <p className="font-semibold text-[#8f3a31]">
-                      Action required
-                    </p>
-                    <label className="mt-3 block text-sm font-semibold">
-                      What was wrong?
-                      <textarea
-                        value={problem}
-                        onChange={(event) => setProblem(event.target.value)}
-                        className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3"
-                        placeholder="Enter details"
-                      />
-                    </label>
-                    <label className="mt-3 block text-sm font-semibold">
-                      What action was taken?
-                      <textarea
-                        value={action}
-                        onChange={(event) => setAction(event.target.value)}
-                        className="mt-2 min-h-20 w-full rounded-xl border border-black/[0.1] bg-white p-3"
-                        placeholder="Enter corrective action"
-                      />
-                    </label>
-                    <label className="mt-3 block text-sm font-semibold">
-                      Reported by
-                      <select
-                        value={issueTeamMemberId || questionMemberId}
-                        onChange={(event) =>
-                          setIssueTeamMemberId(event.target.value)
-                        }
-                        className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-                      >
-                        <option value="">Select team member</option>
-                        {teamMembers.map((member) => (
-                          <option key={member._id} value={member._id}>
-                            {member.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <Button
-                      disabled={
-                        !problem.trim() ||
-                        !action.trim() ||
-                        !(issueTeamMemberId || questionMemberId)
-                      }
-                      className="mt-3 h-11 bg-[#202522] text-white"
-                      onClick={saveIssue}
-                    >
-                      Report issue
-                    </Button>
-                  </div>
-                )}
+        </section>}
+
+        {eligibleSimpleTasks.length > 0 && <div className="flex items-center justify-between gap-3 px-1">
+          <p className="text-xs text-[#727a74]">{selectedSimple.length > 0 ? `${selectedSimple.length} simple task${selectedSimple.length === 1 ? "" : "s"} selected` : "Simple tasks can be selected together."}</p>
+          <button type="button" onClick={selectAllSimple} className="rounded-full px-3 py-2 text-xs font-bold text-[#796513] transition hover:bg-[#fff7c9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow" aria-pressed={allSimpleSelected}>{allSimpleSelected ? "Clear selection" : "Select all simple tasks"}</button>
+        </div>}
+
+        <div className="space-y-2" aria-label={`${title} items`}>
+          {tasks.slice(taskIndex, taskIndex + 1).map((task) => {
+            const index = taskIndex;
+            const complete = completedTask(task);
+            const expanded = expandedTaskId === task._id;
+            const taskResponse = task.taskType === "with_steps" ? null : responseFor(task._id, "simple");
+            const legacyResponse = legacyFor(task._id);
+            const steps = task.taskType === "with_steps" ? task.steps ?? [] : [];
+            const requiredSteps = steps.filter((step) => step.required !== false);
+            const doneSteps = requiredSteps.filter((step) => responseFor(task._id, step.id));
+            const issue = legacyResponse?.answer === "no" || ["no", "issue_reported"].includes(taskResponse?.responseValue ?? "") || steps.some((step) => ["no", "issue_reported"].includes(responseFor(task._id, step.id)?.responseValue ?? ""));
+            const status = issue ? "Issue reported" : complete ? "Complete" : task.taskType === "with_steps" ? `${doneSteps.length} of ${requiredSteps.length} required steps` : task.completionMode === "task" ? "Ready to complete" : "Awaiting answer";
+            const taskPanelId = `checklist-item-${task._id}`;
+            return <section key={task._id} className={`overflow-hidden rounded-2xl border bg-white shadow-[0_2px_10px_rgba(23,25,24,0.035)] transition-shadow ${issue ? "border-[#efc8c3] shadow-[0_2px_12px_rgba(182,71,56,0.08)]" : complete ? "border-[#cfe3d5]" : "border-black/[0.07]"}`}>
+              <div className="flex min-h-16 flex-wrap items-start gap-3 px-3 py-3 sm:flex-nowrap sm:items-center sm:px-4">
+                {isSimpleCompletionTask(task) && !complete ? <input type="checkbox" checked={selectedSimple.includes(task._id)} onChange={(event) => setSelectedSimple((current) => event.target.checked ? [...new Set([...current, task._id])] : current.filter((id) => id !== task._id))} aria-label={`Select ${task.title} for bulk completion`} className="size-5 shrink-0 rounded border-black/[0.2] accent-[#2d7951] focus-visible:ring-2 focus-visible:ring-brand-yellow" /> : <span className={`flex size-8 shrink-0 items-center justify-center rounded-full ${issue ? "bg-[#fff0ed] text-[#b64738]" : complete ? "bg-[#eaf6ed] text-[#2d7951]" : "bg-[#f1f3ef] text-[#89918b]"}`} aria-hidden="true">{issue ? <AlertTriangle className="size-4" /> : complete ? <Check className="size-4" /> : <span className="text-xs font-bold">{index + 1}</span>}</span>}
+                <button type="button" onClick={task.taskType === "with_steps" ? () => toggleTask(task._id) : undefined} aria-expanded={task.taskType === "with_steps" ? expanded : undefined} aria-controls={task.taskType === "with_steps" ? taskPanelId : undefined} className={`min-w-0 flex-1 rounded-lg py-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-brand-yellow ${task.taskType === "with_steps" ? "" : "basis-[calc(100%-2.75rem)] sm:basis-auto"}`}>
+                  <span className="block break-words text-sm font-semibold text-[#202522] sm:text-base">{task.title}</span>
+                  <span className={`mt-0.5 block text-xs font-medium ${issue ? "text-[#b64738]" : complete ? "text-[#2d7951]" : "text-[#727a74]"}`}>{status}{task.taskType === "with_steps" && !issue && !complete ? " to go" : ""}</span>
+                </button>
+                {isSimpleCompletionTask(task) && !complete && <Button type="button" size="icon" aria-label={`Mark ${task.title} complete`} disabled={!memberFor(task._id) || saving === task._id} onClick={() => void saveSimpleTask(task)} className="size-11 shrink-0 rounded-xl bg-[#2d7951] text-white shadow-sm hover:bg-[#246442]">{saving === task._id ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-5" />}</Button>}
+                {task.taskType !== "with_steps" && task.completionMode === "question" && !complete && <div className="grid w-full basis-full grid-cols-2 gap-2 pl-11 sm:w-auto sm:basis-auto sm:pl-0">
+                  <Button type="button" disabled={!memberFor(task._id) || saving === task._id} className="h-11 rounded-xl bg-[#2d7951] px-3 text-xs text-white hover:bg-[#246442]" onClick={() => void saveQuestion(task, "yes")}>Yes</Button>
+                  <Button type="button" variant="outline" disabled={!memberFor(task._id)} className="h-11 rounded-xl border-[#c9a94d] px-3 text-xs text-[#7b651a]" onClick={() => { setExpandedTaskId(task._id); setIssueOpen(task._id); }}>Report issue</Button>
+                </div>}
+                {task.taskType === "with_steps" && <ChevronRight className={`size-4 shrink-0 text-[#89918b] transition-transform duration-200 motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`} aria-hidden="true" />}
               </div>
-            );
+
+              {expanded && <div id={taskPanelId} className="animate-in fade-in-0 slide-in-from-top-1 border-t border-black/[0.06] bg-white px-3 pb-4 pt-3 duration-200 motion-reduce:animate-none sm:px-4">
+                {task.description && <p className="mb-4 whitespace-pre-line text-sm leading-6 text-[#727a74]">{task.description}</p>}
+                {complete && task.taskType === "with_steps" ? <div className="space-y-2" aria-label="Recorded step responses">{steps.map((step) => { const response = responseFor(task._id, step.id); if (!response) return null; return <div key={step.id} className="rounded-xl border border-[#cfe3d5] bg-white px-3 py-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-[#303631]">{step.label}</p><p className="mt-1 text-sm text-[#59625c]">{response.responseValue}</p></div><span className="shrink-0 text-right text-xs text-[#727a74]"><span className="block font-semibold text-[#2d7951]">{memberName(response.teamMemberId)}</span>{responseTime(response) && <span className="mt-0.5 block">{responseTime(response)}</span>}</span></div></div>; })}</div> : complete ? <div className="flex items-center gap-2 rounded-xl border border-[#cfe3d5] bg-[#f7fcf8] px-3 py-3 text-sm"><CheckCircle2 className="size-5 shrink-0 text-[#2d7951]" /><span className="text-[#59625c]">Recorded by <strong className="text-[#303631]">{memberName(taskResponse?.teamMemberId ?? legacyResponse?.teamMemberId)}</strong>{responseTime(taskResponse ?? legacyResponse) && <span className="text-[#727a74]"> · {responseTime(taskResponse ?? legacyResponse)}</span>}</span></div> : task.taskType === "with_steps" ? <div className="space-y-3">{steps.map((step) => {
+                  const key = `${task._id}:${step.id}`;
+                  const response = responseFor(task._id, step.id);
+                  const issueKey = issueOpen === key;
+                  const stepIssue = issueDrafts[key];
+                  const selectedValue = values[key] ?? "";
+                  const memberId = memberFor(key);
+                  return <div key={step.id} className={`rounded-xl border bg-white p-3 ${response ? "border-[#cfe3d5]" : "border-black/[0.07]"}`}>
+                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-[#303631]">{step.label}{step.required === false && <span className="ml-2 text-xs font-normal text-[#89918b]">Optional</span>}</p>{step.description && <p className="mt-1 whitespace-pre-line text-sm leading-5 text-[#727a74]">{step.description}</p>}<p className="mt-1 text-xs text-[#89918b]">{stepLabel(step)}</p></div>{response && <span className="shrink-0 text-right text-xs text-[#727a74]"><span className="block font-semibold text-[#2d7951]">{memberName(response.teamMemberId)}</span>{responseTime(response) && <span className="mt-0.5 block">{responseTime(response)}</span>}</span>}</div>
+                    {!response && <div className="mt-3"><MemberSelect label="Change person" value={memberId} teamMembers={teamMembers} onChange={(value) => updateOverride(key, value)} />{step.responseType === "yes_no" ? <div className="mt-3 grid grid-cols-2 gap-2"><Button type="button" disabled={!memberId || saving === key} className="h-11 rounded-xl bg-[#2d7951] text-white hover:bg-[#246442]" onClick={() => { setValues((current) => ({ ...current, [key]: "yes" })); void saveStep(task, step, memberId, "yes"); }}>Yes</Button><Button type="button" variant="outline" disabled={!memberId} className="h-11 rounded-xl border-[#c9a94d] text-[#7b651a]" onClick={() => { setValues((current) => ({ ...current, [key]: "no" })); setIssueOpen(key); }}>No</Button></div> : <div className="mt-3 flex gap-2">{step.responseType !== "confirm" && <input type={step.responseType === "number" ? "number" : "text"} value={selectedValue} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))} className="h-11 min-w-0 flex-1 rounded-xl border border-black/[0.1] bg-white px-3 text-sm outline-none focus:border-[#b49b2f] focus:ring-2 focus:ring-brand-yellow/40" aria-label={step.label} placeholder={step.responseType === "number" ? "Enter number" : "Enter response"} />}{step.responseType === "confirm" && <span className="flex flex-1 items-center text-sm text-[#727a74]">Ready to confirm</span>}<Button type="button" aria-label={`Complete ${step.label}`} disabled={!memberId || (step.responseType !== "confirm" && !selectedValue) || saving === key} className="h-11 rounded-xl bg-[#2d7951] text-white hover:bg-[#246442]" onClick={() => void saveStep(task, step, memberId, step.responseType === "confirm" ? "confirmed" : selectedValue)}>{saving === key ? <Loader2 className="size-5 animate-spin" /> : <Check className="size-5" />}</Button>{step.responseType !== "short_text" && <Button type="button" variant="outline" disabled={!memberId} className="h-11 rounded-xl border-[#c9a94d] px-3 text-[#7b651a]" onClick={() => setIssueOpen(key)}><AlertTriangle className="size-4" /><span className="sr-only">Issue</span></Button>}</div>}{issueKey && <div className="mt-3 rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3"><p className="text-sm font-semibold text-[#8f3a31]">Report an issue</p><textarea value={stepIssue?.problem ?? ""} onChange={(event) => setIssueDrafts((current) => ({ ...current, [key]: { problem: event.target.value, action: current[key]?.action ?? "" } }))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="What was wrong?" />{<CorrectiveActionControl context={`${checklist} ${task.title} ${step.label}`} options={step.correctiveActions?.length ? step.correctiveActions : undefined} value={stepIssue?.action ?? ""} onChange={action => setIssueDrafts(current => ({ ...current, [key]: { problem: current[key]?.problem ?? "", action } }))} />}<Button type="button" disabled={!memberId || !stepIssue?.problem.trim() || (step.responseType === "yes_no" && !stepIssue.action.trim()) || saving === `issue:${key}`} className="mt-2 h-10 rounded-xl bg-[#202522] text-white" onClick={() => step.responseType === "yes_no" ? void saveStep(task, step, memberId, "no") : void reportStepIssue(task, step, memberId)}>Report issue</Button></div>}</div>}
+                  </div>;
+                })}</div> : <div className="space-y-3">{task.completionMode === "task" ? <div className="grid grid-cols-2 gap-2"><Button type="button" disabled={!memberFor(task._id) || saving === task._id} className="h-11 rounded-xl bg-[#2d7951] text-white hover:bg-[#246442]" onClick={() => void saveSimpleTask(task)}>{saving === task._id ? <Loader2 className="size-5 animate-spin" /> : <><Check className="mr-2 size-5" />Complete</>}</Button><Button type="button" variant="outline" disabled={!memberFor(task._id)} className="h-11 rounded-xl border-[#c9a94d] text-[#7b651a]" onClick={() => setIssueOpen(issueOpen === task._id ? null : task._id)}><AlertTriangle className="mr-1 size-4" />Issue</Button></div> : <div className="grid grid-cols-2 gap-2"><Button type="button" disabled={!memberFor(task._id) || saving === task._id} className="h-11 rounded-xl bg-[#2d7951] text-white hover:bg-[#246442]" onClick={() => void saveQuestion(task, "yes")}>Yes</Button><Button type="button" variant="outline" disabled={!memberFor(task._id)} className="h-11 rounded-xl border-[#c9a94d] text-[#7b651a]" onClick={() => setIssueOpen(issueOpen === task._id ? null : task._id)}><AlertTriangle className="mr-1 size-4" />No — report issue</Button></div>}{issueOpen === task._id && <div className="rounded-xl border border-[#efc8c3] bg-[#fff8f6] p-3"><p className="text-sm font-semibold text-[#8f3a31]">Report an issue</p><textarea value={issueDrafts[task._id]?.problem ?? ""} onChange={(event) => setIssueDrafts((current) => ({ ...current, [task._id]: { problem: event.target.value, action: current[task._id]?.action ?? "" } }))} className="mt-2 min-h-16 w-full rounded-xl border border-black/[0.1] bg-white p-2 text-sm" placeholder="What was wrong?" /><CorrectiveActionControl context={`${checklist} ${task.title}`} value={issueDrafts[task._id]?.action ?? ""} onChange={action => setIssueDrafts(current => ({ ...current, [task._id]: { problem: current[task._id]?.problem ?? "", action } }))} /><Button type="button" disabled={!memberFor(task._id) || !issueDrafts[task._id]?.problem.trim() || !issueDrafts[task._id]?.action.trim() || saving === task._id || saving === `issue:${task._id}`} className="mt-2 h-10 rounded-xl bg-[#202522] text-white" onClick={() => task.completionMode === "task" ? void reportSimpleTaskIssue(task) : void saveQuestion(task, "no")}>Report issue</Button></div>}</div>}
+                  </div>}
+              </section>;
           })}
         </div>
-        {!perTaskSignOff && (
-          <div className="mt-6 rounded-2xl border border-black/[0.07] bg-white p-4">
-            <p className="font-semibold">Checklist sign-off</p>
-            <p className="mt-1 text-sm text-[#727a74]">
-              Sign off the complete checklist once every question has been
-              answered.
-            </p>
-            <label className="mt-4 block text-sm font-semibold">
-              Signed off by
-              <select
-                value={selectedSignOffMember(
-                  signOffTeamMemberId,
-                  workflowTeamMemberId,
-                )}
-                onChange={(event) => setSignOffTeamMemberId(event.target.value)}
-                className="mt-2 h-12 w-full rounded-xl border border-black/[0.1] bg-white px-3"
-              >
-                <option value="">Select team member</option>
-                {teamMembers.map((member) => (
-                  <option key={member._id} value={member._id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              disabled={
-                !complete ||
-                !selectedSignOffMember(
-                  signOffTeamMemberId,
-                  workflowTeamMemberId,
-                )
-              }
-              className="mt-4 h-12 w-full bg-[#ffde56] font-semibold text-[#171717]"
-              onClick={signOff}
-            >
-              Complete {title} <Check className="ml-2 size-4" />
-            </Button>
-          </div>
-        )}
-        <Button variant="outline" className="mt-7 w-full" onClick={onBack}>
-          View all checks <ChevronRight className="ml-2 size-4" />
-        </Button>
+
+        <Button variant="outline" className="h-11 w-full rounded-xl" onClick={onBack}>View all checks<ChevronRight className="ml-2 size-4" /></Button>
+        {tasks.length > 0 && <WorkflowSteps steps={tasks.map(task => task.title)} step={taskIndex} onBack={() => setTaskIndex(index => Math.max(0, index - 1))} onNext={() => taskIndex < tasks.length - 1 ? setTaskIndex(index => index + 1) : onBack()} canNext={Boolean(workflowMemberId) && !saving} confirm="View all checks" />}
       </main>
+
+      {selectedSimple.length > 0 && <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.08] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-8px_24px_rgba(23,25,24,0.08)] backdrop-blur sm:px-6"><div className="mx-auto flex max-w-3xl items-center gap-3"><div className="min-w-0 flex-1"><p className="text-sm font-bold text-[#202522]">{selectedSimple.length} simple task{selectedSimple.length === 1 ? "" : "s"} selected</p><p className="truncate text-xs text-[#727a74]">{workflowMemberId ? `New tasks will be recorded by ${memberName(workflowMemberId)}` : "Select a default person before confirming"}</p></div><Button type="button" disabled={!bulkPlan.length || bulkMissingMember || saving === "bulk"} className="h-11 shrink-0 rounded-xl bg-brand-yellow px-4 font-semibold text-[#171717] hover:bg-brand-yellow" onClick={() => setBulkOpen(true)}>Review and confirm</Button></div></div>}
+
+      {bulkOpen && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#171918]/35 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:items-center sm:p-6"><div role="dialog" aria-modal="true" aria-labelledby="bulk-confirm-title" className="w-full max-w-md rounded-3xl border border-black/[0.08] bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#fff7c9] text-[#7b651a]"><Circle className="size-5" /></div><div><h2 id="bulk-confirm-title" className="text-lg font-semibold">Confirm simple tasks</h2><p className="mt-1 text-sm leading-5 text-[#727a74]">Review the person recorded for each selected task before saving.</p></div></div><div className="mt-4 max-h-56 space-y-2 overflow-auto rounded-xl border border-black/[0.07] bg-[#fbfcfa] p-2">{bulkPlan.map((entry) => <div key={entry.taskId} className="flex items-start justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm"><span className="min-w-0 text-[#303631]">{tasks.find((task) => task._id === entry.taskId)?.title ?? "Task"}</span><span className="shrink-0 font-semibold text-[#59625c]">{entry.teamMemberId ? memberName(entry.teamMemberId) : "Select a team member"}</span></div>)}</div>{bulkMissingMember && <p className="mt-3 text-sm font-semibold text-[#8f3a31]">Select a team member for every task before confirming.</p>}<div className="mt-5 flex gap-2"><Button type="button" variant="outline" className="h-11 flex-1 rounded-xl" onClick={() => setBulkOpen(false)}>Cancel</Button><Button type="button" disabled={!bulkPlan.length || bulkMissingMember || saving === "bulk"} className="h-11 flex-1 rounded-xl bg-[#2d7951] text-white hover:bg-[#246442]" onClick={() => void confirmBulk()}>{saving === "bulk" ? <Loader2 className="mx-auto size-5" /> : "Confirm completion"}</Button></div></div></div>}
     </div>
   );
 }

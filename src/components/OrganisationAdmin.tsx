@@ -1,9 +1,14 @@
 import UserAccessAdmin from "@/components/UserAccessAdmin";
 import OrganisationLibraryAdmin from "@/components/OrganisationLibraryAdmin";
+import ControlledDocumentsAdmin from "@/components/ControlledDocumentsAdmin";
 import OrganisationFeatureCards, {
   type OrganisationFeatureKey,
 } from "@/components/admin/OrganisationFeatureCards";
 import AdditionalScheduleFields from "@/components/AdditionalScheduleFields";
+import { PdfDropzone } from "@/components/PdfDropzone";
+import CleaningScheduleFields from "@/components/CleaningScheduleFields";
+import { AdminScopeNotice, AllocationImpact } from "@/components/admin/AdminScopeNotice";
+import { cleaningWeekdaySummary } from "@/shared/cleaning-scheduling";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,8 +17,8 @@ import {
   useRestMutation,
   useRestQuery,
 } from "@/lib/rest-domain";
-import { ArrowLeft, Pencil, Trash2, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ArrowLeft, Pencil, Search, Trash2, X } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 type Store = { id: string; name: string; shortName: string };
@@ -48,6 +53,7 @@ type OperationalTask = {
   nextDueAt?: string | null;
   fields?: FieldDefinition[] | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: TaskStep[];
   locationIds: string[];
   stores: string[];
@@ -84,12 +90,13 @@ type OrganisationControls = {
     allocationMode: "all" | "selected";
     description?: string | null;
     taskType?: "simple" | "with_steps";
+    completionMode?: "question" | "task";
     steps?: TaskStep[];
   }>;
   operationalTasks: OperationalTask[];
   recentChanges: Array<{ at: string | Date; actor: string; change: string }>;
 };
-type Props = { onBack: () => void };
+type Props = { onBack: () => void; onDirtyChange?: (dirty: boolean) => void };
 
 const selectedIds = (allStores: boolean, stores: Record<string, boolean>) =>
   allStores ? [] : Object.keys(stores).filter((id) => stores[id]);
@@ -143,7 +150,7 @@ function StorePicker({
   );
 }
 
-export default function OrganisationAdmin({ onBack }: Props) {
+export default function OrganisationAdmin({ onBack, onDirtyChange }: Props) {
   const data = useRestQuery<OrganisationControls>(
     "organisation-admin",
     restApi.admin.organisation.list,
@@ -194,6 +201,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
   );
   const [trainingFile, setTrainingFile] = useState<File | null>(null);
   const [trainingReacknowledge, setTrainingReacknowledge] = useState(false);
+  const [trainingSearch, setTrainingSearch] = useState("");
   const [taskEdit, setTaskEdit] = useState<string | null>(null);
   const [taskType, setTaskType] = useState("opening");
   const [taskQuestion, setTaskQuestion] = useState("");
@@ -204,13 +212,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [taskDescription, setTaskDescription] = useState("");
   const [taskInterval, setTaskInterval] = useState("");
   const [taskDayOfMonth, setTaskDayOfMonth] = useState("1");
+  const [defaultTaskNextDue] = useState(() => new Date().toISOString().slice(0, 10));
   const [taskNextDue, setTaskNextDue] = useState(
-    new Date().toISOString().slice(0, 10),
+    defaultTaskNextDue,
   );
   const [taskFields, setTaskFields] = useState<FieldDefinition[]>(emptyFields);
   const [taskTaskType, setTaskTaskType] = useState<"simple" | "with_steps">(
     "simple",
   );
+  const [taskCompletionMode, setTaskCompletionMode] = useState<"question" | "task">("question");
   const [taskSteps, setTaskSteps] = useState<TaskStep[]>([]);
   const [taskAllStores, setTaskAllStores] = useState(true);
   const [taskStores, setTaskStores] = useState<Record<string, boolean>>({});
@@ -218,6 +228,21 @@ export default function OrganisationAdmin({ onBack }: Props) {
   const [section, setSection] = useState<"home" | OrganisationFeatureKey>(
     "home",
   );
+
+  const hasUnsavedDraft = Boolean(
+    trainingEdit || trainingTitle.trim() || trainingDescription.trim() || trainingCategory !== "other" ||
+    trainingAudience !== "all_team" || trainingFormat !== "briefing" || !trainingAllStores ||
+    Object.values(trainingStores).some(Boolean) || trainingFile || trainingReacknowledge ||
+    taskEdit || taskType !== "opening" || taskQuestion.trim() || taskName.trim() ||
+    taskFrequency !== "daily" || taskWeekdays.length || taskTitle.trim() || taskDescription.trim() ||
+    taskInterval.trim() || taskDayOfMonth !== "1" || taskNextDue !== defaultTaskNextDue ||
+    JSON.stringify(taskFields) !== JSON.stringify(emptyFields()) || taskTaskType !== "simple" ||
+    taskCompletionMode !== "question" || taskSteps.length || !taskAllStores || Object.values(taskStores).some(Boolean),
+  );
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedDraft);
+    return () => onDirtyChange?.(false);
+  }, [hasUnsavedDraft, onDirtyChange]);
 
   function resetTraining() {
     setTrainingEdit(null);
@@ -242,9 +267,10 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskDescription("");
     setTaskInterval("");
     setTaskDayOfMonth("1");
-    setTaskNextDue(new Date().toISOString().slice(0, 10));
+    setTaskNextDue(defaultTaskNextDue);
     setTaskFields(emptyFields());
     setTaskTaskType("simple");
+    setTaskCompletionMode("question");
     setTaskSteps([]);
     setTaskAllStores(true);
     setTaskStores({});
@@ -272,7 +298,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
     setTaskWeekdays(
       item.weekdays?.length
         ? item.weekdays
-        : item.kind === "additional" && item.nextDueAt
+        : item.kind === "cleaning" && item.frequency === "weekly"
+          ? [1]
+          : item.kind === "additional" && item.nextDueAt
           ? [new Date(item.nextDueAt).getUTCDay() || 7]
           : [],
     );
@@ -293,6 +321,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     );
     setTaskFields(item.fields ?? emptyFields());
     setTaskTaskType(item.taskType ?? "simple");
+    setTaskCompletionMode(item.completionMode ?? (item.kind === "cleaning" ? "task" : "question"));
     setTaskSteps(item.steps ?? []);
     setTaskAllStores(item.allocationMode === "all");
     setTaskStores(Object.fromEntries(item.locationIds.map((id) => [id, true])));
@@ -490,12 +519,14 @@ export default function OrganisationAdmin({ onBack }: Props) {
       body.question = taskQuestion.trim();
       body.description = taskDescription;
       body.taskType = taskTaskType;
+      body.completionMode = taskTaskType === "simple" ? taskCompletionMode : undefined;
       body.steps = taskTaskType === "with_steps" ? taskSteps : [];
     }
     if (taskType === "cleaning") {
       body.name = taskName.trim();
       body.description = taskDescription;
       body.taskType = taskTaskType;
+      body.completionMode = taskTaskType === "simple" ? taskCompletionMode : undefined;
       body.steps = taskTaskType === "with_steps" ? taskSteps : [];
       body.frequency = taskFrequency;
       body.weekdays = taskWeekdays;
@@ -531,6 +562,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
             question: taskQuestion.trim(),
             description: taskDescription,
             taskType: taskTaskType,
+            completionMode: taskTaskType === "simple" ? taskCompletionMode : undefined,
             steps: taskTaskType === "with_steps" ? taskSteps : [],
             allStores: taskAllStores,
             locationIds,
@@ -578,6 +610,10 @@ export default function OrganisationAdmin({ onBack }: Props) {
   }
 
   const stores = data?.locations ?? [];
+  const filteredTraining = (data?.training ?? []).filter(item => {
+    const query = trainingSearch.trim().toLocaleLowerCase();
+    return !query || [item.title, item.description ?? "", item.category ?? "", item.stores.join(" ")].some(value => value.toLocaleLowerCase().includes(query));
+  });
   const trainingItemBeingEdited = trainingEdit
     ? data?.training.find((item) => item.id === trainingEdit)
     : undefined;
@@ -610,6 +646,16 @@ export default function OrganisationAdmin({ onBack }: Props) {
       security_pm: "PM Security",
       additional: "Additional check",
     })[kind] ?? kind;
+  const scheduleLabel = (item: OperationalTask) => {
+    if (item.kind === "cleaning") return cleaningWeekdaySummary(item.frequency ?? "daily", item.weekdays);
+    if (item.kind !== "additional") return item.kind === "security_am" || item.kind === "security_pm" ? "Daily session" : "Daily checklist";
+    if (item.frequency === "weekly") return `Weekly · ${cleaningWeekdaySummary("weekly", item.weekdays)}`;
+    if (item.frequency === "every_x_weeks") return `Every ${item.interval ?? 1} week${item.interval === 1 ? "" : "s"}`;
+    if (item.frequency === "monthly") return `Monthly · day ${item.dayOfMonth ?? 1}`;
+    if (item.frequency === "every_x_months") return `Every ${item.interval ?? 1} month${item.interval === 1 ? "" : "s"}`;
+    if (item.frequency === "annual") return "Annual";
+    return "One-off";
+  };
 
   if (!data)
     return (
@@ -644,7 +690,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
     </section>
   );
   const page = (title: string, content: ReactNode) => (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
           <div>
@@ -666,7 +712,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
 
   if (section === "home")
     return (
-      <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+      <div className="min-h-screen bg-white text-[#171918]">
         <header className="border-b border-black/[0.07] bg-white">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
             <div>
@@ -689,6 +735,13 @@ export default function OrganisationAdmin({ onBack }: Props) {
             Publish standards, manage access and review organisation activity
             across all stores.
           </p>
+          <div className="mt-5 max-w-2xl">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Central controls"
+              detail="Changes made here create or version organisation standards. Store Admin is for local setup only."
+            />
+          </div>
           <div className="mt-7">
             <OrganisationFeatureCards onSelect={setSection} />
           </div>
@@ -699,10 +752,12 @@ export default function OrganisationAdmin({ onBack }: Props) {
   if (section === "access") return page("User Access", <UserAccessAdmin />);
   if (section === "library")
     return page("Document Library", <OrganisationLibraryAdmin />);
+  if (section === "controlled-documents")
+    return page("Controlled Documents", <ControlledDocumentsAdmin />);
   if (section === "activity")
     return page("Organisation Activity", recentChanges);
   return (
-    <div className="min-h-screen bg-[#f6f7f5] text-[#171918]">
+    <div className="min-h-screen bg-white text-[#171918]">
       <header className="border-b border-black/[0.07] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-8">
           <div>
@@ -719,6 +774,11 @@ export default function OrganisationAdmin({ onBack }: Props) {
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-7 sm:px-8">
         {section === "training" && (
           <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Organisation-wide training standard"
+              detail="This publication is centrally managed for the stores selected below. Past acknowledgements and document history remain preserved."
+            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
@@ -806,14 +866,9 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   {trainingEdit && existingTrainingPdfAttached && !trainingFile && (
                     <p className="mt-1 text-sm text-[#2d7951]">Current PDF attached</p>
                   )}
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(event) => setTrainingFile(event.target.files?.[0] ?? null)}
-                    className="mt-3 block w-full rounded-xl border border-black/[0.1] bg-white p-3 text-sm"
-                  />
+                  <PdfDropzone onFile={setTrainingFile} />
                   <span className="mt-2 block text-xs font-normal text-[#89918b]">
-                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 25 MB" : "Required for Document / PDF training · PDF · Maximum 25 MB"}
+                    {trainingEdit ? "Choose a replacement PDF if required · PDF · Maximum 100 MB" : "Required for Document / PDF training · PDF · Maximum 100 MB"}
                   </span>
                   {trainingFile && <span className="mt-2 block text-xs text-[#727a74]">Selected: {trainingFile.name} · {(trainingFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
                 </div>
@@ -825,6 +880,16 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   trainingStores,
                   setTrainingStores,
                 )}
+              </div>
+              <div className="md:col-span-2">
+                <AllocationImpact
+                  allStores={trainingAllStores}
+                  locationIds={selectedIds(trainingAllStores, trainingStores)}
+                  locations={stores}
+                  editing={Boolean(trainingEdit)}
+                  training
+                  reacknowledge={trainingReacknowledge}
+                />
               </div>
               {trainingEdit && trainingFormat === "briefing" && (
                 <label className="flex items-center gap-2 text-sm md:col-span-2">
@@ -853,11 +918,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                 </Button>
               )}
             </div>
-            <div className="mt-6 space-y-2">
-              {data.training.map((item) => (
+            <div className="relative mt-6">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#89918b]" />
+              <Input aria-label="Search briefings and training documents" value={trainingSearch} onChange={event => setTrainingSearch(event.target.value)} placeholder="Find a briefing or document" className="h-12 rounded-xl pl-10" />
+            </div>
+            <div className="mt-3 space-y-2">
+              {filteredTraining.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-xl bg-[#fafbf9] p-3 text-sm"
+                  className="flex flex-col gap-3 rounded-xl bg-[#fafbf9] p-3 text-sm sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div>
                     <p className="font-semibold">
@@ -871,6 +940,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     <p className="text-xs text-[#727a74]">
                       {item.stores.join(", ")} · Version {item.version}
                     </p>
+                    {item.trainingFormat === "briefing" && item.description && <p className="mt-2 max-w-3xl whitespace-pre-line text-sm text-[#727a74]">{item.description}</p>}
                     {item.trainingFormat === "document" && (
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         {(item.attachmentStatus ?? []).map((attachment) => (
@@ -891,14 +961,14 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <Button
-                      variant="ghost"
-                      size="icon"
+                      variant="outline"
+                      size="sm"
                       aria-label={"Edit " + item.title}
                       onClick={() => startTrainingEdit(item)}
                     >
-                      <Pencil className="size-4" />
+                      <Pencil className="mr-1 size-4" /> Edit
                     </Button>
                     {item.trainingFormat === "document" && (
                       <label className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium hover:bg-black/[0.04]">
@@ -935,21 +1005,27 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       )}
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="sm"
                       className="text-[#b64738]"
-                      aria-label={"Retire " + item.title}
+                      aria-label={`${item.trainingFormat === "briefing" ? "Withdraw" : "Retire"} ${item.title}`}
                       onClick={() => void retire("training", item.id)}
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="mr-1 size-4" /> {item.trainingFormat === "briefing" ? "Withdraw" : "Retire"}
                     </Button>
                   </div>
                 </div>
               ))}
+              {!filteredTraining.length && <div className="rounded-xl border border-dashed border-black/[0.1] p-4 text-sm text-[#727a74]">{trainingSearch ? "No matching briefing or document." : "No organisation-wide training has been published yet."}</div>}
             </div>
           </section>
         )}
         {section === "operational" && (
           <section className="rounded-2xl border border-black/[0.07] bg-white p-5">
+            <AdminScopeNotice
+              scope="organisation"
+              title="Organisation-wide operational standard"
+              detail="Publish one versioned standard to every store or select specific stores. Store Admin cannot edit centrally controlled items."
+            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">
@@ -988,6 +1064,22 @@ export default function OrganisationAdmin({ onBack }: Props) {
                   </option>
                 </select>
               </label>
+              <div className="md:col-span-2">
+                {storePicker(
+                  taskAllStores,
+                  setTaskAllStores,
+                  taskStores,
+                  setTaskStores,
+                )}
+              </div>
+              <div className="md:col-span-2">
+                <AllocationImpact
+                  allStores={taskAllStores}
+                  locationIds={selectedIds(taskAllStores, taskStores)}
+                  locations={stores}
+                  editing={Boolean(taskEdit)}
+                />
+              </div>
               {(taskType === "opening" ||
                 taskType === "closing" ||
                 taskType.startsWith("security_")) && (
@@ -1035,6 +1127,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="with_steps">Task with steps</option>
                     </select>
                   </label>
+                  {taskTaskType === "simple" && (
+                    <label className="text-sm font-semibold">
+                      Simple check behaviour
+                      <select value={taskCompletionMode} onChange={(event) => setTaskCompletionMode(event.target.value as "question" | "task")} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
+                        <option value="question">Question (Yes / No)</option>
+                        <option value="task">Simple completion task</option>
+                      </select>
+                    </label>
+                  )}
                   {taskTaskType === "with_steps" && (
                     <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
                       <div className="flex items-center justify-between">
@@ -1217,6 +1318,15 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="with_steps">Task with steps</option>
                     </select>
                   </label>
+                  {taskTaskType === "simple" && (
+                    <label className="text-sm font-semibold">
+                      Simple completion behaviour
+                      <select value={taskCompletionMode} onChange={(event) => setTaskCompletionMode(event.target.value as "question" | "task")} className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3">
+                        <option value="task">Simple completion task</option>
+                        <option value="question">Question (Yes / No)</option>
+                      </select>
+                    </label>
+                  )}
                   {taskTaskType === "with_steps" && (
                     <div className="md:col-span-2 rounded-xl border border-black/[0.08] p-3">
                       <div className="flex items-center justify-between">
@@ -1356,7 +1466,11 @@ export default function OrganisationAdmin({ onBack }: Props) {
                     Frequency
                     <select
                       value={taskFrequency}
-                      onChange={(event) => setTaskFrequency(event.target.value)}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setTaskFrequency(next);
+                        if (next === "weekly" && !taskWeekdays.length) setTaskWeekdays([1]);
+                      }}
                       className="mt-2 h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3"
                     >
                       <option value="after_use">After use</option>
@@ -1365,36 +1479,7 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       <option value="specific_days">Specific days</option>
                     </select>
                   </label>
-                  {taskFrequency === "specific_days" && (
-                    <div className="md:col-span-2">
-                      <p className="text-sm font-semibold">Weekdays</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                          (day, index) => (
-                            <label
-                              key={day}
-                              className="rounded-xl border px-3 py-2 text-sm"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={taskWeekdays.includes(index)}
-                                onChange={() =>
-                                  setTaskWeekdays(
-                                    taskWeekdays.includes(index)
-                                      ? taskWeekdays.filter(
-                                          (value) => value !== index,
-                                        )
-                                      : [...taskWeekdays, index],
-                                  )
-                                }
-                              />{" "}
-                              <span className="ml-1">{day}</span>
-                            </label>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <div className="md:col-span-2"><CleaningScheduleFields frequency={taskFrequency} weekdays={taskWeekdays} onWeekdaysChange={setTaskWeekdays} /></div>
                 </>
               )}
               {taskType === "additional" && (
@@ -1521,7 +1606,12 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       {item.name ?? item.title ?? item.question}
                     </p>
                     <p className="text-xs text-[#727a74]">
-                      {taskLabel(item.kind)} · {item.stores.join(", ")}
+                      {taskLabel(item.kind)} · {scheduleLabel(item)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#89918b]">
+                      {item.allocationMode === "all"
+                        ? `All ${stores.length} stores`
+                        : item.stores.join(", ")}
                     </p>
                   </div>
                   <div className="flex gap-1">
@@ -1536,6 +1626,8 @@ export default function OrganisationAdmin({ onBack }: Props) {
                       variant="ghost"
                       size="icon"
                       className="text-[#b64738]"
+                      aria-label={`Retire ${taskLabel(item.kind)}: ${item.name ?? item.title ?? item.question ?? "item"}`}
+                      title="Retire organisation standard"
                       onClick={() => void retire("operational", item.id)}
                     >
                       <Trash2 className="size-4" />

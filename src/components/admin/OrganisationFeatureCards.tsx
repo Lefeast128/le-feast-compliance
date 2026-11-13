@@ -13,6 +13,7 @@ export type OrganisationFeatureKey =
   | "training"
   | "operational"
   | "library"
+  | "controlled-documents"
   | "activity";
 
 const cards: Array<{
@@ -46,6 +47,12 @@ const cards: Array<{
     icon: FileText,
   },
   {
+    key: "controlled-documents",
+    title: "Controlled Documents",
+    description: "Publish one versioned document to Library and Training.",
+    icon: FileText,
+  },
+  {
     key: "activity",
     title: "Organisation Activity",
     description: "Review recent organisation changes.",
@@ -68,7 +75,7 @@ export default function OrganisationFeatureCards({
           aria-label={`Open ${title}`}
           className="group flex min-h-36 items-center gap-4 rounded-3xl border border-black/[0.07] bg-white p-5 text-left shadow-[0_4px_16px_rgba(23,25,24,0.04)] transition hover:-translate-y-0.5 hover:border-[#e5d77b] active:scale-[0.99]"
         >
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff7dc] text-[#8a6b12]">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow/20 text-[#171717]">
             <Icon className="size-6" aria-hidden="true" />
           </span>
           <span className="min-w-0 flex-1">

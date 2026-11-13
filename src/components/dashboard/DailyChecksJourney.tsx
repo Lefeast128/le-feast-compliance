@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { DailyTaskCard } from "@/components/dashboard/DailyTaskCard";
 import type { DailyTaskModel } from "@/components/dashboard/daily-checks-model";
-import { CheckCircle2, ChevronRight, Plus, AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Plus } from "lucide-react";
 import type { DashboardIssue, ManagerReviewStatus } from "@/components/dashboard/dashboard-types";
 
 const reviewStatusLabel = (period: ManagerReviewStatus["periods"]["weekly"]) =>
@@ -19,9 +19,6 @@ const reviewTone = (period: ManagerReviewStatus["periods"]["weekly"]) =>
   period.status === "complete" || period.status === "up_to_date" ? "text-[#2d7951]" : period.status === "overdue" ? "text-[#a13f34]" : "text-[#8a6b12]";
 
 export function DailyChecksJourney({
-  locationName,
-  todayLabel,
-  currentUserName,
   completed,
   total,
   progressPercent,
@@ -35,9 +32,6 @@ export function DailyChecksJourney({
   onIssueSelected,
   onReportIssue,
 }: {
-  locationName: string;
-  todayLabel: string;
-  currentUserName: string;
   completed: number;
   total: number;
   progressPercent: number;
@@ -51,17 +45,10 @@ export function DailyChecksJourney({
   onIssueSelected: (issue: DashboardIssue) => void;
   onReportIssue: () => void;
 }) {
-  return (
-    <main className="mx-auto max-w-3xl px-4 py-6 sm:px-8 sm:py-10">
-      <div className="mb-7 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
-        <div>
-          <p className="text-sm font-medium text-[#7b827d]">{todayLabel}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.05em]">{locationName}</h1>
-          <p className="mt-2 text-sm text-[#727a74]">{currentUserName}</p>
-        </div>
-        <span className="w-fit rounded-full bg-white px-3 py-2 text-xs font-semibold text-[#727a74] shadow-[0_3px_12px_rgba(23,25,24,0.04)]">Daily compliance journey</span>
-      </div>
+  const additionalTask = tasks.find((task) => task.id === "additional-checks");
 
+  return (
+    <main className="mx-auto max-w-3xl px-4 pb-6 pt-4 sm:px-8 sm:pb-10 sm:pt-8">
       <section className="rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_6px_22px_rgba(23,25,24,0.05)] sm:p-7" aria-labelledby="todays-checks-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -72,12 +59,42 @@ export function DailyChecksJourney({
           <span className="text-3xl font-semibold tracking-tight text-[#202522]">{progressPercent}%</span>
         </div>
         <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#eef0ec]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent} aria-label="Today's checks progress">
-          <div className="h-full rounded-full bg-[#ffde56] transition-all" style={{ width: `${progressPercent}%` }} />
+          <div className="h-full rounded-full bg-brand-yellow transition-all" style={{ width: `${progressPercent}%` }} />
         </div>
       </section>
 
+      <section className="mt-8" aria-labelledby="daily-journey-heading">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Daily journey</p>
+            <h2 id="daily-journey-heading" className="mt-1 text-xl font-semibold">Your next checks</h2>
+          </div>
+          <span className="text-xs font-semibold text-[#89918b]">Tap any step to continue</span>
+        </div>
+        <ol className="relative space-y-3 before:absolute before:bottom-8 before:left-[1.35rem] before:top-8 before:w-px before:bg-[#dfe3dd] sm:space-y-4">
+          {tasks.filter((task) => task.id !== "additional-checks").map((task) => (
+            <DailyTaskCard key={task.id} task={task} onAction={() => onTaskAction(task)} />
+          ))}
+        </ol>
+      </section>
+
+      {additionalTask && (
+        <section className="mt-6" aria-labelledby="additional-checks-heading">
+          <div className="mb-3">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Separate checks</p>
+            <h2 id="additional-checks-heading" className="mt-1 text-lg font-semibold">Additional checks</h2>
+          </div>
+          <ul className="m-0 list-none p-0">
+            <DailyTaskCard
+              task={additionalTask}
+              onAction={() => onTaskAction(additionalTask)}
+            />
+          </ul>
+        </section>
+      )}
+
       {canUseManagement && (
-        <section className="mt-5 rounded-2xl border border-[#ead797] bg-[#fffdf4] p-4 sm:p-5" aria-label="Manager reviews">
+        <section className="mt-8 rounded-2xl border border-[#ead797] bg-brand-yellow/10 p-4 sm:p-5" aria-label="Manager reviews">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Manager reviews</p>
@@ -91,22 +108,7 @@ export function DailyChecksJourney({
         </section>
       )}
 
-      <section className="mt-8" aria-labelledby="daily-journey-heading">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Daily journey</p>
-            <h2 id="daily-journey-heading" className="mt-1 text-xl font-semibold">Your next checks</h2>
-          </div>
-          <span className="text-xs font-semibold text-[#89918b]">Tap any step to continue</span>
-        </div>
-        <ol className="relative space-y-3 before:absolute before:bottom-8 before:left-[1.35rem] before:top-8 before:w-px before:bg-[#dfe3dd] sm:space-y-4">
-          {tasks.map((task, index) => (
-            <DailyTaskCard key={task.id} task={task} step={index + 1} onAction={() => onTaskAction(task)} />
-          ))}
-        </ol>
-      </section>
-
-      <section className="mt-8" aria-labelledby="issues-heading">
+      <section id="issues-section" className="mt-8" aria-labelledby="issues-heading">
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#89918b]">Attention area</p>
@@ -118,9 +120,10 @@ export function DailyChecksJourney({
             <>
               <p className="flex items-center gap-2 text-lg font-semibold text-[#8f3a31]"><AlertTriangle className="size-5" /> {openIssues.length} action{openIssues.length === 1 ? "" : "s"} required</p>
               <div className="mt-4 space-y-3">
-                {openIssues.slice(0, 3).map((issue) => (
+                {openIssues.map((issue) => (
                   <button type="button" key={issue._id} className="w-full rounded-2xl bg-white p-4 text-left shadow-[0_3px_12px_rgba(23,25,24,0.04)]" onClick={() => onIssueSelected(issue)}>
                     <p className="font-semibold">{issue.title}</p>
+                    <p className="mt-1 text-xs text-neutral-600">{issue.category} · {issue.teamMemberName ?? "Staff recorded in history"} · {issue.status === "monitoring" ? "Monitoring" : "Open"} · Review / resolve</p>
                     <p className="mt-1 text-sm text-[#727a74]">{issue.description}</p>
                     {issue.action && <p className="mt-2 text-xs text-[#8f3a31]">{issue.action}</p>}
                   </button>
@@ -135,6 +138,7 @@ export function DailyChecksJourney({
           </Button>
         </div>
       </section>
+
     </main>
   );
 }

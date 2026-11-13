@@ -3,12 +3,13 @@ import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { and, eq } from "drizzle-orm";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { getDb } from "../db/client.js";
-import { documents, locations } from "../db/schema.js";
+import { controlledDocumentVersions, controlledDocuments, documents, locations } from "../db/schema.js";
 import { requireLocationAccess, requireLocationManager, requireOrganisationAdmin, type AuthContext } from "../auth/core.js";
 import { ApiError } from "../compliance/errors.js";
 import { requireFiniteNumber, requireString, requireUuid } from "../compliance/validation.js";
 import { MAX_PDF_BYTES } from "./pure.js";
 import { decodeBase64, sanitizeFilename, validatePdfBytes } from "./validation.js";
+import { assertControlledDocumentAccess } from "./access.js";
 
 export type DocumentPurpose = "training_document" | "additional_check_certificate" | "library_document";
 
@@ -212,11 +213,24 @@ export async function uploadDocument(context: AuthContext, input: Record<string,
   }
 }
 
-export async function documentForAccess(context: AuthContext, documentId: string) {
+export async function documentForAccess(context: AuthContext, documentId: string, requestedLocationId?: string) {
   requireUuid(documentId, "documentId");
   const [document] = await getDb().select().from(documents).where(and(eq(documents.id, documentId), eq(documents.status, "active"))).limit(1);
   if (!document) throw new ApiError(404, "Document not found");
-  await locationFor(context, document.locationId, false);
+  const [controlled] = await getDb().select({ locationIds: controlledDocuments.locationIds, allocationMode: controlledDocuments.allocationMode, organisationId: controlledDocuments.organisationId, active: controlledDocuments.active })
+    .from(controlledDocumentVersions)
+    .innerJoin(controlledDocuments, eq(controlledDocuments.id, controlledDocumentVersions.controlledDocumentId))
+    .where(eq(controlledDocumentVersions.documentId, document.id))
+    .limit(1);
+  if (controlled) {
+    if (!controlled.active) throw new ApiError(404, "Document not found");
+    assertControlledDocumentAccess(controlled, requestedLocationId, context.user.organisationId ?? "");
+    const location = await locationFor(context, requestedLocationId, false);
+    if (location.organisationId !== document.organisationId) throw new ApiError(403, "Document access denied");
+    return document;
+  }
+  const location = await locationFor(context, requestedLocationId ?? document.locationId, false);
+  if (location.organisationId !== document.organisationId) throw new ApiError(403, "Document access denied");
   return document;
 }
 

@@ -1,0 +1,18 @@
+{
+  "packageId": "uk.co.lefeast.eho.test",
+  "host": "eho.lefeast.co.uk",
+  "name": "mise. by Le Feast",
+  "launcherName": "mise.",
+  "display": "standalone",
+  "startUrl": "/",
+  "webManifestUrl": "https://eho.lefeast.co.uk/manifest.webmanifest",
+  "iconUrl": "https://eho.lefeast.co.uk/icons/icon-512.png",
+  "maskableIconUrl": "https://eho.lefeast.co.uk/icons/icon-maskable-512.png",
+  "themeColor": "#FFDE56",
+  "navigationColor": "#FFFFFF",
+  "backgroundColor": "#FFFFFF",
+  "fallbackType": "customtabs",
+  "enableNotifications": false,
+  "appVersionCode": 1,
+  "appVersionName": "0.1.0-test"
+}

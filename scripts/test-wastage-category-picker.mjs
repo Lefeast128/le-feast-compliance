@@ -25,7 +25,7 @@ const products = [
 assert.equal(wastagePickerCategory(products[0]), "Snacks");
 assert.equal(wastagePickerCategory(products[2]), "Drinks");
 assert.equal(wastagePickerCategory(products[3]), "Other");
-assert.deepEqual(getWastagePickerCategories(products), [ALL_WASTAGE_CATEGORY, "Drinks", "Other", "Sandwiches", "Snacks"]);
+assert.deepEqual(getWastagePickerCategories(products), ["Drinks", "Other", "Sandwiches", "Snacks"]);
 assert.deepEqual(filterWastageProducts(products, ""), [products[1], products[2], products[3], products[0]]);
 assert.deepEqual(filterWastageProducts(products, "sand", "Sandwiches"), [products[1]]);
 assert.deepEqual(filterWastageProducts(products, "1001", "Sandwiches"), [products[1]]);
@@ -44,9 +44,9 @@ assert.deepEqual(buildWastagePayload(catalogueDraft), { noWaste: false, catalogu
 assert.equal(setWastagePickerMode(catalogueDraft, "adhoc").catalogueProductId, "");
 assert.equal(setWastagePickerMode(catalogueDraft, "no_waste").mode, "no_waste");
 assert.match(modal, /getWastagePickerCategories/);
-assert.match(modal, /role="tablist" aria-label="Wastage category"/);
+assert.match(modal, /Choose a category/);
 assert.match(modal, /filterWastageProducts\(products, search, selectedCategory\)/);
-assert.match(modal, /buildWastagePayload\(draft\)/);
+assert.match(modal, /buildWastagePayload\(\{ \.\.\.draft, teamMemberId: memberId \}\)/);
 assert.match(catalogueService, /excludedFromWastage, false/);
 assert.match(catalogueService, /eq\(catalogueProducts\.active, true\)/);
 assert.match(catalogueService, /group: catalogueProducts\.group/);

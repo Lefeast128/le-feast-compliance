@@ -15,10 +15,12 @@ export type AdminQuestion = {
   centralItemId?: string | null;
   description?: string | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: AdminTaskStep[];
 };
 
-export type AdminTaskStep = { id: string; label: string; description?: string | null; responseType: "confirm" | "yes_no" | "number" | "short_text"; required?: boolean };
+export type AdminTaskStep = {
+  correctiveActions?: string[]; id: string; label: string; description?: string | null; responseType: "confirm" | "yes_no" | "number" | "short_text"; required?: boolean };
 
 export type AdminIssue = {
   _id: string;
@@ -35,6 +37,7 @@ export type AdminCleaningTask = {
   centralItemId?: string | null;
   description?: string | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: AdminTaskStep[];
 };
 
@@ -57,6 +60,7 @@ export type AdminSecurityQuestion = {
   centralItemId?: string | null;
   description?: string | null;
   taskType?: "simple" | "with_steps";
+  completionMode?: "question" | "task";
   steps?: AdminTaskStep[];
 };
 
@@ -131,6 +135,7 @@ export type AdminEditorValues = {
   requireReacknowledgement?: boolean;
   taskType?: "simple" | "with_steps";
   steps?: AdminTaskStep[];
+  completionMode?: "question" | "task";
 };
 
 export type FridgeEditorValues = {

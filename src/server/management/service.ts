@@ -47,6 +47,11 @@ export {
   updateWastage,
   deleteWastage,
   reorderWastage,
+  listWastageManagement,
+  addWastageCategory,
+  updateWastageCategory,
+  deleteWastageCategory,
+  reorderWastageCategory,
 } from "./wastage-service.js";
 
 export { operations } from "./operations-service.js";
