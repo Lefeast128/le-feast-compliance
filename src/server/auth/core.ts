@@ -277,6 +277,20 @@ export async function loginWithPassword(
   return { sessionToken: created.sessionToken, user };
 }
 
+// Signs in a known, active user without a password. Used only after a
+// Le Feast Hub pass has been verified.
+export async function createSessionForUser(
+  repository: AuthRepository,
+  input: { email: string; now?: number; sessionSecret?: string },
+) {
+  const now = input.now ?? Date.now();
+  const user = await repository.findUserByEmail(normalizeEmail(input.email));
+  if (!user || user.active === false) return null;
+  const created = newSession(user.id, now, input.sessionSecret);
+  await repository.insertSession(created.session);
+  return { sessionToken: created.sessionToken, user };
+}
+
 export async function setPassword(
   repository: AuthRepository,
   userId: string,
