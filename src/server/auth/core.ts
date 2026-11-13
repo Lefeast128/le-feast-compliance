@@ -7,6 +7,8 @@ export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const PASSWORD_MIN_LENGTH = 10;
 export const PASSWORD_LOGIN_WINDOW_MS = 15 * 60 * 1000;
 export const PASSWORD_LOGIN_MAX_ATTEMPTS = 5;
+export const OTP_IP_WINDOW_MS = 15 * 60 * 1000;
+export const OTP_IP_MAX_REQUESTS = 10;
 
 export type AuthUser = {
   id: string;
@@ -68,6 +70,12 @@ export type AuthRepository = {
   revokeSession: (id: string, at: number) => Promise<void>;
   setPassword: (userId: string, credential: PasswordCredential, at: number) => Promise<void>;
   revokeUserSessions: (userId: string, at: number) => Promise<void>;
+  // Durable rate limiting. Optional so lightweight test repositories can omit them;
+  // the in-memory fallback is only suitable for a single long-lived process.
+  getLoginAttempt?: (key: string) => Promise<LoginAttempt | null>;
+  saveLoginAttempt?: (key: string, attempt: LoginAttempt) => Promise<void>;
+  clearLoginAttempt?: (key: string) => Promise<void>;
+  countRecentChallengesByRateLimitKey?: (rateLimitKey: string, since: number) => Promise<number>;
 };
 
 export type PasswordCredential = {
@@ -122,38 +130,46 @@ export const verifyPassword = (password: unknown, user: AuthUser) => {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 };
 
-type LoginAttempt = { startedAt: number; failures: number; blockedUntil: number };
-const passwordLoginAttempts = new Map<string, LoginAttempt>();
+export type LoginAttempt = { startedAt: number; failures: number; blockedUntil: number };
+const memoryLoginAttempts = new Map<string, LoginAttempt>();
 
 export class PasswordLoginRateLimitError extends Error {
-  constructor() {
-    super("Invalid email or password");
+  readonly retryAfterSeconds: number;
+  constructor(retryAfterSeconds = Math.ceil(PASSWORD_LOGIN_WINDOW_MS / 1000)) {
+    super("Too many sign-in attempts");
     this.name = "PasswordLoginRateLimitError";
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
   }
 }
 
-const loginKey = (email: string, rateLimitKey?: string) => `${rateLimitKey ?? "unknown"}:${email}`;
+// Lockouts apply to any email (known or not), so this message does not reveal accounts.
+export const passwordLockoutMessage = (retryAfterSeconds: number) => {
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  return `Too many sign-in attempts. Please wait ${minutes} minute${minutes === 1 ? "" : "s"} and try again, or use "Forgot password?".`;
+};
 
-function checkLoginRateLimit(key: string, now: number) {
-  const current = passwordLoginAttempts.get(key);
-  if (!current) return;
-  if (current.startedAt + PASSWORD_LOGIN_WINDOW_MS <= now) {
-    passwordLoginAttempts.delete(key);
-    return;
-  }
-  if (current.blockedUntil > now) throw new PasswordLoginRateLimitError();
+// Keyed by account, not IP, so rotating addresses cannot reset the counter.
+const loginKey = (email: string) => `password:${email}`;
+
+const loginAttemptStore = (repository: AuthRepository) => ({
+  get: (key: string) => repository.getLoginAttempt ? repository.getLoginAttempt(key) : Promise.resolve(memoryLoginAttempts.get(key) ?? null),
+  save: (key: string, attempt: LoginAttempt) => repository.saveLoginAttempt ? repository.saveLoginAttempt(key, attempt) : Promise.resolve(void memoryLoginAttempts.set(key, attempt)),
+  clear: (key: string) => repository.clearLoginAttempt ? repository.clearLoginAttempt(key) : Promise.resolve(void memoryLoginAttempts.delete(key)),
+});
+
+async function checkLoginRateLimit(repository: AuthRepository, key: string, now: number) {
+  const current = await loginAttemptStore(repository).get(key);
+  if (current && current.startedAt + PASSWORD_LOGIN_WINDOW_MS > now && current.blockedUntil > now) throw new PasswordLoginRateLimitError((current.blockedUntil - now) / 1000);
+  return current;
 }
 
-function recordLoginFailure(key: string, now: number) {
-  const current = passwordLoginAttempts.get(key);
+async function recordLoginFailure(repository: AuthRepository, key: string, current: LoginAttempt | null, now: number) {
   const next = current && current.startedAt + PASSWORD_LOGIN_WINDOW_MS > now
     ? { ...current, failures: current.failures + 1 }
     : { startedAt: now, failures: 1, blockedUntil: 0 };
   if (next.failures >= PASSWORD_LOGIN_MAX_ATTEMPTS) next.blockedUntil = now + PASSWORD_LOGIN_WINDOW_MS;
-  passwordLoginAttempts.set(key, next);
+  await loginAttemptStore(repository).save(key, next);
 }
-
-const recordLoginSuccess = (key: string) => passwordLoginAttempts.delete(key);
 
 const newSession = (userId: string, now: number, sessionSecret?: string) => {
   const sessionToken = generateSessionToken();
@@ -182,6 +198,10 @@ export async function requestOtp(
 ) {
   const normalizedEmail = normalizeEmail(input.email);
   const now = input.now ?? Date.now();
+  if (input.rateLimitKey && repository.countRecentChallengesByRateLimitKey) {
+    const recent = await repository.countRecentChallengesByRateLimitKey(input.rateLimitKey, now - OTP_IP_WINDOW_MS);
+    if (recent >= OTP_IP_MAX_REQUESTS) return genericOtpResponse();
+  }
   const user = await repository.findUserByEmail(normalizedEmail);
 
   if (!user || user.active === false) return genericOtpResponse();
@@ -264,14 +284,14 @@ export async function loginWithPassword(
 ) {
   const normalizedEmail = normalizeEmail(input.email);
   const now = input.now ?? Date.now();
-  const key = loginKey(normalizedEmail, input.rateLimitKey);
-  checkLoginRateLimit(key, now);
+  const key = loginKey(normalizedEmail);
+  const attempt = await checkLoginRateLimit(repository, key, now);
   const user = await repository.findUserByEmail(normalizedEmail);
   if (!user || user.active === false || !verifyPassword(input.password, user)) {
-    recordLoginFailure(key, now);
+    await recordLoginFailure(repository, key, attempt, now);
     return null;
   }
-  recordLoginSuccess(key);
+  if (attempt) await loginAttemptStore(repository).clear(key);
   const created = newSession(user.id, now, input.sessionSecret);
   await repository.insertSession(created.session);
   return { sessionToken: created.sessionToken, user };

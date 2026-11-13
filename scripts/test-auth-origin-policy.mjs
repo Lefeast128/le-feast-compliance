@@ -8,7 +8,9 @@ const saved = {
   authAllowedOrigins: process.env.AUTH_ALLOWED_ORIGINS,
   vercelEnv: process.env.VERCEL_ENV,
   vercelUrl: process.env.VERCEL_URL,
+  vercelBranchUrl: process.env.VERCEL_BRANCH_URL,
 };
+delete process.env.VERCEL_BRANCH_URL;
 
 function response() {
   return {
@@ -36,6 +38,17 @@ try {
   assert.throws(() => assertMutationOrigin({ headers: { origin: "https://attacker.example.org" } }), /Invalid request origin/);
 
   process.env.VERCEL_URL = previewOrigin.slice("https://".length);
+  const branchOrigin = "https://le-feast-compliance-git-claude-audit-fixes-lefeast128s-projects.vercel.app";
+  process.env.VERCEL_BRANCH_URL = branchOrigin.slice("https://".length);
+  assert.deepEqual(allowedOrigins(), ["https://eho.lefeast.co.uk", previewOrigin, branchOrigin], "preview accepts its branch alias");
+  assert.doesNotThrow(() => assertMutationOrigin({ headers: { origin: branchOrigin } }));
+  process.env.VERCEL_ENV = "production";
+  assert.throws(() => assertMutationOrigin({ headers: { origin: branchOrigin } }), /Invalid request origin/, "production ignores preview aliases");
+  process.env.VERCEL_ENV = "preview";
+  process.env.VERCEL_BRANCH_URL = "evil.example.org";
+  assert.throws(() => assertMutationOrigin({ headers: { origin: "https://evil.example.org" } }), /Invalid request origin/, "non-vercel.app branch URL is ignored");
+  delete process.env.VERCEL_BRANCH_URL;
+
   const req = { method: "POST", headers: { origin: previewOrigin }, body: {} };
   const otpResponse = response();
   await requestOtp(req, otpResponse);
@@ -65,7 +78,7 @@ try {
 
   console.log("PASS auth origin policy: exact Vercel Preview origin is accepted; forged/production origins remain rejected; OTP initiation and callback enforce the policy");
 } finally {
-  for (const [key, value] of Object.entries({ AUTH_ALLOWED_ORIGINS: saved.authAllowedOrigins, VERCEL_ENV: saved.vercelEnv, VERCEL_URL: saved.vercelUrl })) {
+  for (const [key, value] of Object.entries({ AUTH_ALLOWED_ORIGINS: saved.authAllowedOrigins, VERCEL_ENV: saved.vercelEnv, VERCEL_URL: saved.vercelUrl, VERCEL_BRANCH_URL: saved.vercelBranchUrl })) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
 }

@@ -38,6 +38,9 @@ import { shouldConfirmAppNavigation } from "@/lib/navigation-guard";
 const monthBounds = (value: Date) => ({ start: formatDateKey(new Date(value.getFullYear(), value.getMonth(), 1)), end: formatDateKey(new Date(value.getFullYear(), value.getMonth() + 1, 0)) });
 const AccessDenied = () => <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-[#efc8c3] bg-white px-6 py-5 text-center"><p className="font-semibold">Management access required</p><p className="mt-1 text-sm text-[#727a74]">This area is only available to managers for their assigned stores.</p></div></div>;
 
+type AppHistoryState = { view: DashboardView; locationId: string; allStores: boolean; returnToAllStores: boolean };
+const sameHistoryState = (a: AppHistoryState, b: AppHistoryState) => a.view === b.view && a.locationId === b.locationId && a.allStores === b.allStores && a.returnToAllStores === b.returnToAllStores;
+
 export default function Dashboard() {
   const { logout, user, memberships } = useAuth();
   const [renderTimestamp] = useState(() => Date.now());
@@ -49,6 +52,7 @@ export default function Dashboard() {
   const [managerSection, setManagerSection] = useState<ManagerOverviewSection>("overview");
   const [managerAllStores, setManagerAllStores] = useState(false);
   const [managerReturnToAllStores, setManagerReturnToAllStores] = useState(false);
+  const allStoresOriginLocationId = useRef<string | null>(null);
   const [managerReviewsDirty, setManagerReviewsDirty] = useState(false);
   const [adminHasUnsavedChanges, setAdminHasUnsavedChanges] = useState(false);
   const [workflowReturnView, setWorkflowReturnView] = useState<DashboardView>("today");
@@ -96,7 +100,17 @@ export default function Dashboard() {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [selectedStoreTimeZone]);
-  const onlineDashboard = useRestQuery<DashboardData | null>(currentLocationId ? `dashboard:${currentLocationId}:${operationalDate}` : null, () => restApi.compliance.dashboard({ locationId: currentLocationId }), Boolean(currentLocationId));
+  const dashboardKey = currentLocationId ? `dashboard:${currentLocationId}:${operationalDate}` : null;
+  // Track why the selected store failed to load, so a slow or failed request is not
+  // mistaken for the account having no store access.
+  const [dashboardFailure, setDashboardFailure] = useState<{ key: string; status: number | null } | null>(null);
+  const onlineDashboard = useRestQuery<DashboardData | null>(dashboardKey, () => restApi.compliance.dashboard({ locationId: currentLocationId }).then((value: DashboardData | null) => {
+    setDashboardFailure(null);
+    return value;
+  }).catch((error: unknown) => {
+    if (dashboardKey) setDashboardFailure({ key: dashboardKey, status: typeof (error as { status?: unknown })?.status === "number" ? (error as { status: number }).status : null });
+    throw error;
+  }), Boolean(currentLocationId));
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOfflineDashboard(currentLocationId ? readOpeningSnapshot(currentLocationId) : null);
@@ -107,11 +121,17 @@ export default function Dashboard() {
       writeOpeningSnapshot(onlineDashboard);
     }
   }, [currentLocationId, memberships, onlineDashboard, user]);
+  const currentFailure = dashboardFailure && dashboardFailure.key === dashboardKey ? dashboardFailure : null;
   // A store transition can render once before the offline snapshot effect and
   // the keyed online request finish. Never present the previous store's data
-  // as if it belonged to the newly selected store.
+  // as if it belonged to the newly selected store, and never let a cached
+  // offline snapshot override a server answer (including a denial).
   const dashboardCandidate = onlineDashboard === undefined ? offlineDashboard : onlineDashboard;
-  const dashboard = dashboardCandidate?.location._id === currentLocationId ? dashboardCandidate : null;
+  const matchingDashboard = dashboardCandidate?.location._id === currentLocationId ? dashboardCandidate : null;
+  // undefined = still loading; null = no store selected, denied, or the store could not be loaded.
+  const dashboard = matchingDashboard ?? (!currentLocationId || onlineDashboard === null || currentFailure ? null : undefined);
+  const storeAccessDenied = !currentLocationId || onlineDashboard === null || currentFailure?.status === 403 || currentFailure?.status === 404;
+
   const handover = useRestQuery<HandoverData | null>(currentLocationId ? `handover:${currentLocationId}` : null, () => restApi.compliance.handover.list({ locationId: currentLocationId! }), Boolean(currentLocationId));
   const [handoverOpen, setHandoverOpen] = useState(false);
   const [handoverMorningPrompt, setHandoverMorningPrompt] = useState<number | null>(null);
@@ -159,8 +179,12 @@ export default function Dashboard() {
     if (adminHasUnsavedChanges) setAdminHasUnsavedChanges(false);
   }
 
+  function navigationNeedsConfirmation() {
+    return shouldConfirmAppNavigation({ activeWorkflow: hasActiveWorkflow, adminHasUnsavedChanges: view === "admin" && adminHasUnsavedChanges, submissionInFlight: workflows.roundSubmitting, pendingMutations });
+  }
+
   function requestNavigation(run: () => void) {
-    if (shouldConfirmAppNavigation({ activeWorkflow: hasActiveWorkflow, adminHasUnsavedChanges: view === "admin" && adminHasUnsavedChanges, submissionInFlight: workflows.roundSubmitting, pendingMutations })) { setNavigationRequest({ run }); return; }
+    if (navigationNeedsConfirmation()) { setNavigationRequest({ run }); return; }
     run();
   }
 
@@ -251,6 +275,7 @@ export default function Dashboard() {
   function openManagerStoreFromAllStores(nextLocationId: string) {
     if (!locations?.some(location => location._id === nextLocationId && getRoleCapabilities(user, memberships, nextLocationId).canViewManagerReviews)) return;
     requestNavigation(() => {
+      allStoresOriginLocationId.current = currentLocationId;
       setManagerReturnToAllStores(true);
       setManagerAllStores(false);
       setManagerReviewsDirty(false);
@@ -263,6 +288,9 @@ export default function Dashboard() {
 
   function returnToAllStores() {
     requestNavigation(() => {
+      // If the opened store failed to load, fall back to the store All stores was opened from.
+      if (dashboard === null && allStoresOriginLocationId.current) setLocationId(allStoresOriginLocationId.current);
+      setView("managerReviews");
       setManagerSection("overview");
       setManagerReturnToAllStores(false);
       setManagerAllStores(true);
@@ -298,10 +326,50 @@ export default function Dashboard() {
     workflows.openWastage();
   };
 
+  // Mirror top-level navigation into browser history so Back/Forward (and the Android back
+  // gesture) move between screens and stores instead of leaving the app.
+  useEffect(() => {
+    if (!currentLocationId) return;
+    const nav: AppHistoryState = { view, locationId: currentLocationId, allStores: managerAllStores, returnToAllStores: managerReturnToAllStores };
+    const existing = (window.history.state as { leFeastNav?: AppHistoryState } | null)?.leFeastNav;
+    if (existing && sameHistoryState(existing, nav)) return;
+    const state = { ...(window.history.state ?? {}), leFeastNav: nav };
+    if (existing) window.history.pushState(state, "");
+    else window.history.replaceState(state, "");
+  }, [view, currentLocationId, managerAllStores, managerReturnToAllStores]);
+  const applyHistoryStateRef = useRef<(nav: AppHistoryState) => void>(() => {});
+  useEffect(() => {
+  applyHistoryStateRef.current = (nav: AppHistoryState) => {
+    const apply = () => {
+      exitActiveWorkflow();
+      if (nav.locationId !== currentLocationId) clearOfflineSession();
+      setLocationId(nav.locationId);
+      setView(nav.view);
+      setManagerAllStores(nav.allStores);
+      setManagerReturnToAllStores(nav.returnToAllStores);
+      setRecordView(null);
+    };
+    if (!navigationNeedsConfirmation() || !currentLocationId) { apply(); return; }
+    // The browser has already moved back; put the current screen's entry back until the
+    // user confirms leaving unsaved work.
+    const current: AppHistoryState = { view, locationId: currentLocationId, allStores: managerAllStores, returnToAllStores: managerReturnToAllStores };
+    window.history.pushState({ ...(window.history.state ?? {}), leFeastNav: current }, "");
+    setNavigationRequest({ run: apply });
+  };
+  });
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      const nav = (event.state as { leFeastNav?: AppHistoryState } | null)?.leFeastNav;
+      if (nav) applyHistoryStateRef.current(nav);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   if (view === "managerReviews" && !recordView && !workflows.round && !structuredTaskArea && !workflows.cleaningList && !workflows.checklistList && !workflows.security) return capabilities.canViewManagerReviews
     ? appShell(<ManagerReviews key={currentLocationId ?? "manager-overview"} locationId={currentLocationId ?? ""} locations={(locations ?? []).filter(location => getRoleCapabilities(user, memberships, location._id).canViewManagerReviews)} onBack={() => navigateTo("today")} onOpenTask={openManagerTarget} onStoreChange={changeManagerStore} onRequestNavigation={requestNavigation} activeSection={managerSection} onActiveSectionChange={setManagerSection} onDirtyChange={setManagerReviewsDirty} allStores={managerAllStores} returnToAllStores={managerReturnToAllStores} onAllStoresChange={setManagerAllStores} onSelectAllStore={openManagerStoreFromAllStores} onReturnToAllStores={returnToAllStores} />)
     : appShell(<AccessDenied />);
-  if (dashboard === null && onlineDashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
+  if (dashboard === undefined) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="rounded-2xl border border-black/[0.07] bg-white px-6 py-5 text-center"><p className="font-semibold">Loading today&apos;s checks…</p><p className="mt-1 text-sm text-[#727a74]">Connecting to your Le Feast store.</p></div></div>;
+  if (dashboard === null && !storeAccessDenied) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div role="alert" className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">This store couldn&apos;t be loaded</p><p className="mt-2 text-sm text-[#727a74]">Check your connection and try again. Your access has not changed.</p><div className="mt-4 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => window.dispatchEvent(new Event("rest:data-changed"))} className="min-h-11 rounded-xl bg-[#202522] px-4 text-sm font-semibold text-white">Try again</button>{managerReturnToAllStores && <button type="button" onClick={returnToAllStores} className="min-h-11 rounded-xl border border-black/[0.1] px-4 text-sm font-semibold text-[#202522]">Back to all stores</button>}</div></div></div>;
   if (dashboard === null) return <div className="flex min-h-screen items-center justify-center bg-white p-6"><div className="max-w-md rounded-2xl border border-[#efc8c3] bg-white p-6 text-center"><p className="font-semibold text-[#202522]">Store access required</p><p className="mt-2 text-sm text-[#727a74]">Your account does not currently have access to a Le Feast store. Please contact an administrator.</p></div></div>;
   if (view === "managerReviews" && dashboard.location._id !== currentLocationId) return appShell(<div role="status" className="mx-auto max-w-3xl p-6 text-sm text-[#606861]">Loading selected store overview…</div>);
 

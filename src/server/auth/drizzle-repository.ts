@@ -1,7 +1,20 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { authOtpChallenges, authSessions, memberships, users } from "../db/schema.js";
+import { authLoginAttempts, authOtpChallenges, authSessions, memberships, users } from "../db/schema.js";
 import type { AuthMembership, AuthRepository, AuthSession, AuthUser, OtpChallenge } from "./core.js";
+
+// Self-heals databases where migration 0028 has not been run (e.g. preview DBs whose
+// credentials are Sensitive and cannot be pulled locally). Idempotent; runs once per instance.
+let loginAttemptsTableReady: Promise<unknown> | null = null;
+const ensureLoginAttemptsTable = (db: ReturnType<typeof getDb>) => {
+  loginAttemptsTableReady ??= db.execute(sql`CREATE TABLE IF NOT EXISTS "auth_login_attempts" (
+    "key" text PRIMARY KEY NOT NULL,
+    "failures" integer DEFAULT 0 NOT NULL,
+    "window_started_at" timestamp with time zone NOT NULL,
+    "blocked_until" timestamp with time zone
+  )`).catch((error) => { loginAttemptsTableReady = null; throw error; });
+  return loginAttemptsTableReady;
+};
 
 const toUser = (row: typeof users.$inferSelect): AuthUser => ({
   id: row.id,
@@ -111,6 +124,25 @@ export const createDrizzleAuthRepository = (): AuthRepository => {
     },
     async setPassword(userId, credential, at) {
       await db.update(users).set({ passwordHash: credential.hash, passwordSalt: credential.salt, passwordSetAt: new Date(at) }).where(eq(users.id, userId));
+    },
+    async getLoginAttempt(key) {
+      await ensureLoginAttemptsTable(db);
+      const [row] = await db.select().from(authLoginAttempts).where(eq(authLoginAttempts.key, key)).limit(1);
+      return row ? { startedAt: row.windowStartedAt.getTime(), failures: row.failures, blockedUntil: row.blockedUntil?.getTime() ?? 0 } : null;
+    },
+    async saveLoginAttempt(key, attempt) {
+      await ensureLoginAttemptsTable(db);
+      const values = { failures: attempt.failures, windowStartedAt: new Date(attempt.startedAt), blockedUntil: attempt.blockedUntil ? new Date(attempt.blockedUntil) : null };
+      await db.insert(authLoginAttempts).values({ key, ...values }).onConflictDoUpdate({ target: authLoginAttempts.key, set: values });
+    },
+    async clearLoginAttempt(key) {
+      await ensureLoginAttemptsTable(db);
+      await db.delete(authLoginAttempts).where(eq(authLoginAttempts.key, key));
+    },
+    async countRecentChallengesByRateLimitKey(rateLimitKey, since) {
+      const [row] = await db.select({ value: count() }).from(authOtpChallenges)
+        .where(and(eq(authOtpChallenges.rateLimitKey, rateLimitKey), gt(authOtpChallenges.createdAt, new Date(since))));
+      return Number(row?.value ?? 0);
     },
     async revokeUserSessions(userId, at) {
       await db.update(authSessions).set({ revokedAt: new Date(at) }).where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)));

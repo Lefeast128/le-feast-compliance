@@ -46,7 +46,7 @@ const checks = [
   () => assert.match(profileMenu, /permittedLocations/),
   () => assert.match(today, /canUseManagement &&/),
   () => assert.match(dashboard, /view === "admin"[\s\S]*capabilities\.canUseManagement/),
-  () => assert.match(dashboard, /if \(view === "managerReviews"\) return capabilities\.canViewManagerReviews/),
+  () => assert.match(dashboard, /if \(view === "managerReviews"[^)]*\) return capabilities\.canViewManagerReviews/),
   () => assert.match(admin, /OrganisationAdmin/),
   () => assert.match(organisationAdmin, /UserAccessAdmin/),
   () => assert.match(operations, /memberships\.role, "manager"/),
