@@ -178,8 +178,15 @@ export default function DashboardToday({
     requirement as { _id?: string; id?: string; versionRootId?: string | null; nextDueAt: string | number },
     (additional?.completions ?? []) as Array<{ requirementId?: string; requirementRootId?: string; nextDueAt?: string | number; scheduledDueAt?: string | number }>,
   )).length;
+  // Only issues raised on today's operational date flag today's task cards. Older
+  // unresolved issues stay in the issues panel but must not make a fresh checklist
+  // look like it already needs attention.
+  const todaysOpenIssues = openIssues.filter(issue => {
+    const raisedAt = issue.capturedAt ?? issue.createdAt;
+    return raisedAt != null && localOperationalDateFor(raisedAt, timeZone) === today;
+  });
   const issueAttentionTaskIds = getIssueAttentionTaskIds({
-    issues: openIssues,
+    issues: todaysOpenIssues,
     temperatureReadings: active.readings,
     temperatureRounds: active.rounds,
     structuredTasks,

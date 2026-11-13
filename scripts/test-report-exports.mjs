@@ -179,7 +179,7 @@ const workbookBuffer = await renderComplianceWorkbook(formulaReport, "2026-07-16
 const workbook = new ExcelJS.Workbook();
 await workbook.xlsx.load(workbookBuffer);
 assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ["Summary", "Daily Breakdown", "Exceptions", "Issues", "Additional Checks", "Section Completion"]);
-assert.equal(workbook.getWorksheet("Summary").getCell("A1").value, "Le Feast Compliance Report");
+assert.equal(workbook.getWorksheet("Summary").getCell("A1").value, "mise. by Le Feast Compliance Report");
 const summarySheet = workbook.getWorksheet("Summary");
 const completeRow = summarySheet.getRows(1, summarySheet.rowCount).find(row => row.getCell(1).value === "Complete Days");
 assert.equal(completeRow?.getCell(2).value, 1, "XLSX summary matches canonical report");

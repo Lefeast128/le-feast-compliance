@@ -7,8 +7,7 @@ const [view, admin, service] = await Promise.all([
   readFile(new URL("../src/server/management/organisation-service.ts", import.meta.url), "utf8"),
 ]);
 assert.match(view, /trainingInstructions\s*\?\?\s*acknowledgementTarget\.requirement\.description/, "briefing content is shown before confirmation");
-assert.match(view, /title=\{`\$\{acknowledgementTarget\.requirement\.title\} PDF preview`\}/, "PDF is embedded in the acknowledgment step");
-assert.match(view, /documentUrl\}\s*className="h-\[42vh\]/);
+assert.match(view, /<VerifiedPdfPreview documentId=\{acknowledgementTarget\.requirement\.currentDocumentId\}[^\n]*className="h-\[42vh\]/, "verified PDF is embedded in the acknowledgment step");
 assert.match(view, /max-h-\[92vh\].*overflow-y-auto/, "acknowledgement preview remains usable on short mobile screens");
 assert.match(admin, /Search briefings and training documents/);
 assert.match(admin, /startTrainingEdit\(item\)/);

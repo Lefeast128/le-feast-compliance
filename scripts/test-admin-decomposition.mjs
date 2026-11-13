@@ -13,9 +13,9 @@ assert.match(admin, /WastageCatalogueAdmin/);
 assert.match(admin, /ComplianceReports/);
 assert.match(admin, /useRestQuery<AdminOperation\[\]>/);
 assert.match(admin, /function selectStore/);
-assert.match(admin, /setCatalogueOpen\(false\)/);
-assert.match(admin, /setReportsOpen\(false\)/);
-assert.match(admin, /key=\{selectedLocationId\}/);
+// Switching store closes any open admin feature (catalogue, reports, sheets…).
+assert.match(admin, /function selectStore\(nextLocationId: string\) \{\s*setStoreId\(nextLocationId\);\s*setFeature\(null\);/);
+assert.match(admin, /onOpenCatalogue=\{\(\) => setFeature\("wastage"\)\}/);
 assert.doesNotMatch(admin, /@ts-nocheck/);
 assert.doesNotMatch(admin, /eslint-disable/);
 

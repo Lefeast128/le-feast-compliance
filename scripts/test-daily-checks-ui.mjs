@@ -49,7 +49,8 @@ assert.equal(getTaskStatus({ complete: false, attention: true }), "attention");
 assert.equal(getTaskStatus({ complete: true, attention: true }), "completed-attention");
 
 const zero = buildDailyTaskModels(base);
-assert.equal(zero.filter((task) => task.required).length, 6);
+// Food probes and wastage became required daily records in e9fa84c.
+assert.equal(zero.filter((task) => task.required).length, 8);
 assert.deepEqual(zero.map((task) => task.id), [
   "am-temperature",
   "am-security",
@@ -65,9 +66,9 @@ assert.deepEqual(zero.map((task) => task.id), [
 assert.equal(zero.find((task) => task.id === "am-temperature")?.status, "not-started");
 assert.equal(zero.find((task) => task.id === "pm-temperature")?.status, "due-later");
 assert.equal(zero.find((task) => task.id === "additional-checks")?.status, "not-started");
-assert.equal(zero.find((task) => task.id === "food-probes")?.required, false);
+assert.equal(zero.find((task) => task.id === "food-probes")?.required, true);
 assert.equal(zero.find((task) => task.id === "food-probes")?.status, "not-started");
-assert.equal(dailyTaskStatusLabel(zero.find((task) => task.id === "food-probes")), "As needed");
+assert.equal(dailyTaskStatusLabel(zero.find((task) => task.id === "food-probes")), "Ready to start");
 assert.equal(dailyTaskStatusLabel(zero.find((task) => task.id === "additional-checks")), "As needed");
 assert.equal(dailyTaskStatusLabel(buildDailyTaskModels({ ...base, additionalDue: 0 }).find((task) => task.id === "additional-checks")), "Nothing due today");
 const noCleaningDue = buildDailyTaskModels({ ...base, cleaningDue: 0 }).find((task) => task.id === "cleaning");
@@ -89,7 +90,7 @@ assert.equal(dailyTaskStatusLabel(additionalIssueWithNothingDue), "Requires atte
 const additionalSection = journeySource.slice(journeySource.indexOf('aria-labelledby="additional-checks-heading"'), journeySource.indexOf('aria-labelledby="issues-heading"'));
 assert.match(journeySource, /Today&apos;s checks/, "today's checks is the first dashboard content");
 assert.doesNotMatch(journeySource, /Daily compliance journey|currentUserName|locationName|todayLabel/, "dashboard intro identity block is removed");
-assert.match(journeySource, /aria-label="Sign out"/, "logout remains available as a discreet account action");
+assert.match(await readFile(new URL("../src/components/dashboard/ProfileMenu.tsx", import.meta.url), "utf8"), /onSelect=\{\(\) => void logout\(\)\}[^\n]*Log out/, "logout remains available as a discreet account action");
 assert.match(additionalSection, /<ul[^>]*>[\s\S]*<DailyTaskCard[\s\S]*<\/ul>/, "additional checks card has a valid list container");
 assert.doesNotMatch(additionalSection, /<\/div>\s*<DailyTaskCard/, "additional checks card is not a direct section child");
 assert.doesNotMatch(dashboardTodaySource, /viewTodayRecords/, "completed cards do not route through the general daily report");
@@ -111,7 +112,8 @@ assert.match(checklistSource, /grid w-full basis-full grid-cols-2 gap-2 pl-11/, 
 assert.match(checklistSource, /className="h-11 rounded-xl/, "question actions meet the touch target size");
 const managerReviewsPosition = journeySource.indexOf('aria-label="Manager reviews"');
 const issuesPosition = journeySource.indexOf('aria-labelledby="issues-heading"');
-assert.ok(managerReviewsPosition > issuesPosition, "Manager reviews follow the daily journey and attention area");
+// a214ffa moved Manager reviews between the daily journey and the issues area.
+assert.ok(managerReviewsPosition > journeySource.indexOf("Today&apos;s checks") && managerReviewsPosition < issuesPosition, "Manager reviews follow the daily journey and precede the attention area");
 assert.match(recordsSource, /structuredTaskResponses/, "record views include structured responses");
 assert.match(recordsSource, /equipmentName \?\? equipment\?\.name/, "temperature records prefer stored equipment names");
 assert.match(recordsSource, /No response evidence available\./, "record views do not fabricate missing answers");
@@ -231,3 +233,9 @@ assert.equal(complete.filter((task) => task.required && task.status === "complet
 assert.ok(complete.filter((task) => task.status === "completed").length >= 8);
 
 console.log("Daily checks UI tests passed: 35/35");
+
+// Older unresolved issues (e.g. an opening-checklist failure from a previous day) must not
+// mark today's fresh checklist as "Requires attention"; they remain in the issues panel.
+assert.match(dashboardTodaySource, /const todaysOpenIssues = openIssues\.filter\(issue => \{\s*const raisedAt = issue\.capturedAt \?\? issue\.createdAt;\s*return raisedAt != null && localOperationalDateFor\(raisedAt, timeZone\) === today;/, "only today's issues flag today's task cards");
+assert.match(dashboardTodaySource, /getIssueAttentionTaskIds\(\{\s*issues: todaysOpenIssues,/, "attention mapping uses today's issues");
+console.log("Stale-issue attention guard passed");
