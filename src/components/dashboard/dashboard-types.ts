@@ -83,6 +83,8 @@ export type DashboardIssue = {
   description: string;
   action?: string | null;
   category?: string | null;
+  createdAt?: string | number;
+  capturedAt?: string | number | null;
   sourceTemperatureReadingId?: string | null;
   sourceFoodCheckId?: string | null;
   sourceAdditionalCompletionId?: string | null;
