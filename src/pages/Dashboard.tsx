@@ -122,13 +122,15 @@ export default function Dashboard() {
     }
   }, [currentLocationId, memberships, onlineDashboard, user]);
   const currentFailure = dashboardFailure && dashboardFailure.key === dashboardKey ? dashboardFailure : null;
-  const matchingOfflineDashboard = offlineDashboard && offlineDashboard.location._id === currentLocationId ? offlineDashboard : null;
-  // undefined = still loading; null = no store selected or the selected store could not be loaded.
-  // A store transition can render once before the keyed online request finishes.
-  // Never present the previous store's data as if it belonged to the newly selected store.
-  const matchingOnlineDashboard = onlineDashboard && onlineDashboard.location._id === currentLocationId ? onlineDashboard : null;
-  const dashboard = matchingOnlineDashboard ?? matchingOfflineDashboard ?? (!currentLocationId || currentFailure ? null : undefined);
-  const storeAccessDenied = !currentLocationId || currentFailure?.status === 403 || currentFailure?.status === 404;
+  // A store transition can render once before the offline snapshot effect and
+  // the keyed online request finish. Never present the previous store's data
+  // as if it belonged to the newly selected store, and never let a cached
+  // offline snapshot override a server answer (including a denial).
+  const dashboardCandidate = onlineDashboard === undefined ? offlineDashboard : onlineDashboard;
+  const matchingDashboard = dashboardCandidate?.location._id === currentLocationId ? dashboardCandidate : null;
+  // undefined = still loading; null = no store selected, denied, or the store could not be loaded.
+  const dashboard = matchingDashboard ?? (!currentLocationId || onlineDashboard === null || currentFailure ? null : undefined);
+  const storeAccessDenied = !currentLocationId || onlineDashboard === null || currentFailure?.status === 403 || currentFailure?.status === 404;
 
   const handover = useRestQuery<HandoverData | null>(currentLocationId ? `handover:${currentLocationId}` : null, () => restApi.compliance.handover.list({ locationId: currentLocationId! }), Boolean(currentLocationId));
   const [handoverOpen, setHandoverOpen] = useState(false);
