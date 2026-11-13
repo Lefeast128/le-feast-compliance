@@ -1,4 +1,4 @@
-import { loginWithPassword, PasswordLoginRateLimitError, getAuthContext, safeUser, SESSION_TTL_MS } from "../../src/server/auth/core.js";
+import { loginWithPassword, PasswordLoginRateLimitError, passwordLockoutMessage, getAuthContext, safeUser, SESSION_TTL_MS } from "../../src/server/auth/core.js";
 import { assertMutationOrigin, sessionCookie } from "../../src/server/auth/cookies.js";
 import { createDrizzleAuthRepository } from "../../src/server/auth/drizzle-repository.js";
 
@@ -40,7 +40,8 @@ export default async function handler(req: Request, res: Response) {
       return;
     }
     if (error instanceof PasswordLoginRateLimitError) {
-      res.status(429).json(genericError);
+      res.setHeader("Retry-After", String(error.retryAfterSeconds));
+      res.status(429).json({ ok: false, error: passwordLockoutMessage(error.retryAfterSeconds) });
       return;
     }
     console.error("Password login failed", { category: "internal_error" });

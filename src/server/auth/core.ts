@@ -134,11 +134,19 @@ export type LoginAttempt = { startedAt: number; failures: number; blockedUntil: 
 const memoryLoginAttempts = new Map<string, LoginAttempt>();
 
 export class PasswordLoginRateLimitError extends Error {
-  constructor() {
-    super("Invalid email or password");
+  readonly retryAfterSeconds: number;
+  constructor(retryAfterSeconds = Math.ceil(PASSWORD_LOGIN_WINDOW_MS / 1000)) {
+    super("Too many sign-in attempts");
     this.name = "PasswordLoginRateLimitError";
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
   }
 }
+
+// Lockouts apply to any email (known or not), so this message does not reveal accounts.
+export const passwordLockoutMessage = (retryAfterSeconds: number) => {
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  return `Too many sign-in attempts. Please wait ${minutes} minute${minutes === 1 ? "" : "s"} and try again, or use "Forgot password?".`;
+};
 
 // Keyed by account, not IP, so rotating addresses cannot reset the counter.
 const loginKey = (email: string) => `password:${email}`;
@@ -151,7 +159,7 @@ const loginAttemptStore = (repository: AuthRepository) => ({
 
 async function checkLoginRateLimit(repository: AuthRepository, key: string, now: number) {
   const current = await loginAttemptStore(repository).get(key);
-  if (current && current.startedAt + PASSWORD_LOGIN_WINDOW_MS > now && current.blockedUntil > now) throw new PasswordLoginRateLimitError();
+  if (current && current.startedAt + PASSWORD_LOGIN_WINDOW_MS > now && current.blockedUntil > now) throw new PasswordLoginRateLimitError((current.blockedUntil - now) / 1000);
   return current;
 }
 

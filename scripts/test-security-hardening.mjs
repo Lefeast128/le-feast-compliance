@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 process.env.AUTH_OTP_PEPPER ??= "test-pepper";
 process.env.AUTH_SESSION_SECRET ??= "test-session-secret";
-const { createPasswordCredential, loginWithPassword, PasswordLoginRateLimitError, requestOtp, OTP_IP_MAX_REQUESTS } = await import("../src/server/auth/core.ts");
+const { createPasswordCredential, loginWithPassword, PasswordLoginRateLimitError, passwordLockoutMessage, requestOtp, OTP_IP_MAX_REQUESTS } = await import("../src/server/auth/core.ts");
 const { writableDateKey } = await import("../src/server/compliance/structured-task-service.ts");
 
 const credential = createPasswordCredential("correct horse battery staple");
@@ -39,6 +39,12 @@ await assert.rejects(
   PasswordLoginRateLimitError,
   "changing IP does not bypass the lockout",
 );
+const lockout = await loginWithPassword(repository, { email: user.email, password: "correct horse battery staple", now: 2000 + 5 * 60 * 1000 }).catch(error => error);
+assert.ok(lockout instanceof PasswordLoginRateLimitError);
+assert.equal(lockout.retryAfterSeconds, 10 * 60, "lockout reports the time remaining");
+assert.match(passwordLockoutMessage(lockout.retryAfterSeconds), /Too many sign-in attempts\. Please wait 10 minutes/);
+assert.match(passwordLockoutMessage(30), /wait 1 minute and/, "short waits round up to one minute");
+assert.doesNotMatch(passwordLockoutMessage(900), /Invalid email or password/, "lockout is distinguishable from a wrong password");
 const after = await loginWithPassword(repository, { email: user.email, password: "correct horse battery staple", now: 2000 + 16 * 60 * 1000, rateLimitKey: "10.9.9.9" });
 assert.ok(after?.sessionToken, "lockout expires after the window");
 assert.equal(attempts.size, 0, "successful login clears the counter");
@@ -62,4 +68,4 @@ assert.throws(() => writableDateKey("2026-07-10", "Europe/London", now), /today 
 assert.throws(() => writableDateKey("2026-07-17", "Europe/London", now), /today or yesterday/);
 assert.throws(() => writableDateKey("16/07/2026", "Europe/London", now), /YYYY-MM-DD/);
 
-console.log("Security hardening tests passed: durable login lockout, OTP IP cap, structured task date guard");
+console.log("Security hardening tests passed: durable login lockout with clear message, OTP IP cap, structured task date guard");
